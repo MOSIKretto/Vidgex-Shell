@@ -32,6 +32,9 @@ class PlayerBox(Box):
         super().__init__(orientation="v", h_align="fill", spacing=0, h_expand=False, v_expand=True)
         self.mpris_player = mpris_player
         self._progress_timer_id = None
+        self._wallpaper_monitor = None
+        self._destroyed = False
+        self._temp_artwork_files = []  # Отслеживание временных файлов
 
         self.cover = CircleImage(
             name="player-cover",
@@ -254,6 +257,8 @@ class PlayerBox(Box):
     def _download_artwork(self, arturl):
         """Download artwork asynchronously"""
         def worker(user_data):
+            if self._destroyed:
+                return
             try:
                 parsed = urllib.parse.urlparse(arturl)
                 suffix = os.path.splitext(parsed.path)[1] or ".png"
@@ -263,10 +268,13 @@ class PlayerBox(Box):
                 temp_file.write(data)
                 temp_file.close()
                 local_arturl = temp_file.name
+                # Отслеживаем временные файлы для последующей очистки
+                self._temp_artwork_files.append(local_arturl)
             except Exception:
                 local_arturl = os.path.expanduser("~/.current.wall")
-            GLib.idle_add(self._set_cover_image, local_arturl)
-        
+            if not self._destroyed:
+                GLib.idle_add(self._set_cover_image, local_arturl)
+
         GLib.Thread.new("artwork", worker, None)
 
     def update_play_pause_icon(self):
@@ -306,9 +314,13 @@ class PlayerBox(Box):
             self.mpris_player.next()
 
     def _update_progress(self):
+        if self._destroyed:
+            if self._progress_timer_id:
+                GLib.source_remove(self._progress_timer_id)
+                self._progress_timer_id = None
+            return False
 
         if not self.mpris_player:
-
             if self._progress_timer_id:
                 GLib.source_remove(self._progress_timer_id)
                 self._progress_timer_id = None
@@ -355,6 +367,8 @@ class PlayerBox(Box):
 
     def _apply_mpris_properties_debounced(self):
         """Apply MPRIS properties with debouncing"""
+        if self._destroyed:
+            return False
         if self.mpris_player:
             self._apply_mpris_properties()
         elif self._progress_timer_id:
@@ -362,6 +376,45 @@ class PlayerBox(Box):
             self._progress_timer_id = None
         self._update_pending = False
         return False
+
+    def destroy(self):
+        """Очистка ресурсов при уничтожении"""
+        if self._destroyed:
+            return
+
+        self._destroyed = True
+
+        # Останавливаем таймер прогресса
+        if self._progress_timer_id:
+            GLib.source_remove(self._progress_timer_id)
+            self._progress_timer_id = None
+
+        # Отключаем file monitor
+        if self._wallpaper_monitor:
+            try:
+                self._wallpaper_monitor.cancel()
+            except Exception:
+                pass
+            self._wallpaper_monitor = None
+
+        # Удаляем временные файлы artwork
+        for temp_file in self._temp_artwork_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+            except Exception:
+                pass
+        self._temp_artwork_files.clear()
+
+        # Очищаем ссылку на mpris_player
+        self.mpris_player = None
+
+    def __del__(self):
+        """Деструктор для обеспечения очистки"""
+        try:
+            self.destroy()
+        except Exception:
+            pass
 
 class Player(Box):
     def __init__(self):

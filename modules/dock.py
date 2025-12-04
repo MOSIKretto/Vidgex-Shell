@@ -63,12 +63,12 @@ class Dock(Window):
             self.set_margin("-8px 0px 0px 0px")
 
         self.conn = get_hyprland_connection()
-        self.icon_resolver = IconResolver() 
-        
+        self.icon_resolver = IconResolver()
+
         # Инициализация
         self._all_apps = get_desktop_applications()
         self.app_identifiers = self._build_app_identifiers_map()
-        
+
         self.hide_id = None
         self._drag_in_progress = False
         self.is_mouse_over_dock_area = False
@@ -76,13 +76,20 @@ class Dock(Window):
         self._prevent_occlusion = False
         self._forced_occlusion = False
 
+        # Флаг для проверки уничтожения
+        self._destroyed = False
+
+        # Для отслеживания таймеров и обработчиков событий
+        self._occlusion_timer_id = None
+        self._event_handlers = []
+
         # Для отслеживания геометрии дока
         self.dock_geometry = None
         self.monitor_info = None
 
         # Создание виджетов
         self._setup_ui()
-        
+
         # Подписка на события
         self._setup_event_handlers()
 
@@ -170,24 +177,46 @@ class Dock(Window):
         if self.conn.ready:
             self.update_dock()
             self.update_active_window()
-            if not self.integrated_mode: 
-                GLib.timeout_add(500, self.check_occlusion_state)
+            if not self.integrated_mode:
+                self._occlusion_timer_id = GLib.timeout_add(500, self._check_occlusion_wrapper)
         else:
-            self.conn.connect("event::ready", lambda *args: (
-                self.update_dock(),
-                self.update_active_window(),
-                GLib.timeout_add(250, self.check_occlusion_state) if not self.integrated_mode else None
-            ))
+            handler_id = self.conn.connect("event::ready", lambda *args: self._on_ready())
+            self._event_handlers.append(handler_id)
 
-        # Основные события
-        self.conn.connect("event::openwindow", self._on_window_change)
-        self.conn.connect("event::closewindow", self._on_window_change)
-        self.conn.connect("event::activewindow", self.update_active_window)
-        
+        # Основные события - сохраняем handler_id для последующего disconnect
+        handler_id = self.conn.connect("event::openwindow", self._on_window_change)
+        self._event_handlers.append(handler_id)
+
+        handler_id = self.conn.connect("event::closewindow", self._on_window_change)
+        self._event_handlers.append(handler_id)
+
+        handler_id = self.conn.connect("event::activewindow", self.update_active_window)
+        self._event_handlers.append(handler_id)
+
         if not self.integrated_mode:
-            self.conn.connect("event::workspace", self._on_workspace_change)
-            self.conn.connect("event::movewindow", self._on_window_change)
-            self.conn.connect("event::resizewindow", self._on_window_change)
+            handler_id = self.conn.connect("event::workspace", self._on_workspace_change)
+            self._event_handlers.append(handler_id)
+
+            handler_id = self.conn.connect("event::movewindow", self._on_window_change)
+            self._event_handlers.append(handler_id)
+
+            handler_id = self.conn.connect("event::resizewindow", self._on_window_change)
+            self._event_handlers.append(handler_id)
+
+    def _on_ready(self):
+        """Обработчик события ready"""
+        if self._destroyed:
+            return
+        self.update_dock()
+        self.update_active_window()
+        if not self.integrated_mode:
+            self._occlusion_timer_id = GLib.timeout_add(250, self._check_occlusion_wrapper)
+
+    def _check_occlusion_wrapper(self):
+        """Обертка для check_occlusion_state с проверкой _destroyed"""
+        if self._destroyed:
+            return False
+        return self.check_occlusion_state()
 
     def _update_monitor_info(self):
         """Получение информации о мониторе для корректного расчета координат"""
@@ -515,57 +544,60 @@ class Dock(Window):
 
     def update_dock(self, *args):
         """Обновление содержимого дока"""
+        if self._destroyed:
+            return
+
         self.update_app_map()
-        
+
         clients = self.get_clients()
-        
+
         running_windows = {}
         for c in clients:
             window_id = None
-            if class_name := c.get("initialClass", "").lower(): 
+            if class_name := c.get("initialClass", "").lower():
                 window_id = class_name
-            elif class_name := c.get("class", "").lower(): 
+            elif class_name := c.get("class", "").lower():
                 window_id = class_name
             elif title := c.get("title", "").lower():
                 possible_name = title.split(" - ")[0].strip()
-                if possible_name and len(possible_name) > 1: 
+                if possible_name and len(possible_name) > 1:
                     window_id = possible_name
-                else: 
+                else:
                     window_id = title
-            if not window_id: 
+            if not window_id:
                 window_id = "unknown-app"
             running_windows.setdefault(window_id, []).append(c)
             normalized_id = self._normalize_window_class(window_id)
             if normalized_id != window_id:
                 running_windows.setdefault(normalized_id, []).extend(running_windows[window_id])
-        
+
         open_buttons = []
         used_window_classes = set()
-        
+
         for class_name, instances in running_windows.items():
             if class_name not in used_window_classes:
                 app = self.app_identifiers.get(class_name)
                 if not app:
                     norm_class = self._normalize_window_class(class_name)
                     app = self.app_identifiers.get(norm_class)
-                if not app: 
+                if not app:
                     app = self.find_app_by_key(class_name)
                 if not app and instances and instances[0].get("title"):
                     title = instances[0].get("title", "")
                     potential_name = title.split(" - ")[0].strip()
-                    if len(potential_name) > 2: 
+                    if len(potential_name) > 2:
                         app = self.find_app_by_key(potential_name)
-                
+
                 if app:
                     app_data_obj = {
-                        "name": app.name, 
+                        "name": app.name,
                         "display_name": app.display_name,
-                        "window_class": app.window_class, 
+                        "window_class": app.window_class,
                         "executable": app.executable,
                         "command_line": app.command_line
                     }
                     identifier = app_data_obj
-                else: 
+                else:
                     identifier = class_name
                 open_buttons.append(self.create_button(identifier, instances, class_name))
                 used_window_classes.add(class_name)
@@ -573,19 +605,19 @@ class Dock(Window):
         self.view.children = open_buttons
         if not self.integrated_mode:
             idle_add(self._update_size)
-        
+
         self._drag_in_progress = False
         if not self.integrated_mode:
             self.check_occlusion_state()
-        
+
         self.update_active_window()
 
     def _update_size(self):
         """Обновление размера дока"""
-        if self.integrated_mode: 
-            return False 
+        if self._destroyed or self.integrated_mode:
+            return False
         width, _ = self.view.get_preferred_width()
-        self.set_size_request(width, -1) 
+        self.set_size_request(width, -1)
         # Обновляем геометрию после изменения размера
         self._update_dock_geometry()
         return False
@@ -768,10 +800,50 @@ class Dock(Window):
     @staticmethod
     def update_visibility(visible):
         """Статический метод обновления видимости всех доков"""
-        for dock in Dock._instances: 
+        for dock in Dock._instances:
             dock.set_visible(visible)
             if visible:
                 GLib.idle_add(dock.check_occlusion_state)
             else:
                 if hasattr(dock, 'dock_revealer') and dock.dock_revealer.get_reveal_child():
                     dock.dock_revealer.set_reveal_child(False)
+
+    def destroy(self):
+        """Очистка ресурсов при уничтожении дока"""
+        if self._destroyed:
+            return
+
+        self._destroyed = True
+
+        # Останавливаем таймер окклюзии
+        if self._occlusion_timer_id:
+            GLib.source_remove(self._occlusion_timer_id)
+            self._occlusion_timer_id = None
+
+        # Останавливаем таймер скрытия
+        if self.hide_id:
+            GLib.source_remove(self.hide_id)
+            self.hide_id = None
+
+        # Отключаем все event handlers
+        for handler_id in self._event_handlers:
+            try:
+                self.conn.disconnect(handler_id)
+            except Exception:
+                pass
+        self._event_handlers.clear()
+
+        # Удаляем из списка инстансов
+        if self in Dock._instances:
+            Dock._instances.remove(self)
+
+        # Очищаем кэш приложений
+        self._all_apps = []
+        self.app_identifiers.clear()
+
+    def __del__(self):
+        """Деструктор для обеспечения очистки"""
+        try:
+            self.destroy()
+        except Exception:
+            pass

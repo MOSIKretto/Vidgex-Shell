@@ -5,16 +5,19 @@ from gi.repository import GLib, Gtk
 
 class Animator(Service):
     """
-    Simple animator with fixed 60fps for smooth animations.
-    
+    Optimized animator with adaptive frame rate for smooth animations even under high CPU load.
+
     Features:
-    - Fixed 60fps frame rate
+    - Adaptive frame rate (60fps normal, 30fps under load)
     - Vsync-aware timing for tear-free animations
     - Low priority rendering to not block UI
+    - Frame skip detection for CPU-bound scenarios
     """
-    
-    # Fixed frame rate at 60fps
-    FRAME_INTERVAL = 1000 / 60  # ~16.67ms per frame
+
+    # Frame rate constants
+    FRAME_INTERVAL_60FPS = 1000 / 60  # ~16.67ms per frame
+    FRAME_INTERVAL_30FPS = 1000 / 30  # ~33.33ms per frame
+    FRAME_SKIP_THRESHOLD = 50  # ms - if frame takes longer, reduce frame rate
     
     @Signal
     def finished(self) -> None: ...
@@ -78,7 +81,7 @@ class Animator(Service):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        
+
         self._bezier_curve = bezier_curve
         self._duration = duration
         self._value = min_value
@@ -90,6 +93,11 @@ class Animator(Service):
         self._tick_handler = None
         self._timeline_pos = 0
         self._tick_widget = tick_widget
+
+        # Adaptive frame rate tracking
+        self._last_frame_time = None
+        self._slow_frames_count = 0
+        self._use_low_fps = False
 
     def do_get_time_now(self):
         """Get current time in seconds with microsecond precision."""
@@ -138,10 +146,48 @@ class Animator(Service):
             self.pause()
 
     def do_handle_tick(self, *_):
-        """Handle animation tick at fixed 60fps."""
+        """Handle animation tick with adaptive frame rate."""
         current_time = self.do_get_time_now()
+
+        # Track frame timing for adaptive frame rate
+        if self._last_frame_time is not None:
+            frame_time = (current_time - self._last_frame_time) * 1000  # Convert to ms
+
+            # Detect slow frames
+            if frame_time > self.FRAME_SKIP_THRESHOLD:
+                self._slow_frames_count += 1
+                if self._slow_frames_count >= 3 and not self._use_low_fps:
+                    # Switch to 30fps after 3 slow frames
+                    self._use_low_fps = True
+                    self._slow_frames_count = 0
+                    # Restart timer with new interval
+                    self._restart_timer()
+            else:
+                self._slow_frames_count = max(0, self._slow_frames_count - 1)
+                if self._slow_frames_count == 0 and self._use_low_fps:
+                    # Switch back to 60fps when frames are fast again
+                    self._use_low_fps = False
+                    self._restart_timer()
+
+        self._last_frame_time = current_time
         self.do_update_value(current_time)
         return True
+
+    def _restart_timer(self):
+        """Restart timer with new frame interval."""
+        if self._tick_widget is not None or self._tick_handler is None:
+            return  # Don't restart widget tick callbacks
+
+        # Remove old timer
+        GLib.source_remove(self._tick_handler)
+
+        # Add new timer with appropriate interval
+        interval = self.FRAME_INTERVAL_30FPS if self._use_low_fps else self.FRAME_INTERVAL_60FPS
+        self._tick_handler = GLib.timeout_add(
+            int(interval),
+            self.do_handle_tick,
+            priority=GLib.PRIORITY_DEFAULT_IDLE
+        )
 
     def do_remove_tick_handlers(self):
         """Clean up tick handlers properly."""
@@ -156,11 +202,14 @@ class Animator(Service):
         self._tick_handler = None
 
     def play(self):
-        """Start animation at fixed 60fps."""
+        """Start animation with adaptive frame rate (60fps -> 30fps under load)."""
         if self.playing:
             return
 
         self._start_time = self.do_get_time_now()
+        self._last_frame_time = None
+        self._slow_frames_count = 0
+        self._use_low_fps = False
 
         if self._tick_handler is not None:
             return
@@ -171,9 +220,9 @@ class Animator(Service):
                 self.do_handle_tick
             )
         else:
-            # Use GLib timeout with fixed 60fps interval
+            # Use GLib timeout starting at 60fps
             self._tick_handler = GLib.timeout_add(
-                int(self.FRAME_INTERVAL),
+                int(self.FRAME_INTERVAL_60FPS),
                 self.do_handle_tick,
                 priority=GLib.PRIORITY_DEFAULT_IDLE
             )

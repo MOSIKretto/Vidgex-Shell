@@ -43,14 +43,15 @@ CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九
 
 # Performance optimization constants
 MAX_ICON_CACHE_SIZE = 50
+MAX_SUBPROCESS_CACHE_SIZE = 100  # Лимит для subprocess кэша
 WINDOW_UPDATE_INTERVAL = 500
 SUBPROCESS_TIMEOUT = 0.3
 DEBOUNCE_DELAY = 100  # ms
-
-# Cache for subprocess calls
-_subprocess_cache = {}
-_cache_timestamps = {}
 CACHE_TTL = 2.0  # seconds
+
+# LRU Cache for subprocess calls with size limit
+_subprocess_cache = OrderedDict()
+_cache_timestamps = {}
 
 
 class Notch(Window):
@@ -643,16 +644,22 @@ class Notch(Window):
         return None
     
     def _cached_subprocess_call(self, cache_key: str, cmd: list, parser: callable = None) -> Any:
-        """Execute subprocess with caching."""
+        """Execute subprocess with LRU caching."""
         import time
         current_time = time.time()
-        
-        # Check cache
+
+        # Check cache with TTL
         if cache_key in _subprocess_cache:
             cached_time = _cache_timestamps.get(cache_key, 0)
             if current_time - cached_time < CACHE_TTL:
+                # Move to end (most recently used) for LRU
+                _subprocess_cache.move_to_end(cache_key)
                 return _subprocess_cache[cache_key]
-        
+            else:
+                # TTL expired, remove from cache
+                del _subprocess_cache[cache_key]
+                del _cache_timestamps[cache_key]
+
         # Execute command
         try:
             result = subprocess.run(
@@ -663,12 +670,21 @@ class Notch(Window):
             )
             if result.returncode == 0:
                 value = parser(result.stdout) if parser else result.stdout
+
+                # Add to cache with LRU eviction
                 _subprocess_cache[cache_key] = value
                 _cache_timestamps[cache_key] = current_time
+
+                # Evict oldest entry if cache exceeds limit
+                if len(_subprocess_cache) > MAX_SUBPROCESS_CACHE_SIZE:
+                    oldest_key = next(iter(_subprocess_cache))
+                    del _subprocess_cache[oldest_key]
+                    _cache_timestamps.pop(oldest_key, None)
+
                 return value
         except (subprocess.TimeoutExpired, Exception):
             pass
-        
+
         return None
 
     def _manage_bar_visibility(self):

@@ -36,15 +36,23 @@ _cleanup_handlers: List[callable] = []
 def cleanup_resources():
     """Clean up all resources before exit."""
     global _cleanup_handlers, _app_instance
-    
+
+    # Cleanup async subprocess thread pool first
+    try:
+        from utils.async_subprocess import shutdown
+        shutdown()
+    except Exception as e:
+        print(f"Error shutting down async_subprocess: {e}", file=sys.stderr)
+
+    # Run all registered cleanup handlers
     for handler in _cleanup_handlers:
         try:
             handler()
         except Exception as e:
             print(f"Error during cleanup: {e}", file=sys.stderr)
-    
+
     _cleanup_handlers.clear()
-    
+
     if _app_instance:
         try:
             _app_instance.quit()
