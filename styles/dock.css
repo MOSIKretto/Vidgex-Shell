@@ -1,0 +1,87 @@
+#dock {
+  background-color: var(--shadow);
+  padding: 8px;
+  margin: 8px 8px 0 8px;
+  border-radius: 20px 20px 0 0;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#dock.integrated {
+  background-color: var(--shadow);
+  padding: 4px;
+  margin: 0;
+  border-radius: 16px;
+  border: none;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#dock-full {
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  opacity: 1;
+}
+
+#dock-separator {
+  padding: 2px;
+  border-radius: 16px;
+  background-color: var(--surface-bright);
+}
+
+#dock-app-button {
+  padding: 6px;
+  border-radius: 12px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  box-shadow: 
+    0 2px 8px alpha(var(--shadow), 0.2),
+    0 1px 4px alpha(var(--shadow), 0.1);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#dock-app-button:hover {
+  background-color: alpha(var(--surface-bright), 0.8);
+  border-radius: 12px;
+}
+
+#dock-app-button:hover.instance {
+  background-color: alpha(var(--outline), 0.5);
+  border-radius: 12px;
+}
+
+#dock-app-button:active,
+#dock-app-button:active.instance {
+  background-color: alpha(var(--primary), 0.4);
+  border-radius: 12px;
+}
+
+#dock-app-button.instance {
+  background-color: alpha(var(--surface-bright), 0.8);
+  border-radius: 12px;
+}
+
+#dock-corner-left {
+  margin: 0 -8px 0 0;
+}
+
+#dock-corner-right {
+  margin: 0 0 0 -8px;
+}
+
+#dock-corner-top {
+  margin: 0 0 -8px 0;
+}
+
+#dock-corner-bottom {
+  margin: -8px 0 0 0;
+}
+
+/* Стиль активной кнопки - без тени и с одинаковым скруглением */
+#dock-app-button.active {
+  background-color: alpha(var(--primary), 0.2);
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+}
+
+#dock-app-button.active.instance {
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+}

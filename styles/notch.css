@@ -1,0 +1,180 @@
+#notch-box {
+  margin: 0 20px 10px 20px;
+}
+
+#notch-hover-eventbox {
+  background-color: transparent;
+  min-height: 4px;
+  min-width: 260px;
+}
+
+#notch-content {
+  background-color: var(--shadow);
+  border-radius: 0 0 12px 12px;
+}
+
+#notch-content.open {
+  border-radius: 0 0 12px 12px;
+  padding: 2px;
+}
+
+#notch-corner-left { margin-left: -16px; }
+#notch-corner-right { margin-right: -16px; }
+
+#hyprland-window label { 
+  margin: 0 8px; 
+  font-weight: bold;
+}
+
+#active-window-box { margin: 10px; }
+
+#app-launcher,
+#power-menu,
+#toolbox,
+#dashboard,
+#clip-history,
+#overview {
+  background-color: var(--shadow);
+  padding: 14px;
+  border-radius: 0 0 12px 12px;
+}
+
+#bar-inner {
+  margin: 8px;
+  opacity: 1;
+  border-radius: 12px;
+}
+
+#network-container {
+  background-color: var(--shadow);
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 12px;
+}
+
+#systray {
+  background-color: var(--shadow);
+  padding: 8px;
+  border-radius: 12px;
+}
+
+tooltip {
+  border: 1px solid var(--surface);
+  background-color: var(--shadow);
+  border-radius: 12px;
+}
+
+#button-bar {
+  padding: 4px;
+  min-width: 28px;
+  min-height: 28px;
+  background-color: transparent;
+  border-radius: 12px;
+}
+
+#button-bar-label {
+  color: var(--primary);
+  font-size: 20px;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+#power-battery-container {
+  background-color: var(--shadow);
+  padding: 0;
+  border-radius: 12px;
+  min-height: 36px;
+}
+
+#power-battery-container #language-indicator {
+  background-color: transparent;
+  padding: 0 8px;
+  border-radius: 12px 0 0 12px;
+  min-height: 36px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#power-battery-container #language-indicator #lang-label {
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--primary);
+  padding: 0 4px;
+}
+
+#power-battery-container #date-time {
+  background-color: transparent;
+  padding: 0 8px;
+  min-height: 36px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#power-battery-container #date-time label {
+  font-weight: bold;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+#power-battery-container #battery {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 12px;
+  min-height: 36px;
+}
+
+#power-battery-container #button-bar {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0 12px 12px 0;
+  min-height: 36px;
+  min-width: 36px;
+}
+
+/* Workspaces */
+#workspaces,
+#workspaces-num {
+  background-color: var(--shadow);
+  padding: 4px;
+  border-radius: 12px;
+}
+
+#workspaces button,
+#workspaces-num button {
+  background-color: transparent;
+  border-radius: 12px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+#workspaces button.active,
+#workspaces-num button.active {
+  background-color: var(--primary);
+}
+
+#workspaces button.active label,
+#workspaces-num button.active label {
+  color: var(--shadow);
+  font-weight: bold;
+}
+
+/* Control Widgets */
+#control,
+#metrics {
+  background-color: var(--shadow);
+  padding: 4px 8px;
+  border-radius: 12px;
+  min-height: 36px;
+}
+
+/* Общие стили для жирного текста */
+#network label,
+#control label,
+#metrics label,
+#battery label,
+#compact-user label,
+#notch-compact-stack label,
+#workspaces button label,
+#workspaces-num button label,
+menu > menuitem > label,
+tooltip > * {
+  font-weight: bold;
+}

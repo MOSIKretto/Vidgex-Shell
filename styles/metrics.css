@@ -1,0 +1,156 @@
+#metrics-small {
+  background-color: var(--shadow);
+  border-radius: 12px;
+}
+
+#metrics-circle {
+  color: var(--surface-bright);
+  border: 3px solid var(--primary);
+  border-radius: 12px;
+}
+
+#metrics-circle.bat {
+  border: 3px solid var(--green);
+}
+
+#metrics-icon {
+  font-size: 16px;
+}
+
+#metrics-level {
+  font-weight: bold;
+  margin: 0 4px;
+}
+
+#metrics-sep {
+  min-width: 4px;
+}
+
+#network-icon-label {
+  color: var(--foreground);
+  font-size: 20px;
+  padding: 4px;
+  border-radius: 12px;
+  transition: all 0.1s ease;
+}
+
+#download-label {
+  color: var(--green);
+  font-size: 14px;
+  font-weight: bold;
+  padding: 4px;
+  border-radius: 12px;
+  transition: all 0.1s ease;
+}
+
+#download-label.urgent {
+  color: var(--shadow);
+}
+
+#network-icon-label.urgent {
+  color: var(--shadow);
+}
+
+#button-bar.download {
+  background-color: var(--green);
+  border-radius: 12px;
+}
+
+#button-bar.upload {
+  background-color: var(--yellow);
+  border-radius: 12px;
+}
+
+#download-icon-label {
+  color: var(--green);
+  font-size: 16px;
+}
+
+#download-icon-label.urgent {
+  color: var(--shadow);
+}
+
+#upload-icon-label {
+  color: var(--yellow);
+  font-size: 16px;
+}
+
+#upload-label {
+  color: var(--yellow);
+  font-size: 14px;
+  font-weight: bold;
+  padding: 4px;
+  border-radius: 12px;
+  transition: all 0.1s ease;
+}
+
+#upload-label.urgent {
+  color: var(--shadow);
+}
+
+#upload-icon-label.urgent {
+  color: var(--shadow);
+}
+
+#battery-container {
+  background-color: var(--shadow);
+  padding: 4px;
+  border-radius: 12px;
+}
+
+#metrics-bat-revealer,
+#metrics-power-modes-revealer {
+  background-color: transparent;
+}
+
+#power-mode-switcher {
+  background-color: transparent;
+}
+
+#battery-save,
+#battery-balanced,
+#battery-performance {
+  border-radius: 12px;
+  min-width: 28px;
+  min-height: 28px;
+  background-color: var(--shadow);
+  border: none;
+  padding: 0;
+  margin: 0 1px;
+}
+
+#battery-save-label,
+#battery-balanced-label,
+#battery-performance-label {
+  color: var(--outline);
+  font-size: 20px;
+  padding: 4px;
+}
+
+#battery-save:hover,
+#battery-balanced:hover,
+#battery-performance:hover {
+  background-color: var(--surface-bright);
+}
+
+#battery-save:hover #battery-save-label,
+#battery-balanced:hover #battery-balanced-label,
+#battery-performance:hover #battery-performance-label {
+  color: var(--primary);
+}
+
+#battery-save.active,
+#battery-balanced.active,
+#battery-performance.active {
+  background-color: var(--primary);
+}
+
+#battery-save.active #battery-save-label,
+#battery-balanced.active #battery-balanced-label,
+#battery-performance.active #battery-performance-label {
+  color: var(--shadow);
+}
+
+#battery-container * {
+  background-color: transparent;
+}

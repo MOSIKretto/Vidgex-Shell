@@ -1,0 +1,238 @@
+/* ОБЩИЕ СТИЛИ ДЛЯ ВСЕХ КНОПОК */
+#bluetooth-scan,
+#bluetooth-back,
+#network-scan,
+#network-back,
+#bluetooth-connect,
+#wifi-connect,
+#wifi-delete,
+#bluetooth-delete {
+  background-color: var(--surface);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 2px;
+  border: 1px solid var(--surface-bright);
+  transition: all 0.2s ease-in-out;
+  font-weight: bold;
+}
+
+/* Стили для недоступных Wi-Fi сетей */
+#wifi-unavailable,
+.unavailable-network {
+  background-color: transparent;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 2px;
+  border: 1px solid var(--surface-bright);
+  color: var(--outline);
+  font-weight: bold;
+  transition: none;
+}
+
+/* Стили для иконок в кнопках */
+#bluetooth-back-label,
+#network-back-label,
+#bluetooth-scan-label,
+#network-scan-label,
+#wifi-delete-label,
+#bluetooth-delete-label {
+  font-size: 20px;
+}
+
+/* Hover эффекты для всех активных кнопок */
+#bluetooth-scan:hover,
+#bluetooth-back:hover,
+#network-scan:hover,
+#network-back:hover,
+#bluetooth-connect:hover,
+#wifi-connect:hover {
+  background-color: var(--surface-bright);
+  border-color: var(--primary);
+}
+
+/* Специальный hover эффект для кнопок удаления */
+#wifi-delete:hover,
+#bluetooth-delete:hover {
+  background-color: var(--red);
+  border-color: var(--red);
+  color: var(--cursor);
+}
+
+/* Стили для текста */
+#bluetooth-text,
+#network-text,
+#bluetooth-section,
+#network-section {
+  font-weight: bold;
+}
+
+#bluetooth-section,
+#network-section {
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 8px;
+  margin: 4px 0;
+}
+
+/* Стили для статуса подключения */
+#bluetooth-connection {
+  font-size: 20px;
+}
+
+/* Стили для подключенных состояний */
+#wifi-connect.connected,
+#bluetooth-connect.connected {
+  background-color: var(--green);
+}
+
+/* ЧЕРНЫЙ ТЕКСТ ДЛЯ ПОДКЛЮЧЕННЫХ КНОПОК */
+#bluetooth-connect.connected {
+  color: var(--shadow);
+}
+
+#bluetooth-connect.connected label {
+  color: var(--shadow);
+}
+
+/* Стили для плашки "Подключено" в Wi-Fi */
+#wifi-connected-label {
+  background-color: var(--green);
+  color: var(--shadow);
+  border-radius: 8px;
+  padding: 8px;
+  font-weight: bold;
+  margin: 2px;
+}
+
+/* Контейнеры для списков */
+#bluetooth-paired,
+#bluetooth-available,
+.saved-box,
+.available-box {
+  background-color: var(--surface);
+  border-radius: 20px;
+  padding: 4px;
+  margin: 4px 0;
+}
+
+#bt-sep {
+  border-radius: 16px;
+}
+
+/* Анимации для сканирования */
+#bluetooth-scan-label,
+#network-scan-label {
+  font-size: 20px;
+  color: var(--primary);
+}
+
+/* Анимации для кнопок сканирования */
+#bluetooth-scan.scanning,
+#network-scan.scanning {
+  animation: blink 1.5s ease-in-out infinite;
+  border-color: var(--primary);
+}
+
+#bluetooth-scan-label.scanning,
+#network-scan-label.scanning {
+  animation: icon-blink 1s ease-in-out infinite;
+}
+
+/* Анимация для всей кнопки */
+/* Анимация для всей кнопки */
+@keyframes blink {
+  0% {
+    background-color: var(--primary);
+    box-shadow: 0 0 5px var(--primary);
+  }
+  50% {
+    background-color: var(--surface-bright);
+    box-shadow: 0 0 15px var(--primary);
+  }
+  100% {
+    background-color: var(--primary);
+    box-shadow: 0 0 5px var(--primary);
+  }
+}
+
+/* Анимация для иконки */
+@keyframes icon-blink {
+  0% {
+    opacity: 1;
+    color: var(--primary);
+  }
+  50% {
+    opacity: 1;
+    color: var(--surface);
+  }
+  100% {
+    opacity: 1;
+    color: var(--primary);
+  }
+}
+
+/* Стили для urgent состояния (активные передачи) */
+.urgent {
+  color: var(--yellow);
+}
+
+/* Стили для кнопки pressed */
+#bluetooth-scan.pressed,
+#bluetooth-back.pressed,
+#network-scan.pressed,
+#network-back.pressed,
+#bluetooth-connect.pressed,
+#wifi-connect.pressed {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--cursor);
+}
+
+/* Кнопки удаления при нажатии */
+#wifi-delete.pressed,
+#bluetooth-delete.pressed {
+  background-color: var(--red);
+  border-color: var(--red);
+  color: var(--cursor);
+}
+
+/* Для подключенных кнопок Bluetooth при нажатии */
+#bluetooth-connect.connected.pressed {
+  background-color: var(--shadow);
+  border-color: var(--shadow);
+  color: var(--cursor);
+}
+
+/* Для подключенных кнопок Bluetooth при нажатии - черный текст для метки */
+#bluetooth-connect.connected.pressed label {
+  color: var(--cursor);
+}
+
+/* Простые анимации нажатия для :active состояния */
+#bluetooth-scan:active,
+#bluetooth-back:active,
+#network-scan:active,
+#network-back:active,
+#bluetooth-connect:active,
+#wifi-connect:active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--cursor);
+}
+
+#wifi-delete:active,
+#bluetooth-delete:active {
+  background-color: var(--red);
+  border-color: var(--red);
+  color: var(--cursor);
+}
+
+#bluetooth-connect.connected:active {
+  background-color: var(--shadow);
+  border-color: var(--shadow);
+  color: var(--cursor);
+}
+
+#bluetooth-connect.connected:active label {
+  color: var(--cursor);
+}

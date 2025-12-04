@@ -1,0 +1,25 @@
+@keyframes tooltipShow {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+tooltip > * {
+  padding: 6px 10px;
+  border-radius: 10px;
+}
+
+#button-bar:active #button-bar-label {
+  border-radius: 40px;
+  color: var(--shadow);
+  background-color: var(--primary);
+}
+
+#corner {
+  background-color: var(--shadow);
+  border-radius: 0;
+}
