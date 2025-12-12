@@ -48,7 +48,7 @@ class Calendar(Gtk.Box):
             name="prev-month-button", 
             child=Label(name="month-button-label", markup=icons.chevron_left)
         )
-        self.prev_button.connect("clicked", self.on_prev_clicked)
+        self.prev_button.connect("clicked", lambda w: self.on_nav_click(w, "prev"))
 
         self.month_label = Gtk.Label(name="month-label")
 
@@ -56,7 +56,7 @@ class Calendar(Gtk.Box):
             name="next-month-button",
             child=Label(name="month-button-label", markup=icons.chevron_right)
         )
-        self.next_button.connect("clicked", self.on_next_clicked)
+        self.next_button.connect("clicked", lambda w: self.on_nav_click(w, "next"))
 
         self.header = CenterBox(
             spacing=4,
@@ -164,9 +164,18 @@ class Calendar(Gtk.Box):
 
     def update_header(self):
         month_names = {
-            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
-            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+            1: "Январь", 
+            2: "Февраль", 
+            3: "Март", 
+            4: "Апрель", 
+            5: "Май", 
+            6: "Июнь", 
+            7: "Июль", 
+            8: "Август",
+            9: "Сентябрь", 
+            10: "Октябрь", 
+            11: "Ноябрь", 
+            12: "Декабрь"
         }
         
         month_name = month_names.get(self.current_shown_date.month, "Неизвестный месяц")
@@ -308,36 +317,23 @@ class Calendar(Gtk.Box):
         russian_day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         return [russian_day_names[(self.first_weekday + i) % 7] for i in range(7)]
 
-    def on_prev_clicked(self, widget):
-        if self.view_mode == "month":
-            current_month_val = self.current_shown_date.month
-            current_year_val = self.current_shown_date.year
-            if current_month_val == 1:
-                self.current_shown_date = self.current_shown_date.replace(year=current_year_val - 1, month=12)
-            else:
-                self.current_shown_date = self.current_shown_date.replace(month=current_month_val - 1)
-            self.current_year = self.current_shown_date.year
-            self.current_month = self.current_shown_date.month
-        elif self.view_mode == "week":
-            self.current_shown_date -= timedelta(days=7)
-            self.current_year = self.current_shown_date.year
-            self.current_month = self.current_shown_date.month
+    def on_nav_click(self, widget, dir="next"):
+        delta = -1 if dir == "prev" else 1
         
-        self.update_calendar()
-
-    def on_next_clicked(self, widget):
         if self.view_mode == "month":
-            current_month_val = self.current_shown_date.month
-            current_year_val = self.current_shown_date.year
-            if current_month_val == 12:
-                self.current_shown_date = self.current_shown_date.replace(year=current_year_val + 1, month=1)
-            else:
-                self.current_shown_date = self.current_shown_date.replace(month=current_month_val + 1)
-            self.current_year = self.current_shown_date.year
-            self.current_month = self.current_shown_date.month
-        elif self.view_mode == "week":
-            self.current_shown_date += timedelta(days=7)
-            self.current_year = self.current_shown_date.year
-            self.current_month = self.current_shown_date.month
-
+            month = self.current_shown_date.month + delta
+            year = self.current_shown_date.year
+            
+            if month == 0:
+                month, year = 12, year - 1
+            elif month == 13:
+                month, year = 1, year + 1
+                
+            self.current_shown_date = self.current_shown_date.replace(year=year, month=month)
+        else:
+            days = 7 * delta
+            self.current_shown_date += timedelta(days=days)
+        
+        self.current_year = self.current_shown_date.year
+        self.current_month = self.current_shown_date.month
         self.update_calendar()

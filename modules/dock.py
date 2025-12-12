@@ -1,4 +1,3 @@
-from unittest import removeHandler
 from fabric.hyprland.widgets import get_hyprland_connection
 from fabric.utils import exec_shell_command, exec_shell_command_async, idle_add
 from fabric.utils.helpers import get_desktop_applications
@@ -100,12 +99,8 @@ class Dock(Window):
         self.wrapper.set_orientation(Gtk.Orientation.HORIZONTAL)
         self.view.set_orientation(Gtk.Orientation.HORIZONTAL)
 
-        if self.integrated_mode:
-            self.wrapper.add_style_class("integrated")
-            self.add(self.wrapper)
-        else:
-            self.wrapper.add_style_class("pills")
-            self._setup_dock_window()
+        self.wrapper.add_style_class("pills")
+        self._setup_dock_window()
 
     def _setup_dock_window(self):
         """Настройка док-окна (не integrated режим)"""
@@ -149,13 +144,6 @@ class Dock(Window):
         )
         self.add(self.main_box)
 
-        # Настройка drag & drop
-        self._setup_drag_drop()
-
-        # Получаем информацию о мониторе после создания UI
-        GLib.timeout_add(100, self._update_monitor_info)
-
-    def _setup_drag_drop(self):
         """Настройка перетаскивания"""
         self.view.drag_source_set(
             Gdk.ModifierType.BUTTON1_MASK,
@@ -171,6 +159,9 @@ class Dock(Window):
         self.view.connect("drag-data-received", self.on_drag_data_received)
         self.view.connect("drag-begin", self.on_drag_begin)
         self.view.connect("drag-end", self.on_drag_end)
+
+        # Получаем информацию о мониторе после создания UI
+        GLib.timeout_add(100, self._update_monitor_info)
 
     def _setup_event_handlers(self):
         """Настройка обработчиков событий"""
@@ -194,7 +185,7 @@ class Dock(Window):
         self._event_handlers.append(handler_id)
 
         if not self.integrated_mode:
-            handler_id = self.conn.connect("event::workspace", self._on_workspace_change)
+            handler_id = self.conn.connect("event::workspace", self._on_window_change)
             self._event_handlers.append(handler_id)
 
             handler_id = self.conn.connect("event::movewindow", self._on_window_change)
@@ -256,17 +247,11 @@ class Dock(Window):
             'x': dock_x,
             'y': dock_y, 
             'width': dock_width,
-            'height': dock_height + 40  # Увеличиваем высоту для учета визуальной области
+            'height': dock_height # Увеличиваем высоту для учета визуальной области
         }
 
     def _on_window_change(self, *args):
-        """Обработчик изменений окон"""
         self.update_dock()
-        if not self.integrated_mode:
-            self.check_occlusion_state()
-
-    def _on_workspace_change(self, *args):
-        """Обработчик смены рабочего пространства"""
         if not self.integrated_mode:
             self.check_occlusion_state()
 
@@ -274,16 +259,11 @@ class Dock(Window):
         """Создание карты идентификаторов приложений"""
         identifiers = {}
         for app in self._all_apps:
-            if app.name: 
-                identifiers[app.name.lower()] = app
-            if app.display_name: 
-                identifiers[app.display_name.lower()] = app
-            if app.window_class: 
-                identifiers[app.window_class.lower()] = app
-            if app.executable: 
-                identifiers[app.executable.split('/')[-1].lower()] = app
-            if app.command_line: 
-                identifiers[app.command_line.split()[0].split('/')[-1].lower()] = app
+            if app.name: identifiers[app.name.lower()] = app
+            if app.display_name: identifiers[app.display_name.lower()] = app
+            if app.window_class: identifiers[app.window_class.lower()] = app
+            if app.executable: identifiers[app.executable.split('/')[-1].lower()] = app
+            if app.command_line: identifiers[app.command_line.split()[0].split('/')[-1].lower()] = app
         return identifiers
 
     def _normalize_window_class(self, class_name):
@@ -384,10 +364,6 @@ class Dock(Window):
             if not self.always_show:
                 self.dock_full.add_style_class("occluded")
         else:
-            # Показываем док если:
-            # - Нет перекрывающих окон, ИЛИ
-            # - Курсор над доком, ИЛИ  
-            # - Идет перетаскивание
             if not self.dock_revealer.get_reveal_child():
                 self.dock_revealer.set_reveal_child(True)
             self.dock_full.remove_style_class("occluded")
@@ -414,14 +390,11 @@ class Dock(Window):
     
     def find_app_by_key(self, key_value):
         """Поиск приложения по ключу"""
-        if not key_value: 
-            return None
+        if not key_value:  return None
         normalized_id = str(key_value).lower()
-        if normalized_id in self.app_identifiers:
-            return self.app_identifiers[normalized_id]
+        if normalized_id in self.app_identifiers: return self.app_identifiers[normalized_id]
         for app in self._all_apps:
-            if app.name and normalized_id in app.name.lower(): 
-                return app
+            if app.name and normalized_id in app.name.lower():  return app
             if app.display_name and normalized_id in app.display_name.lower(): 
                 return app
             if app.window_class and normalized_id in app.window_class.lower(): 

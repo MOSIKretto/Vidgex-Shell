@@ -109,9 +109,6 @@ class Dashboard(Box):
             self.wallpapers.search_entry.grab_focus()
 
     def go_to_section(self, section_name):
-        if section_name == "widgets":
-            self.stack.set_visible_child(self.widgets)
-        elif section_name == "wallpapers":
-            self.stack.set_visible_child(self.wallpapers)
-        elif section_name == "mixer":
-            self.stack.set_visible_child(self.mixer)
+        if section_name == "widgets": self.stack.set_visible_child(self.widgets)
+        elif section_name == "wallpapers": self.stack.set_visible_child(self.wallpapers)
+        elif section_name == "mixer": self.stack.set_visible_child(self.mixer)

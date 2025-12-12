@@ -8,7 +8,6 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 import hashlib
-import os
 import random
 import shutil
 import json

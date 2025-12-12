@@ -1,28 +1,23 @@
+from gi.repository import Gdk, GObject, Gtk
+import re
+
+import cairo
+import gi
 from fabric.core.service import Property
 from fabric.utils.helpers import extract_css_values, get_enum_member
 from fabric.widgets.window import Window
-
-import gi
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GObject, Gtk
-
-import re
-from enum import Enum
-import cairo
-
 from loguru import logger
 
+gi.require_version("Gtk", "3.0")
 
 try:
     gi.require_version("GtkLayerShell", "0.1")
     from gi.repository import GtkLayerShell
-except:
-    raise ImportError(
-        "gtk-layer-shell not installed"
-    )
+except ImportError:
+    raise ImportError("install gtk-layer-shell first")
 
 
-class WaylandWindowExclusivity(Enum):
+class WaylandWindowExclusivity:
     NONE = 1
     NORMAL = 2
     AUTO = 3
@@ -50,6 +45,13 @@ class Edge(GObject.GEnum):
     BOTTOM = 3
     ENTRY_NUMBER = 4
 
+_ALL_EDGES = [
+    Edge.TOP,
+    Edge.RIGHT,
+    Edge.BOTTOM,
+    Edge.LEFT,
+]
+
 
 class WaylandWindow(Window):
     @Property(
@@ -70,8 +72,9 @@ class WaylandWindow(Window):
         monitor = GtkLayerShell.get_monitor(self)
         if not monitor:
             return -1
+        
         display = monitor.get_display() or Gdk.Display.get_default()
-        for i in range(0, display.get_n_monitors()):
+        for i in range(display.get_n_monitors()):
             if display.get_monitor(i) is monitor:
                 return i
         return -1
@@ -79,8 +82,12 @@ class WaylandWindow(Window):
     @monitor.setter
     def monitor(self, monitor):
         if isinstance(monitor, int):
-            display = Gdk.Display().get_default()
+            display = Gdk.Display.get_default()
+            if not display:
+                 logger.error("Default Gdk.Display is not available.")
+                 return False
             monitor = display.get_monitor(monitor)
+
         if monitor is not None:
             GtkLayerShell.set_monitor(self, monitor)
             return True
@@ -92,9 +99,7 @@ class WaylandWindow(Window):
 
     @exclusivity.setter
     def exclusivity(self, value):
-        value = get_enum_member(
-            WaylandWindowExclusivity, value, default=WaylandWindowExclusivity.NONE
-        )
+        value = get_enum_member(WaylandWindowExclusivity, value, default=WaylandWindowExclusivity.NONE)
         self._exclusivity = value
         if value == WaylandWindowExclusivity.NORMAL:
             GtkLayerShell.set_exclusive_zone(self, True)
@@ -110,10 +115,7 @@ class WaylandWindow(Window):
     @pass_through.setter
     def pass_through(self, pass_through=False):
         self._pass_through = pass_through
-        if pass_through is True:
-            region = cairo.Region()
-        else:
-            region = None
+        region = cairo.Region() if pass_through else None
         self.input_shape_combine_region(region)
 
     @Property(
@@ -122,56 +124,56 @@ class WaylandWindow(Window):
         default_value=KeyboardMode.NONE,
     )
     def keyboard_mode(self):
-        return self._keyboard_mode
+        if GtkLayerShell.get_keyboard_interactivity(self):
+            return KeyboardMode.EXCLUSIVE
+        return GtkLayerShell.get_keyboard_mode(self)
 
     @keyboard_mode.setter
     def keyboard_mode(self, value):
-        self._keyboard_mode = get_enum_member(
-            KeyboardMode, value, default=KeyboardMode.NONE
-        )
+        self._keyboard_mode = get_enum_member(KeyboardMode, value, default=KeyboardMode.NONE)
         GtkLayerShell.set_keyboard_mode(self, self._keyboard_mode)
 
     @Property(tuple, "read-write")
     def anchor(self):
-        edges = []
-        for edge in [Edge.TOP, Edge.RIGHT, Edge.BOTTOM, Edge.LEFT]:
-            if GtkLayerShell.get_anchor(self, edge):
-                edges.append(edge)
-        return tuple(edges)
+        return tuple(
+            x
+            for x in _ALL_EDGES
+            if GtkLayerShell.get_anchor(self, x)
+        )
 
     @anchor.setter
     def anchor(self, value):
-        self._anchor = value
-        if isinstance(value, (list, tuple)) and all(isinstance(edge, Edge) for edge in value):
-            for edge in [Edge.TOP, Edge.RIGHT, Edge.BOTTOM, Edge.LEFT]:
-                if edge not in value:
-                    GtkLayerShell.set_anchor(self, edge, False)
-                GtkLayerShell.set_anchor(self, edge, True)
+        if isinstance(value, (list, tuple)) and all(
+            isinstance(edge, Edge) for edge in value
+        ):
+            edges_to_anchor = set(value)
+            for edge in _ALL_EDGES:
+                should_anchor = edge in edges_to_anchor
+                GtkLayerShell.set_anchor(self, edge, should_anchor)
+        
         elif isinstance(value, str):
-            edges_dict = WaylandWindow.extract_edges_from_string(value)
-            for edge, anchored in edges_dict.items():
+            for edge, anchored in WaylandWindow.extract_edges_from_string(value).items():
                 GtkLayerShell.set_anchor(self, edge, anchored)
 
     @Property(tuple, flags="read-write")
     def margin(self):
-        margins = []
-        for edge in [Edge.TOP, Edge.RIGHT, Edge.BOTTOM, Edge.LEFT]:
-            margins.append(GtkLayerShell.get_margin(self, edge))
-        return tuple(margins)
+        return tuple(
+            GtkLayerShell.get_margin(self, x)
+            for x in _ALL_EDGES
+        )
 
     @margin.setter
     def margin(self, value):
-        margins_dict = WaylandWindow.extract_margin(value)
-        for edge, mrgv in margins_dict.items():
+        for edge, mrgv in WaylandWindow.extract_margin(value).items():
             GtkLayerShell.set_margin(self, edge, mrgv)
 
     def __init__(
         self,
-        layer=Layer.TOP,
+        layer="top",
         anchor="",
         margin="0px 0px 0px 0px",
-        exclusivity=WaylandWindowExclusivity.NONE,
-        keyboard_mode=KeyboardMode.NONE,
+        exclusivity="none",
+        keyboard_mode="none",
         pass_through=False,
         monitor=None,
         title="fabric",
@@ -212,7 +214,6 @@ class WaylandWindow(Window):
         )
         self._layer = Layer.ENTRY_NUMBER
         self._keyboard_mode = KeyboardMode.NONE
-        self._anchor = anchor
         self._exclusivity = WaylandWindowExclusivity.NONE
         self._pass_through = pass_through
 
@@ -220,8 +221,9 @@ class WaylandWindow(Window):
         GtkLayerShell.set_namespace(self, title)
         self.connect(
             "notify::title",
-            lambda *args: GtkLayerShell.set_namespace(self, self.get_title()),
+            lambda *_: GtkLayerShell.set_namespace(self, self.get_title()),
         )
+        
         if monitor is not None:
             self.monitor = monitor
         self.layer = layer
@@ -230,9 +232,10 @@ class WaylandWindow(Window):
         self.keyboard_mode = keyboard_mode
         self.exclusivity = exclusivity
         self.pass_through = pass_through
-        if all_visible is True:
+        
+        if all_visible:
             self.show_all()
-        elif visible is True:
+        elif visible:
             self.show()
 
     def steal_input(self):
@@ -252,19 +255,16 @@ class WaylandWindow(Window):
     def do_handle_post_show_request(self):
         if not self.get_children():
             logger.warning(
-                "[WaylandWindow] showing empty window not recommended"
+                "[WaylandWindow] showing an empty window is not recommended"
             )
         self.pass_through = self._pass_through
 
     @staticmethod
     def extract_anchor_values(string):
-        direction_map = {"l": "left", "t": "top", "r": "right", "b": "bottom"}
-        pattern = re.compile(r"\b(left|right|top|bottom)\b", re.IGNORECASE)
-        matches = pattern.findall(string)
-        unique_directions = set()
-        for match in matches:
-            unique_directions.add(direction_map[match.lower()[0]])
-        return tuple(unique_directions)
+        matches = re.findall(r"\b(left|right|top|bottom)\b", string, re.IGNORECASE)
+        return tuple(
+            {match.lower() for match in matches}
+        )
 
     @staticmethod
     def extract_edges_from_string(string):
@@ -277,13 +277,18 @@ class WaylandWindow(Window):
         }
 
     @staticmethod
-    def extract_margin(input_value):
-        if isinstance(input_value, str):
-            margins = extract_css_values(input_value.lower())
-        elif isinstance(input_value, (tuple, list)) and len(input_value) == 4:
-            margins = input_value
+    def extract_margin(input):
+        if isinstance(input, str):
+            margins = extract_css_values(input.lower())
+        elif isinstance(input, (tuple, list)) and len(input) == 4:
+            margins = input
         else:
             margins = (0, 0, 0, 0)
+        
+        if len(margins) != 4:
+            margins = (0, 0, 0, 0) 
+            logger.warning(f"Invalid margin format: {input}")
+            
         return {
             Edge.TOP: margins[0],
             Edge.RIGHT: margins[1],
