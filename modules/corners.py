@@ -47,16 +47,15 @@ class Corners(Window):
             ],
         )
 
-        self.add(
-            Box(
-                name="all-corners",
-                orientation="v",
-                children=[
-                    top_corners,
-                    Box(v_expand=True),
-                    bottom_corners,
-                ],
-            )
+        main_box = Box(
+            name="all-corners",
+            orientation="v",
+            children=[
+                top_corners,
+                Box(v_expand=True),
+                bottom_corners,
+            ],
         )
 
+        self.add(main_box)
         self.show_all()

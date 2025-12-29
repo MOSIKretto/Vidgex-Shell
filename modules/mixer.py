@@ -137,13 +137,7 @@ class Mixer(Box):
         try:
             self.audio = Audio()
         except Exception as e:
-            error_label = Label(
-                label=f"Аудиосервис недоступен: {str(e)}",
-                h_align="center",
-                v_align="center",
-                h_expand=True,
-                v_expand=True,
-            )
+            error_label = Label(label=f"Аудиосервис недоступен: {str(e)}")
             self.add(error_label)
             return
 
@@ -187,15 +181,12 @@ class Mixer(Box):
         self.add(self.main_container)
         self.set_size_request(-1, 395)
 
-        self.audio.connect("changed", self.on_audio_changed)
-        self.audio.connect("stream-added", self.on_audio_changed)
-        self.audio.connect("stream-removed", self.on_audio_changed)
+        self.audio.connect("changed", self.update_mixer)
+        self.audio.connect("stream-added", self.update_mixer)
+        self.audio.connect("stream-removed", self.update_mixer)
 
         self.update_mixer()
         self.show_all()
-
-    def on_audio_changed(self, *args):
-        self.update_mixer()
 
     def update_mixer(self):
         outputs = []

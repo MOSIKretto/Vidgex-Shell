@@ -48,7 +48,7 @@ class Calendar(Gtk.Box):
             name="prev-month-button", 
             child=Label(name="month-button-label", markup=icons.chevron_left)
         )
-        self.prev_button.connect("clicked", lambda w: self.on_nav_click(w, "prev"))
+        self.prev_button.connect("clicked", self.on_prev_clicked)
 
         self.month_label = Gtk.Label(name="month-label")
 
@@ -56,7 +56,7 @@ class Calendar(Gtk.Box):
             name="next-month-button",
             child=Label(name="month-button-label", markup=icons.chevron_right)
         )
-        self.next_button.connect("clicked", lambda w: self.on_nav_click(w, "next"))
+        self.next_button.connect("clicked", self.on_next_clicked)
 
         self.header = CenterBox(
             spacing=4,
@@ -77,9 +77,9 @@ class Calendar(Gtk.Box):
 
         self.update_header()
         self.update_calendar()
-        self.setup_periodic_update()
+        self._date_check_timer = GLib.timeout_add(1000, self.check_date_change)
+        self._dbus_subscription_id = None
         self.setup_dbus_listeners()
-
         self._init_locale_settings()
 
     def _init_locale_settings(self):
@@ -110,21 +110,23 @@ class Calendar(Gtk.Box):
             self.update_calendar()
         return False
 
-    def setup_periodic_update(self):
-        GLib.timeout_add(1000, self.check_date_change)
-
     def setup_dbus_listeners(self):
-        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
-        bus.signal_subscribe(
-            None,
-            'org.freedesktop.login1.Manager',
-            'PrepareForSleep',
-            '/org/freedesktop/login1',
-            None,
-            Gio.DBusSignalFlags.NONE,
-            self.on_suspend_resume,
-            None
-        )
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            self._dbus_subscription_id = bus.signal_subscribe(
+                None,
+                'org.freedesktop.login1.Manager',
+                'PrepareForSleep',
+                '/org/freedesktop/login1',
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self.check_date_change,
+                None
+            )
+            self._dbus_bus = bus
+        except Exception:
+            self._dbus_subscription_id = None
+            self._dbus_bus = None
 
     def check_date_change(self):
         now = datetime.now()
@@ -132,9 +134,6 @@ class Calendar(Gtk.Box):
         if current_date != self.current_day_date:
             self.on_midnight()
         return True
-
-    def on_suspend_resume(self, connection, sender_name, object_path, interface_name, signal_name, parameters, user_data):
-        self.check_date_change()
 
     def on_midnight(self):
         now = datetime.now()
@@ -164,18 +163,9 @@ class Calendar(Gtk.Box):
 
     def update_header(self):
         month_names = {
-            1: "Январь", 
-            2: "Февраль", 
-            3: "Март", 
-            4: "Апрель", 
-            5: "Май", 
-            6: "Июнь", 
-            7: "Июль", 
-            8: "Август",
-            9: "Сентябрь", 
-            10: "Октябрь", 
-            11: "Ноябрь", 
-            12: "Декабрь"
+            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
+            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
         }
         
         month_name = month_names.get(self.current_shown_date.month, "Неизвестный месяц")
@@ -298,7 +288,7 @@ class Calendar(Gtk.Box):
                 label.get_style_context().add_class("current-day")
             
             if current_day_in_loop.month != reference_month_for_dimming:
-                 label.get_style_context().add_class("dim-label")
+                label.get_style_context().add_class("dim-label")
 
             middle_box.pack_start(Gtk.Box(hexpand=True, vexpand=True), True, True, 0)
             middle_box.pack_start(label, False, False, 0)
@@ -317,23 +307,53 @@ class Calendar(Gtk.Box):
         russian_day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         return [russian_day_names[(self.first_weekday + i) % 7] for i in range(7)]
 
-    def on_nav_click(self, widget, dir="next"):
-        delta = -1 if dir == "prev" else 1
-        
+    def on_prev_clicked(self, widget):
         if self.view_mode == "month":
-            month = self.current_shown_date.month + delta
-            year = self.current_shown_date.year
-            
-            if month == 0:
-                month, year = 12, year - 1
-            elif month == 13:
-                month, year = 1, year + 1
-                
-            self.current_shown_date = self.current_shown_date.replace(year=year, month=month)
-        else:
-            days = 7 * delta
-            self.current_shown_date += timedelta(days=days)
+            current_month_val = self.current_shown_date.month
+            current_year_val = self.current_shown_date.year
+            if current_month_val == 1:
+                self.current_shown_date = self.current_shown_date.replace(year=current_year_val - 1, month=12)
+            else:
+                self.current_shown_date = self.current_shown_date.replace(month=current_month_val - 1)
+            self.current_year = self.current_shown_date.year
+            self.current_month = self.current_shown_date.month
+        elif self.view_mode == "week":
+            self.current_shown_date -= timedelta(days=7)
+            self.current_year = self.current_shown_date.year
+            self.current_month = self.current_shown_date.month
         
-        self.current_year = self.current_shown_date.year
-        self.current_month = self.current_shown_date.month
         self.update_calendar()
+
+    def on_next_clicked(self, widget):
+        if self.view_mode == "month":
+            current_month_val = self.current_shown_date.month
+            current_year_val = self.current_shown_date.year
+            if current_month_val == 12:
+                self.current_shown_date = self.current_shown_date.replace(year=current_year_val + 1, month=1)
+            else:
+                self.current_shown_date = self.current_shown_date.replace(month=current_month_val + 1)
+            self.current_year = self.current_shown_date.year
+            self.current_month = self.current_shown_date.month
+        elif self.view_mode == "week":
+            self.current_shown_date += timedelta(days=7)
+            self.current_year = self.current_shown_date.year
+            self.current_month = self.current_shown_date.month
+
+        self.update_calendar()
+    
+    def destroy(self):
+        """Cleanup resources"""
+        if hasattr(self, '_date_check_timer') and self._date_check_timer:
+            GLib.source_remove(self._date_check_timer)
+            self._date_check_timer = None
+        
+        if hasattr(self, '_dbus_subscription_id') and self._dbus_subscription_id and hasattr(self, '_dbus_bus') and self._dbus_bus:
+            try:
+                self._dbus_bus.signal_unsubscribe(self._dbus_subscription_id)
+            except Exception:
+                pass
+            self._dbus_subscription_id = None
+            self._dbus_bus = None
+        
+        self.month_views.clear()
+        super().destroy()

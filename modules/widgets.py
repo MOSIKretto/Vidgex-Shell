@@ -18,12 +18,8 @@ class Widgets(Box):
     def __init__(self, **kwargs):
         super().__init__(
             name="dash-widgets",
-            h_align="fill",
-            v_align="fill",
-            h_expand=True,
-            v_expand=True,
             visible=True,
-            all_visible=True,
+            all_visible= True,
         )
 
         self.calendar = Calendar(view_mode="month")
@@ -32,23 +28,6 @@ class Widgets(Box):
 
         self.buttons = Buttons(widgets=self, notch=self.notch)
         self.bluetooth = BluetoothConnections(widgets=self)
-
-        self.box_1 = Box(
-            name="box-1",
-            h_expand=True,
-            v_expand=True,
-        )
-
-        self.box_2 = Box(
-            name="box-2",
-            h_expand=True,
-            v_expand=True,
-        )
-
-        self.box_3 = Box(
-            name="box-3",
-            v_expand=True,
-        )
 
         self.controls = ControlSliders()
         self.player = Player()
@@ -95,7 +74,6 @@ class Widgets(Box):
             name="container-1",
             h_expand=True,
             v_expand=True,
-            orientation="h",
             spacing=8,
             children=self.children_1,
         )
@@ -121,7 +99,6 @@ class Widgets(Box):
             name="container-3",
             h_expand=True,
             v_expand=True,
-            orientation="h",
             spacing=8,
             children=self.children_3,
         )

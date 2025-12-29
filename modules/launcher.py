@@ -8,17 +8,14 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import Gdk, GLib
 
-import subprocess
 import threading
-import logging
 
 import modules.icons as icons
-
-logger = logging.getLogger(__name__)
 
 TOOLTIP_CLOSE = "<b>Закрыть</b>"
 ICON_SIZE = 24
 BATCH_SIZE = 15
+UPDATE_INTERVAL = 30
 
 
 class AppSearchEngine:
@@ -26,19 +23,14 @@ class AppSearchEngine:
         self._all_apps = []
         self._app_cache = {}
         self._last_update = 0
-        self._update_interval = 30
-        
+    
     def load_applications(self):
         current_time = GLib.get_monotonic_time() / 1000000
         
-        if current_time - self._last_update > self._update_interval:
-            try:
-                self._all_apps = get_desktop_applications()
-                self._app_cache.clear()
-                self._last_update = current_time
-                logger.info(f"Загружено {len(self._all_apps)} приложений")
-            except Exception as e:
-                logger.error(f"Ошибка загрузки приложений: {e}")
+        if current_time - self._last_update > UPDATE_INTERVAL:
+            self._all_apps = get_desktop_applications()
+            self._app_cache.clear()
+            self._last_update = current_time
         
         return self._all_apps
     
@@ -53,47 +45,28 @@ class AppSearchEngine:
         apps = self.load_applications()
         query_lower = query.casefold()
         
-        filtered_apps = []
-        for app in apps:
-            search_fields = [
-                app.display_name or "",
-                app.name or "",
-                app.generic_name or "",
-                app.description or "",
-                app.command_line or ""
-            ]
-            
-            search_text = " ".join(filter(None, search_fields))
-            if query_lower in search_text.casefold():
-                filtered_apps.append(app)
+        filtered_apps = [
+            app for app in apps
+            if query_lower in self._get_app_search_text(app).casefold()
+        ]
         
         filtered_apps.sort(key=lambda app: (app.display_name or "").casefold())
         self._app_cache[cache_key] = filtered_apps
         
         return filtered_apps
     
+    def _get_app_search_text(self, app: DesktopApp) -> str:
+        return " ".join(filter(None, [
+            app.display_name or "",
+            app.name or "",
+            app.generic_name or "",
+            app.description or "",
+            app.command_line or ""
+        ]))
+    
     def _load_and_sort_apps(self):
         apps = self.load_applications()
         return sorted(apps, key=lambda app: (app.display_name or "").casefold())
-
-
-class ClipboardManager:
-    @staticmethod
-    def copy_to_clipboard(text: str) -> bool:
-        try:
-            subprocess.run(
-                ["wl-copy"], 
-                input=text.encode('utf-8'), 
-                check=True,
-                capture_output=True
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Ошибка копирования в буфер обмена: {e}")
-            return False
-        except FileNotFoundError:
-            logger.error("Команда wl-copy не найдена")
-            return False
 
 
 class AppLauncher(Box):
@@ -108,13 +81,11 @@ class AppLauncher(Box):
         self.notch = kwargs["notch"]
         self.selected_index = -1
         self._arranger_handler = 0
+        self._widget_cache = {}
         
         self.app_search = AppSearchEngine()
         
-        self._widget_cache = {}
-        
         self._setup_ui()
-        self.show_all()
 
     def _setup_ui(self):
         self.viewport = Box(name="viewport", spacing=4, orientation="v")
@@ -123,7 +94,6 @@ class AppLauncher(Box):
             name="search-entry",
             placeholder="Поиск приложений...",
             h_expand=True,
-            h_align="fill",
             notify_text=self._on_search_changed,
             on_activate=lambda entry, *_: self._on_search_activate(entry.get_text()),
             on_key_press_event=self._on_search_key_press,
@@ -133,10 +103,7 @@ class AppLauncher(Box):
         self.scrolled_window = ScrolledWindow(
             name="scrolled-window",
             spacing=10,
-            h_expand=True,
             v_expand=True,
-            h_align="fill",
-            v_align="fill",
             child=self.viewport,
             propagate_width=False,
             propagate_height=False,
@@ -145,7 +112,6 @@ class AppLauncher(Box):
         self.header_box = Box(
             name="header_box",
             spacing=10,
-            orientation="h",
             children=[
                 self.search_entry,
                 Button(
@@ -153,7 +119,7 @@ class AppLauncher(Box):
                     tooltip_markup=TOOLTIP_CLOSE,
                     child=Label(name="close-label", markup=icons.cancel),
                     tooltip_text="Выход",
-                    on_clicked=lambda *_: self.close_launcher()
+                    on_clicked=self.close_launcher
                 ),
             ],
         )
@@ -171,39 +137,41 @@ class AppLauncher(Box):
 
         self.add(self.launcher_box)
 
-    def close_launcher(self):
+    def close_launcher(self, *_):
         self.viewport.children = []
         self.selected_index = -1
         self._widget_cache.clear()
         
         if self._arranger_handler:
-            from fabric.utils import remove_handler
-            remove_handler(self._arranger_handler)
+            GLib.source_remove(self._arranger_handler)
             self._arranger_handler = 0
             
         self.notch.close_notch()
+    
+    def destroy(self):
+        """Cleanup resources"""
+        if self._arranger_handler:
+            GLib.source_remove(self._arranger_handler)
+            self._arranger_handler = 0
+        self._widget_cache.clear()
+        self.notch = None
+        super().destroy()
 
     def open_launcher(self):
-        def load_apps():
-            self.app_search.load_applications()
-            GLib.idle_add(self._arrange_viewport, "")
-        
-        threading.Thread(target=load_apps, daemon=True).start()
+        threading.Thread(target=self.app_search.load_applications, daemon=True).start()
         
         def setup_focus():
             self.search_entry.grab_focus()
             self.search_entry.set_text("")
-            self._select_first_item()
+            self._arrange_viewport("")
             return False
         
         GLib.idle_add(setup_focus)
 
     def _arrange_viewport(self, query: str = ""):
         if self._arranger_handler:
-            from fabric.utils import remove_handler
-            remove_handler(self._arranger_handler)
-            self._arranger_handler = 0
-            
+            GLib.source_remove(self._arranger_handler)
+        
         self.viewport.children = []
         self.selected_index = -1
 
@@ -223,8 +191,11 @@ class AppLauncher(Box):
             self._widget_cache[app.name] = widget
 
         if end < len(apps):
-            GLib.timeout_add(10, self._display_apps_batch, apps, end, batch_size)
+            self._arranger_handler = GLib.timeout_add(
+                10, self._display_apps_batch, apps, end, batch_size
+            )
         else:
+            self._arranger_handler = 0
             self._select_first_item()
         
         return False
@@ -236,7 +207,6 @@ class AppLauncher(Box):
             name="slot-button",
             child=Box(
                 name="slot-box",
-                orientation="h",
                 spacing=10,
                 children=[
                     Image(
@@ -260,15 +230,11 @@ class AppLauncher(Box):
         return button
 
     def _launch_app(self, app: DesktopApp):
-        try:
-            app.launch()
-            self.close_launcher()
-        except Exception as e:
-            logger.error(f"Ошибка запуска приложения {app.name}: {e}")
+        app.launch()
+        self.close_launcher()
 
     def _on_search_changed(self, entry, *_):
-        query = entry.get_text()
-        self._arrange_viewport(query)
+        self._arrange_viewport(entry.get_text())
 
     def _on_search_activate(self, text: str):
         children = self.viewport.get_children()
@@ -285,12 +251,10 @@ class AppLauncher(Box):
         if keyval == Gdk.KEY_Escape:
             self.close_launcher()
             return True
-        elif keyval == Gdk.KEY_Page_Down:
-            self._page_scroll(True)
-            return True
-        elif keyval == Gdk.KEY_Page_Up:
-            self._page_scroll(False)
-            return True
+        
+        children = self.viewport.get_children()
+        if not children:
+            return False
         
         if keyval == Gdk.KEY_Down:
             self._move_selection(1)
@@ -300,6 +264,18 @@ class AppLauncher(Box):
             return True
         elif keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             self._on_search_activate(widget.get_text())
+            return True
+        elif keyval == Gdk.KEY_Page_Down:
+            self._page_scroll(True)
+            return True
+        elif keyval == Gdk.KEY_Page_Up:
+            self._page_scroll(False)
+            return True
+        elif keyval == Gdk.KEY_Home:
+            self._update_selection(0)
+            return True
+        elif keyval == Gdk.KEY_End:
+            self._update_selection(len(children) - 1)
             return True
         
         return False
@@ -333,28 +309,24 @@ class AppLauncher(Box):
         self._update_selection(new_index)
 
     def _scroll_to_selected(self, button):
-        def scroll():
-            adj = self.scrolled_window.get_vadjustment()
-            alloc = button.get_allocation()
-            if alloc.height == 0:
-                return False
-
-            y = alloc.y
-            height = alloc.height
-            page_size = adj.get_page_size()
-            current_value = adj.get_value()
-
-            visible_top = current_value
-            visible_bottom = current_value + page_size
-
-            if y < visible_top:
-                adj.set_value(y)
-            elif y + height > visible_bottom:
-                adj.set_value(y + height - page_size)
-
-            return False
+        adj = self.scrolled_window.get_vadjustment()
+        alloc = button.get_allocation()
         
-        GLib.idle_add(scroll)
+        if alloc.height == 0:
+            return
+        
+        y = alloc.y
+        height = alloc.height
+        page_size = adj.get_page_size()
+        current_value = adj.get_value()
+
+        visible_top = current_value
+        visible_bottom = current_value + page_size
+
+        if y < visible_top:
+            adj.set_value(y)
+        elif y + height > visible_bottom:
+            adj.set_value(y + height - page_size)
 
     def _page_scroll(self, down: bool = True):
         adj = self.scrolled_window.get_vadjustment()
@@ -365,7 +337,7 @@ class AppLauncher(Box):
             new_value = current + page_size
         else:
             new_value = current - page_size
-            
+
         new_value = max(0, min(new_value, adj.get_upper() - page_size))
         adj.set_value(new_value)
 
@@ -373,6 +345,3 @@ class AppLauncher(Box):
         children = self.viewport.get_children()
         if children:
             self._update_selection(0)
-
-    def __del__(self):
-        self.close_launcher()

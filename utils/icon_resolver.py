@@ -8,23 +8,18 @@ import re
 from collections import OrderedDict
 from loguru import logger
 
-# Performance optimization constants
-MAX_ICON_RESOLVER_CACHE = 100  # Limit icon resolver cache
+MAX_ICON_RESOLVER_CACHE = 100
 
 ICON_CACHE_FILE = str(GLib.get_user_cache_dir()) + "/ax-shell/icons.json"
 
 class IconResolver:
     def __init__(self, default_applicaiton_icon="application-x-executable-symbolic"):
-        # Use OrderedDict for LRU cache
         self._icon_dict = OrderedDict()
         if os.path.exists(ICON_CACHE_FILE):
-            try:
-                with open(ICON_CACHE_FILE) as f:
-                    cache_data = json.load(f)
-                    # Convert to OrderedDict
-                    self._icon_dict = OrderedDict(cache_data)
-            except json.JSONDecodeError:
-                logger.info("[ICONS] Cache file does not exist or is corrupted")
+            with open(ICON_CACHE_FILE) as f:
+                cache_data = json.load(f)
+                # Convert to OrderedDict
+                self._icon_dict = OrderedDict(cache_data)
 
         self.default_applicaiton_icon = default_applicaiton_icon
 
@@ -63,19 +58,19 @@ class IconResolver:
         if len(self._icon_dict) > MAX_ICON_RESOLVER_CACHE:
             # Remove oldest item
             self._icon_dict.popitem(last=False)
-        with open(ICON_CACHE_FILE, "w") as f:
-            json.dump(self._icon_dict, f)
+        try:
+            with open(ICON_CACHE_FILE, "w") as f:
+                json.dump(self._icon_dict, f)
+        except Exception:
+            pass
 
     def _get_icon_from_desktop_file(self, desktop_file_path):
         icon_name = self.default_applicaiton_icon
-        try:
-            with open(desktop_file_path) as f:
-                for line in f:
-                    if line.startswith("Icon="):
-                        icon_name = line[5:].strip()
-                        break
-        except:
-            pass
+        with open(desktop_file_path) as f:
+            for line in f:
+                if line.startswith("Icon="):
+                    icon_name = line[5:].strip()
+                    break
         return icon_name
 
     def _get_desktop_file(self, app_id):

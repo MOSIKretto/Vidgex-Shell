@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 from PIL import Image
 from functools import lru_cache
-from typing import Optional, Dict, List
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
@@ -22,9 +21,6 @@ import modules.icons as icons
 
 
 class WallpaperSelector(Box):
-    """Optimized wallpaper selector with caching and async loading."""
-    
-    # Class-level constants
     CACHE_DIR = Path(GLib.get_user_cache_dir()) / "ax-shell"
     THUMBS_DIR = CACHE_DIR / "thumbs"
     CONFIG_FILE = CACHE_DIR / "wallpaper_config.json"
@@ -34,7 +30,7 @@ class WallpaperSelector(Box):
     MAX_RECENT = 10
     IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"})
     
-    SCHEMES: Dict[str, str] = {
+    SCHEMES = {
         "scheme-tonal-spot": "Tonal Spot",
         "scheme-content": "Content",
         "scheme-expressive": "Expressive",
@@ -55,15 +51,13 @@ class WallpaperSelector(Box):
             name="wallpapers",
             spacing=4,
             orientation="v",
-            h_expand=False,
-            v_expand=False,
             **kwargs,
         )
         
         self._init_directories()
         self._init_state()
         self._create_ui()
-        self._load_wallpapers_async()
+        self._executor.submit(self._load_wallpapers)
         self._setup_file_monitor()
         
         self.show_all()
@@ -71,7 +65,6 @@ class WallpaperSelector(Box):
         self.search_entry.grab_focus()
 
     def _init_directories(self):
-        """Initialize required directories and cleanup old cache."""
         old_cache = self.CACHE_DIR / "wallpapers"
         if old_cache.exists():
             shutil.rmtree(old_cache)
@@ -81,40 +74,31 @@ class WallpaperSelector(Box):
         self.WALLPAPERS_DIR.mkdir(parents=True, exist_ok=True)
 
     def _init_state(self):
-        """Initialize state variables."""
-        self.files: List[str] = []
-        self.thumbnails: Dict[str, GdkPixbuf.Pixbuf] = {}
+        self.files = []
+        self.thumbnails = {}
         self.selected_index = -1
         self.is_applying_scheme = False
         self.config = self._load_config()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._load_lock = threading.Lock()
 
-    def _load_config(self) -> Dict:
-        """Load configuration with defaults."""
+    def _load_config(self):
         defaults = {
             "current_wallpaper": None,
             "color_scheme": "scheme-tonal-spot",
             "recent_wallpapers": []
         }
         
-        try:
-            if self.CONFIG_FILE.exists():
-                with open(self.CONFIG_FILE) as f:
-                    config = json.load(f)
-                return {**defaults, **config}
-        except (json.JSONDecodeError, IOError) as e:
-            print(f"Config load error: {e}")
+        if self.CONFIG_FILE.exists():
+            with open(self.CONFIG_FILE) as f:
+                config = json.load(f)
+            return {**defaults, **config}
         
         return defaults
 
     def _save_config(self):
-        """Save configuration to file."""
-        try:
-            with open(self.CONFIG_FILE, 'w') as f:
-                json.dump(self.config, f, indent=2)
-        except IOError as e:
-            print(f"Config save error: {e}")
+        with open(self.CONFIG_FILE, 'w') as f:
+            json.dump(self.config, f, indent=2)
 
     def _create_ui(self):
         """Create UI components."""
@@ -133,10 +117,6 @@ class WallpaperSelector(Box):
         self.scrolled_window = ScrolledWindow(
             name="scrolled-window",
             spacing=10,
-            h_expand=True,
-            v_expand=True,
-            h_align="fill",
-            v_align="fill",
             child=self.viewport,
             propagate_width=False,
             propagate_height=False,
@@ -175,53 +155,41 @@ class WallpaperSelector(Box):
         header = Box(
             name="header-box",
             spacing=8,
-            orientation="h",
             children=[self.random_btn, self.search_entry, self.scheme_dropdown],
         )
         self.add(header)
         self.pack_start(self.scrolled_window, True, True, 0)
 
-    def _load_wallpapers_async(self):
-        """Load wallpapers asynchronously."""
-        self._executor.submit(self._load_wallpapers)
-
     def _load_wallpapers(self):
-        """Load wallpapers from directory."""
-        try:
-            files = []
-            for entry in self.WALLPAPERS_DIR.iterdir():
-                if entry.is_file() and self._is_image(entry.name):
-                    normalized = self._normalize_filename(entry)
-                    if normalized:
-                        files.append(normalized)
-            
-            with self._load_lock:
-                self.files = sorted(files)
-            
-            # Load thumbnails in batches
-            for filename in self.files:
-                self._executor.submit(self._load_thumbnail, filename)
-            
-            # Apply saved config after loading
-            GLib.idle_add(self._apply_saved_config)
-            
-        except OSError as e:
-            print(f"Error loading wallpapers: {e}")
+        files = []
+        for entry in self.WALLPAPERS_DIR.iterdir():
+            if entry.is_file() and self._is_image(entry.name):
+                normalized = self._normalize_filename(entry)
+                if normalized:
+                    files.append(normalized)
+        
+        with self._load_lock:
+            self.files = sorted(files)
+        
+        # Load thumbnails in batches
+        for filename in self.files:
+            self._executor.submit(self._load_thumbnail, filename)
+        
+        # Apply saved config after loading
+        GLib.idle_add(self._apply_saved_config)
 
-    def _normalize_filename(self, entry: Path) -> Optional[str]:
+
+    def _normalize_filename(self, entry):
         """Normalize filename to lowercase with hyphens."""
         name = entry.name
         new_name = name.lower().replace(" ", "-")
         
         if new_name != name:
-            try:
-                entry.rename(self.WALLPAPERS_DIR / new_name)
-                return new_name
-            except OSError:
-                return name
+            entry.rename(self.WALLPAPERS_DIR / new_name)
+            return new_name
         return name
 
-    def _load_thumbnail(self, filename: str):
+    def _load_thumbnail(self, filename):
         """Load or generate thumbnail for a file."""
         cache_path = self._get_cache_path(filename)
         full_path = self.WALLPAPERS_DIR / filename
@@ -236,42 +204,32 @@ class WallpaperSelector(Box):
             pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(cache_path))
             with self._load_lock:
                 self.thumbnails[filename] = pixbuf
-            GLib.idle_add(self._add_to_model, pixbuf, filename)
-        except GLib.Error as e:
-            print(f"Thumbnail load error for {filename}: {e}")
+            GLib.idle_add(self.model.append([pixbuf, filename]), pixbuf, filename)
+        except GLib.Error:
+            pass
 
-    def _generate_thumbnail(self, source: Path, dest: Path) -> bool:
-        """Generate thumbnail from source image."""
-        try:
-            with Image.open(source) as img:
-                # Center crop to square
-                w, h = img.size
-                side = min(w, h)
-                left, top = (w - side) // 2, (h - side) // 2
-                
-                img_cropped = img.crop((left, top, left + side, top + side))
-                img_cropped.thumbnail(
-                    (self.THUMBNAIL_SIZE, self.THUMBNAIL_SIZE),
-                    Image.Resampling.LANCZOS
-                )
-                img_cropped.save(dest, "PNG", optimize=True)
-                return True
-        except Exception as e:
-            print(f"Thumbnail generation error: {e}")
-            return False
+    def _generate_thumbnail(self, source, dest):
+        with Image.open(source) as img:
+            # Center crop to square
+            w, h = img.size
+            side = min(w, h)
+            left, top = (w - side) // 2, (h - side) // 2
+            
+            img_cropped = img.crop((left, top, left + side, top + side))
+            img_cropped.thumbnail(
+                (self.THUMBNAIL_SIZE, self.THUMBNAIL_SIZE),
+                Image.Resampling.LANCZOS
+            )
+            img_cropped.save(dest, "PNG", optimize=True)
+            return True
 
-    def _add_to_model(self, pixbuf: GdkPixbuf.Pixbuf, filename: str):
-        """Add thumbnail to model (must be called from main thread)."""
-        self.model.append([pixbuf, filename])
-
-    def _filter_viewport(self, query: str = ""):
+    def _filter_viewport(self, query=""):
         """Filter and display wallpapers matching query."""
         self.model.clear()
         query_lower = query.casefold()
         
         filtered = sorted(
-            ((name, pb) for name, pb in self.thumbnails.items() 
-             if query_lower in name.casefold()),
+            ((name, pb) for name, pb in self.thumbnails.items() if query_lower in name.casefold()),
             key=lambda x: x[0].lower()
         )
         
@@ -286,13 +244,13 @@ class WallpaperSelector(Box):
             self._update_selection(0)
 
     @lru_cache(maxsize=256)
-    def _get_cache_path(self, filename: str) -> Path:
+    def _get_cache_path(self, filename):
         """Get cache path for filename."""
         file_hash = hashlib.md5(filename.encode()).hexdigest()
         return self.CACHE_DIR / f"{file_hash}.png"
 
     @staticmethod
-    def _is_image(filename: str) -> bool:
+    def _is_image(filename):
         """Check if file is a supported image."""
         return Path(filename).suffix.lower() in WallpaperSelector.IMAGE_EXTENSIONS
 
@@ -304,7 +262,7 @@ class WallpaperSelector(Box):
             if name in self.files:
                 self._apply_wallpaper(name, notify=False)
 
-    def _apply_wallpaper(self, filename: str, notify: bool = False) -> bool:
+    def _apply_wallpaper(self, filename, notify=False):
         """Apply wallpaper and color scheme."""
         if filename not in self.files:
             return False
@@ -317,8 +275,7 @@ class WallpaperSelector(Box):
             if self.CURRENT_WALL.exists() or self.CURRENT_WALL.is_symlink():
                 self.CURRENT_WALL.unlink()
             self.CURRENT_WALL.symlink_to(full_path)
-        except OSError as e:
-            print(f"Symlink error: {e}")
+        except OSError:
             return False
         
         # Apply wallpaper
@@ -377,7 +334,7 @@ class WallpaperSelector(Box):
         finally:
             self.is_applying_scheme = False
 
-    def set_random_wallpaper(self, widget=None, external: bool = False):
+    def set_random_wallpaper(self, widget=None, external=False):
         """Set a random wallpaper."""
         if not self.files:
             return
@@ -398,8 +355,8 @@ class WallpaperSelector(Box):
             gfile = Gio.File.new_for_path(str(self.WALLPAPERS_DIR))
             self.file_monitor = gfile.monitor_directory(Gio.FileMonitorFlags.NONE, None)
             self.file_monitor.connect("changed", self._on_dir_changed)
-        except GLib.Error as e:
-                        print(f"File monitor error: {e}")
+        except GLib.Error:
+            pass
 
     def _on_dir_changed(self, monitor, file, other_file, event_type):
         """Handle directory changes."""
@@ -412,7 +369,7 @@ class WallpaperSelector(Box):
         elif event_type == Gio.FileMonitorEvent.CHANGED:
             self._handle_file_changed(filename)
 
-    def _handle_file_deleted(self, filename: str):
+    def _handle_file_deleted(self, filename):
         """Handle deleted file."""
         if filename not in self.files:
             return
@@ -424,14 +381,11 @@ class WallpaperSelector(Box):
         # Remove cached thumbnail
         cache_path = self._get_cache_path(filename)
         if cache_path.exists():
-            try:
-                cache_path.unlink()
-            except OSError:
-                pass
+            cache_path.unlink()
         
         GLib.idle_add(self._filter_viewport, self.search_entry.get_text())
 
-    def _handle_file_created(self, filename: str):
+    def _handle_file_created(self, filename):
         """Handle created file."""
         if not self._is_image(filename):
             return
@@ -441,12 +395,9 @@ class WallpaperSelector(Box):
         new_name = filename.lower().replace(" ", "-")
         
         if new_name != filename:
-            try:
-                new_path = self.WALLPAPERS_DIR / new_name
-                full_path.rename(new_path)
-                filename = new_name
-            except OSError:
-                pass
+            new_path = self.WALLPAPERS_DIR / new_name
+            full_path.rename(new_path)
+            filename = new_name
         
         if filename in self.files:
             return
@@ -458,7 +409,7 @@ class WallpaperSelector(Box):
         # Load thumbnail async
         self._executor.submit(self._load_thumbnail, filename)
 
-    def _handle_file_changed(self, filename: str):
+    def _handle_file_changed(self, filename):
         """Handle changed file."""
         if not self._is_image(filename) or filename not in self.files:
             return
@@ -466,10 +417,7 @@ class WallpaperSelector(Box):
         # Clear cache and reload
         cache_path = self._get_cache_path(filename)
         if cache_path.exists():
-            try:
-                cache_path.unlink()
-            except OSError:
-                pass
+            cache_path.unlink()
         
         # Clear from lru_cache
         self._get_cache_path.cache_clear()
@@ -502,15 +450,11 @@ class WallpaperSelector(Box):
         
         return False
 
-    def _handle_scheme_navigation(self, key: int) -> bool:
+    def _handle_scheme_navigation(self, key):
         """Handle scheme dropdown navigation with Shift+Arrow."""
         schemes_list = list(self.SCHEMES.keys())
         current_id = self.scheme_dropdown.get_active_id()
-        
-        try:
-            current_idx = schemes_list.index(current_id) if current_id in schemes_list else 0
-        except ValueError:
-            current_idx = 0
+        current_idx = schemes_list.index(current_id) if current_id in schemes_list else 0
         
         if key == Gdk.KEY_Up:
             new_idx = (current_idx - 1) % len(schemes_list)
@@ -526,7 +470,7 @@ class WallpaperSelector(Box):
         
         return False
 
-    def _move_selection(self, key: int):
+    def _move_selection(self, key):
         """Move selection in 2D grid."""
         total = len(self.model)
         if total == 0:
@@ -555,27 +499,24 @@ class WallpaperSelector(Box):
         if 0 <= new_idx < total and new_idx != self.selected_index:
             self._update_selection(new_idx)
 
-    def _get_columns_count(self, total: int) -> int:
+    def _get_columns_count(self, total):
         """Calculate number of columns in icon view."""
         columns = self.viewport.get_columns()
         
         if columns <= 0 and total > 0:
-            try:
-                first_path = Gtk.TreePath.new_from_indices([0])
-                base_row = self.viewport.get_item_row(first_path)
-                
-                for i in range(1, total):
-                    path = Gtk.TreePath.new_from_indices([i])
-                    if self.viewport.get_item_row(path) > base_row:
-                        return max(1, i)
-                
-                return total
-            except Exception:
-                return 1
+            first_path = Gtk.TreePath.new_from_indices([0])
+            base_row = self.viewport.get_item_row(first_path)
+            
+            for i in range(1, total):
+                path = Gtk.TreePath.new_from_indices([i])
+                if self.viewport.get_item_row(path) > base_row:
+                    return max(1, i)
+            
+            return total
         
         return max(1, columns)
 
-    def _update_selection(self, index: int):
+    def _update_selection(self, index):
         """Update viewport selection."""
         self.viewport.unselect_all()
         path = Gtk.TreePath.new_from_indices([index])
@@ -589,12 +530,27 @@ class WallpaperSelector(Box):
             widget.grab_focus()
         return False
 
-    def cleanup(self):
+    def destroy(self):
         """Cleanup resources."""
-        self._executor.shutdown(wait=False)
-        if hasattr(self, 'file_monitor'):
-            self.file_monitor.cancel()
+        if hasattr(self, '_executor') and self._executor:
+            self._executor.shutdown(wait=False)
+            self._executor = None
+        
+        if hasattr(self, 'file_monitor') and self.file_monitor:
+            try:
+                self.file_monitor.cancel()
+            except Exception:
+                pass
+            self.file_monitor = None
+        
+        self.thumbnails.clear()
+        self.files.clear()
+        super().destroy()
 
     def __del__(self):
         """Destructor to ensure cleanup."""
-        self.cleanup()
+        if hasattr(self, '_executor') and self._executor:
+            try:
+                self._executor.shutdown(wait=False)
+            except Exception:
+                pass

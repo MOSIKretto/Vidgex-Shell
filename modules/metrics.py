@@ -8,26 +8,18 @@ from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
 
 from gi.repository import GLib
-
-import json
-import logging
 import subprocess
 import time
 import psutil
 import threading
+import json
 
 from modules.upower import UPowerManager
 import modules.icons as icons
 from modules.network import NetworkClient
 
 
-logger = logging.getLogger(__name__)
-
 class MetricsProvider:
-    """
-    Класс для получения метрик CPU, памяти, диска, батареи и температуры.
-    Обновляется периодически, чтобы все виджеты отображали одинаковые значения.
-    """
     def __init__(self):
         self.gpu = []
         self.cpu = 0.0
@@ -62,9 +54,13 @@ class MetricsProvider:
             self.upower.destroy()
         
         # Дождаться завершения GPU потока
-        if self._gpu_thread and self._gpu_thread.is_alive():
+        if hasattr(self, '_gpu_thread') and self._gpu_thread and self._gpu_thread.is_alive():
             self._gpu_update_running = False
-            self._gpu_thread.join(timeout=5.0)
+            try:
+                self._gpu_thread.join(timeout=5.0)
+            except Exception:
+                pass
+            self._gpu_thread = None
 
     def _update(self):
         if self._should_stop:
@@ -78,22 +74,19 @@ class MetricsProvider:
         try:
             temps = psutil.sensors_temperatures()
             if temps and 'coretemp' in temps:
-                # Берем максимальную температуру среди всех ядер
                 core_temps = [temp.current for temp in temps['coretemp'] if hasattr(temp, 'current')]
                 if core_temps:
                     self.temperature = max(core_temps)
             elif temps:
-                # Если нет coretemp, берем первую доступную температуру
                 for sensor_name, entries in temps.items():
                     if entries and hasattr(entries[0], 'current'):
                         self.temperature = entries[0].current
                         break
-        except Exception as e:
-            logger.error(f"Ошибка получения температуры: {e}")
+        except Exception:
             self.temperature = 0.0
 
         self._gpu_update_counter += 1
-        if self._gpu_update_counter >= 5:  # Обновляем GPU каждые 10 секунд
+        if self._gpu_update_counter >= 5:
             self._gpu_update_counter = 0
             if not self._gpu_update_running and not self._should_stop:
                 self._update_gpu()
@@ -111,7 +104,6 @@ class MetricsProvider:
         return True
 
     def _update_gpu(self):
-        """Update GPU metrics asynchronously"""
         if self._should_stop:
             return
             
@@ -119,37 +111,23 @@ class MetricsProvider:
         
         def worker():
             output = None
-            error_message = None
             try:
                 result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
                 output = result
-            except FileNotFoundError:
-                error_message = "Команда nvtop не найдена."
-                logger.warning(error_message)
-            except subprocess.CalledProcessError as e:
-                error_message = f"nvtop завершился с ошибкой {e.returncode}"
-                logger.error(error_message)
-            except subprocess.TimeoutExpired:
-                error_message = "Таймаут выполнения nvtop."
-                logger.error(error_message)
-            except Exception as e:
-                error_message = f"Неожиданная ошибка: {e}"
-                logger.error(error_message)
+            except Exception:
+                pass
 
             if not self._should_stop:
-                GLib.idle_add(self._process_gpu_output, output, error_message)
+                GLib.idle_add(self._process_gpu_output, output)
         
         self._gpu_thread = threading.Thread(target=worker, daemon=True)
         self._gpu_thread.start()
 
-    def _process_gpu_output(self, output, error_message):
-        """Process nvtop output"""
+    def _process_gpu_output(self, output):
         self._gpu_update_running = False
         
         try:
-            if error_message:
-                self.gpu = []
-            elif output:
+            if output:
                 info = json.loads(output)
                 self.gpu = [
                     int(v["gpu_util"].strip("%")) if v["gpu_util"] else 0
@@ -157,8 +135,7 @@ class MetricsProvider:
                 ]
             else:
                 self.gpu = []
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
-            logger.error(f"Ошибка обработки GPU: {e}")
+        except Exception:
             self.gpu = []
 
         return False
@@ -170,24 +147,8 @@ class MetricsProvider:
         return (self.bat_percent, self.bat_charging, self.bat_time)
 
     def get_gpu_info(self):
-        try:
-            result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
-            return json.loads(result)
-        except FileNotFoundError:
-            logger.warning("nvtop не найден; информация о GPU недоступна.")
-            return []
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Синхронный вызов nvtop завершился ошибкой: {e}")
-            return []
-        except subprocess.TimeoutExpired:
-            logger.error("Таймаут синхронного вызова nvtop.")
-            return []
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка парсинга JSON при инициализации: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Неожиданная ошибка при инициализации GPU: {e}")
-            return []
+        result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
+        return json.loads(result)
 
 shared_provider = MetricsProvider()
 
@@ -232,25 +193,27 @@ class Metrics(Box):
 
         visible = {'temp': True, 'disk': True, 'ram': True, 'cpu': True, 'gpu': True}
         
-        # Температура теперь первая
         self.temp = SingularMetric("temp", "ТЕМП", icons.temp) if visible.get('temp', True) else None
-        disks = [SingularMetric("disk", f"ДИСК ({path})" if len(["/"]) != 1 else "ДИСК", icons.disk) for path in ["/"]] if visible.get('disk', True) else []
+        disks = [SingularMetric("disk", "ДИСК", icons.disk) for path in ["/"]] if visible.get('disk', True) else []
         self.ram = SingularMetric("ram", "ОЗУ", icons.memory) if visible.get('ram', True) else None
         self.cpu = SingularMetric("cpu", "ЦП", icons.cpu) if visible.get('cpu', True) else None
-        gpus = [SingularMetric(f"gpu", f"GPU ({v['device_name']})" if len(shared_provider.get_gpu_info()) != 1 else "GPU", icons.gpu) for v in shared_provider.get_gpu_info()] if visible.get('gpu', True) else []
+        gpus = [SingularMetric(f"gpu", "GPU", icons.gpu) for v in shared_provider.get_gpu_info()] if visible.get('gpu', True) else []
 
         self.disk = disks
         self.gpu = gpus
 
         self.scales = []
-        # Температура теперь первая в списке
-        if self.temp: self.scales.append(self.temp.box)
-        if self.disk: self.scales.extend([v.box for v in self.disk])
-        if self.ram: self.scales.append(self.ram.box)
-        if self.cpu: self.scales.append(self.cpu.box)
-        if self.gpu: self.scales.extend([v.box for v in self.gpu])
+        if self.temp: 
+            self.scales.append(self.temp.box)
+        if self.disk: 
+            self.scales.extend([v.box for v in self.disk])
+        if self.ram: 
+            self.scales.append(self.ram.box)
+        if self.cpu: 
+            self.scales.append(self.cpu.box)
+        if self.gpu: 
+            self.scales.extend([v.box for v in self.gpu])
 
-        # Отключаем интерактивность для всех метрик, включая температуру
         for metric in [self.temp, self.cpu, self.ram] + self.disk + self.gpu:
             if metric and hasattr(metric, 'usage'):
                 metric.usage.set_sensitive(False)
@@ -261,7 +224,6 @@ class Metrics(Box):
         self._update_timer_id = GLib.timeout_add_seconds(2, self.update_status)
     
     def destroy(self):
-        """Очистка ресурсов"""
         if hasattr(self, '_update_timer_id') and self._update_timer_id:
             GLib.source_remove(self._update_timer_id)
             self._update_timer_id = None
@@ -319,7 +281,6 @@ class SingularMetricSmall:
         )
 
     def markup(self):
-        # Убраны проценты из подсказки
         return f"{self.icon_markup} {self.name_markup}"
     
 class MetricsSmall(Button):
@@ -335,20 +296,18 @@ class MetricsSmall(Button):
 
         visible = {'temp': True, 'cpu': True, 'ram': True, 'disk': True, 'gpu': True}
         
-        # Температура теперь первая
         self.temp = SingularMetricSmall("temp", "ТЕМП", icons.temp, is_temp=True) if visible.get('temp', True) else None
         
-        disks = [SingularMetricSmall("disk", f"ДИСК ({path})" if len(["/"]) != 1 else "ДИСК", icons.disk) for path in ["/"]] if visible.get('disk', True) else []
+        disks = [SingularMetricSmall("disk", "ДИСК", icons.disk) for path in ["/"]] if visible.get('disk', True) else []
 
         gpu_info = shared_provider.get_gpu_info()
-        gpus = [SingularMetricSmall(f"gpu", f"GPU ({v['device_name']})" if len(gpu_info) != 1 else "GPU", icons.gpu) for v in gpu_info] if visible.get('gpu', True) else []
+        gpus = [SingularMetricSmall("gpu", "GPU", icons.gpu) for v in gpu_info] if visible.get('gpu', True) else []
 
         self.cpu = SingularMetricSmall("cpu", "ЦП", icons.cpu) if visible.get('cpu', True) else None
         self.ram = SingularMetricSmall("ram", "ОЗУ", icons.memory) if visible.get('ram', True) else None
         self.disk = disks
         self.gpu = gpus
 
-        # Температура теперь первая в порядке отображения
         if self.temp:
             main_box.add(self.temp.box)
             main_box.add(Box(name="metrics-sep"))
@@ -374,11 +333,10 @@ class MetricsSmall(Button):
         self._leave_handler = self.connect("leave-notify-event", self.on_mouse_leave)
     
     def destroy(self):
-        """Очистка ресурсов"""
         if hasattr(self, '_update_timer_id') and self._update_timer_id:
             GLib.source_remove(self._update_timer_id)
             self._update_timer_id = None
-        if hasattr(self, 'hide_timer') and self.hide_timer:
+        if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
         if hasattr(self, '_enter_handler'):
@@ -393,42 +351,47 @@ class MetricsSmall(Button):
                 pass
         super().destroy()
 
-    def _format_percentage(self, value: int) -> str:
-        """Форматирование процентов без фиксированной ширины."""
+    def _format_percentage(self, value):
         return f"{value}%"
     
-    def _format_temperature(self, value: float) -> str:
-        """Форматирование температуры с математическим округлением до целого."""
-        # Математическое округление: 39.4 -> 39, 39.5 -> 40
+    def _format_temperature(self, value):
         rounded_value = round(value)
         return f"{rounded_value}°C"
 
     def on_mouse_enter(self, widget, event):
         self.hover_counter += 1
-        if self.hide_timer is not None:
+        if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
 
-        if self.temp: self.temp.revealer.set_reveal_child(True)
-        if self.cpu: self.cpu.revealer.set_reveal_child(True)
-        if self.ram: self.ram.revealer.set_reveal_child(True)
-        for disk in self.disk: disk.revealer.set_reveal_child(True)
-        for gpu in self.gpu: gpu.revealer.set_reveal_child(True)
+        if self.temp: 
+            self.temp.revealer.set_reveal_child(True)
+        if self.cpu: 
+            self.cpu.revealer.set_reveal_child(True)
+        if self.ram: 
+            self.ram.revealer.set_reveal_child(True)
+        for disk in self.disk: 
+            disk.revealer.set_reveal_child(True)
+        for gpu in self.gpu: 
+            gpu.revealer.set_reveal_child(True)
         return False
 
     def on_mouse_leave(self, widget, event):
         if self.hover_counter > 0:
             self.hover_counter -= 1
         if self.hover_counter == 0:
-            if self.hide_timer is not None:
+            if self.hide_timer:
                 GLib.source_remove(self.hide_timer)
             self.hide_timer = GLib.timeout_add(500, self.hide_revealer)
         return False
 
     def hide_revealer(self):
-        if self.temp: self.temp.revealer.set_reveal_child(False)
-        if self.cpu: self.cpu.revealer.set_reveal_child(False)
-        if self.ram: self.ram.revealer.set_reveal_child(False)
+        if self.temp: 
+            self.temp.revealer.set_reveal_child(False)
+        if self.cpu: 
+            self.cpu.revealer.set_reveal_child(False)
+        if self.ram: 
+            self.ram.revealer.set_reveal_child(False)
         for disk in self.disk:
             disk.revealer.set_reveal_child(False)
         for gpu in self.gpu:
@@ -439,9 +402,7 @@ class MetricsSmall(Button):
     def update_metrics(self):
         cpu, mem, disks, gpus, temperature = shared_provider.get_metrics()
 
-        # Температура теперь обрабатывается первой
         if self.temp:
-            # Нормализуем температуру для кругового прогресс-бара (максимум 150°C)
             self.temp.circle.set_value(min(temperature / 150.0, 1.0))
             self.temp.level.set_label(self._format_temperature(temperature))
         
@@ -461,14 +422,17 @@ class MetricsSmall(Button):
                 gpu.level.set_label(self._format_percentage(int(gpus[i])))
 
         tooltip_metrics = []
-        # Температура теперь первая в подсказке
-        if self.temp: tooltip_metrics.append(self.temp)
-        if self.disk: tooltip_metrics.extend(self.disk)
-        if self.ram: tooltip_metrics.append(self.ram)
-        if self.cpu: tooltip_metrics.append(self.cpu)
-        if self.gpu: tooltip_metrics.extend(self.gpu)
+        if self.temp: 
+            tooltip_metrics.append(self.temp)
+        if self.disk: 
+            tooltip_metrics.extend(self.disk)
+        if self.ram: 
+            tooltip_metrics.append(self.ram)
+        if self.cpu: 
+            tooltip_metrics.append(self.cpu)
+        if self.gpu: 
+            tooltip_metrics.extend(self.gpu)
         
-        # Обновленная строка - убраны проценты из подсказки
         self.set_tooltip_markup(" - ".join([v.markup() for v in tooltip_metrics]))
 
         return True
@@ -517,7 +481,6 @@ class BatteryButton(Button):
         GLib.idle_add(self.update_battery, None, shared_provider.get_battery())
 
     def destroy(self):
-        """Очистка ресурсов"""
         if hasattr(self, 'batt_fabricator'):
             try:
                 self.batt_fabricator.destroy()
@@ -525,11 +488,10 @@ class BatteryButton(Button):
                 pass
         super().destroy()
 
-    def _format_percentage(self, value: int) -> str:
+    def _format_percentage(self, value):
         return f"{value}%"
 
     def update_battery(self, sender, battery_data):
-        """Обновляет отображение батареи"""
         value, charging, time = battery_data
         if value == 0:
             self.set_visible(False)
@@ -541,13 +503,11 @@ class BatteryButton(Button):
         self.bat_level.set_label(self._format_percentage(percentage))
         
         if percentage <= 30:
-            # Оранжевый цвет для низкого заряда
             self.bat_circle.set_style("border: 3px solid #ffa500;")
             self.bat_icon.set_style("color: #ffa500;")
             self.bat_circle.add_style_class("battery-low")
             self.bat_circle.remove_style_class("battery-normal")
         else:
-            # Зеленый цвет для нормального заряда
             self.bat_circle.set_style("border: 3px solid var(--green);")
             self.bat_icon.set_style("color: #d3d3d3;")
             self.bat_circle.add_style_class("battery-normal")
@@ -638,15 +598,13 @@ class Battery(Box):
         self.is_mouse_inside = False
     
     def destroy(self):
-        """Очистка ресурсов"""
-        if hasattr(self, '_power_mode_timer') and self._power_mode_timer:
+        if self._power_mode_timer:
             GLib.source_remove(self._power_mode_timer)
             self._power_mode_timer = None
-        if hasattr(self, 'hide_timer') and self.hide_timer:
+        if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
             
-        # Очистка обработчиков событий
         for handler_id in self._event_handlers:
             try:
                 self.disconnect(handler_id)
@@ -654,14 +612,12 @@ class Battery(Box):
                 pass
         self._event_handlers.clear()
         
-        # Уничтожить дочерние виджеты
         if hasattr(self, 'battery_button'):
             self.battery_button.destroy()
             
         super().destroy()
 
     def _init_power_modes(self):
-        """Инициализация кнопок режимов питания"""
         try:
             result = subprocess.run(
                 ["powerprofilesctl", "list"],
@@ -709,8 +665,7 @@ class Battery(Box):
         self.update_button_styles()
 
     def on_container_enter(self, widget, event):
-        """Обработчик наведения на любой элемент батареи"""
-        if self.hide_timer is not None:
+        if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
         
@@ -720,14 +675,12 @@ class Battery(Box):
         self.is_mouse_inside = True
 
     def on_container_leave(self, widget, event):
-        """Обработчик ухода с любого элемента батареи"""
-        if self.hide_timer is not None:
+        if self.hide_timer:
             GLib.source_remove(self.hide_timer)
         
         self.hide_timer = GLib.timeout_add(300, self.hide_revealers)
 
     def hide_revealers(self):
-        """Скрывает revealer'ы"""
         self.battery_button.bat_revealer.set_reveal_child(False)
         self.power_modes_revealer.set_reveal_child(False)
         self.hide_timer = None
@@ -735,7 +688,6 @@ class Battery(Box):
         return False
 
     def get_current_power_mode(self):
-        """Получение текущего режима питания"""
         try:
             result = subprocess.run(
                 ["powerprofilesctl", "get"],
@@ -753,17 +705,12 @@ class Battery(Box):
 
             self.update_button_styles()
 
-        except subprocess.CalledProcessError as err:
-            print(f"Ошибка выполнения команды: {err}")
-            self.current_mode = "balanced"
-        except Exception as err:
-            print(f"Ошибка получения текущего режима питания: {err}")
+        except Exception:
             self.current_mode = "balanced"
         
         return True
 
     def set_power_mode(self, mode):
-        """Переключает режим питания"""
         commands = {
             "power-saver": "powerprofilesctl set power-saver",
             "balanced": "powerprofilesctl set balanced", 
@@ -788,11 +735,10 @@ class Battery(Box):
                 full_tooltip = f"Режим питания: {mode_text}\nЗаряд: {percentage}%"
                 self.battery_button.set_tooltip_markup(full_tooltip)
                 
-            except Exception as err:
-                print(f"Ошибка установки режима питания: {err}")
+            except Exception:
+                pass
 
     def update_button_styles(self):
-        """Обновляет стили кнопок для отражения текущего режима"""
         if self.bat_save:
             self.bat_save.remove_style_class("active")
         if self.bat_balanced:
@@ -833,26 +779,23 @@ class NetworkApplet(Button):
         self.download_revealer = Revealer(child=self.download_box, transition_type="slide-right", child_revealed=False)
         self.upload_revealer = Revealer(child=self.upload_box, transition_type="slide-left", child_revealed=False)
 
-        # ИСПРАВЛЕНИЕ: создаем основной контейнер и добавляем его
         self.main_container = Box(
             orientation="h",
             children=[self.upload_revealer, self.wifi_label, self.download_revealer],
         )
 
-        self.add(self.main_container)  # Теперь добавляем виджет, а не список
+        self.add(self.main_container)
 
         self.last_counters = psutil.net_io_counters()
         self.last_time = time.time()
         
-        # Запускаем обновление сети с небольшой задержкой, чтобы NetworkClient успел инициализироваться
         self._network_timer = GLib.timeout_add(1000, self.update_network)
 
         self._enter_handler = self.connect("enter-notify-event", self.on_mouse_enter)
         self._leave_handler = self.connect("leave-notify-event", self.on_mouse_leave)
     
     def destroy(self):
-        """Очистка ресурсов"""
-        if hasattr(self, '_network_timer') and self._network_timer:
+        if self._network_timer:
             GLib.source_remove(self._network_timer)
             self._network_timer = None
             
@@ -862,8 +805,8 @@ class NetworkApplet(Button):
                     self.network_client.destroy()
                 elif hasattr(self.network_client, 'close'):
                     self.network_client.close()
-            except Exception as e:
-                logger.error(f"Ошибка при закрытии NetworkClient: {e}")
+            except Exception:
+                pass
             self.network_client = None
             
         if hasattr(self, '_enter_handler'):
@@ -880,87 +823,77 @@ class NetworkApplet(Button):
         super().destroy()
 
     def update_network(self):
-        try:
-            current_time = time.time()
-            elapsed = current_time - self.last_time
-            current_counters = psutil.net_io_counters()
-            download_speed = (current_counters.bytes_recv - self.last_counters.bytes_recv) / elapsed
-            upload_speed = (current_counters.bytes_sent - self.last_counters.bytes_sent) / elapsed
-            download_str = self.format_speed(download_speed)
-            upload_str = self.format_speed(upload_speed)
-            self.download_label.set_markup(download_str)
-            self.upload_label.set_markup(upload_str)
+        current_time = time.time()
+        elapsed = current_time - self.last_time
+        current_counters = psutil.net_io_counters()
+        download_speed = (current_counters.bytes_recv - self.last_counters.bytes_recv) / elapsed
+        upload_speed = (current_counters.bytes_sent - self.last_counters.bytes_sent) / elapsed
+        download_str = self.format_speed(download_speed)
+        upload_str = self.format_speed(upload_speed)
+        self.download_label.set_markup(download_str)
+        self.upload_label.set_markup(upload_str)
 
-            self.downloading = (download_speed >= 10e6)
-            self.uploading = (upload_speed >= 2e6)
+        self.downloading = (download_speed >= 10e6)
+        self.uploading = (upload_speed >= 2e6)
 
-            if not self.is_mouse_over:
-                if self.downloading:
-                    self.download_urgent()
-                elif self.uploading:
-                    self.upload_urgent()
+        if not self.is_mouse_over:
+            if self.downloading:
+                self.download_urgent()
+            elif self.uploading:
+                self.upload_urgent()
+            else:
+                self.remove_urgent()
+
+        show_download = self.downloading or self.is_mouse_over
+        show_upload = self.uploading or self.is_mouse_over
+        self.download_revealer.set_reveal_child(show_download)
+        self.upload_revealer.set_reveal_child(show_upload)
+
+        primary_device = self._get_primary_device()
+
+        tooltip_base = ""
+
+        if primary_device == "ethernet" and self.network_client.ethernet_device:
+            ethernet_state = self.network_client.ethernet_device.internet
+
+            if ethernet_state == "activated":
+                self.wifi_label.set_markup(icons.world)
+            elif ethernet_state == "activating":
+                self.wifi_label.set_markup(icons.world)
+            else:
+                self.wifi_label.set_markup(icons.world_off)
+
+            tooltip_base = "Ethernet Connection"
+
+        elif primary_device == "wifi" and self.network_client.wifi_device:
+            if hasattr(self.network_client.wifi_device, 'ssid') and self.network_client.wifi_device.ssid != "Disconnected":
+                strength = self.network_client.wifi_device.strength
+
+                if strength >= 75:
+                    self.wifi_label.set_markup(icons.wifi_3)
+                elif strength >= 50:
+                    self.wifi_label.set_markup(icons.wifi_2)
+                elif strength >= 25:
+                    self.wifi_label.set_markup(icons.wifi_1)
                 else:
-                    self.remove_urgent()
+                    self.wifi_label.set_markup(icons.wifi_0)
 
-            show_download = self.downloading or self.is_mouse_over
-            show_upload = self.uploading or self.is_mouse_over
-            self.download_revealer.set_reveal_child(show_download)
-            self.upload_revealer.set_reveal_child(show_upload)
-
-            # Определяем основное устройство
-            primary_device = self._get_primary_device()
-
-            tooltip_base = ""
-
-            if primary_device == "ethernet" and self.network_client.ethernet_device:
-                ethernet_state = self.network_client.ethernet_device.internet
-
-                if ethernet_state == "activated":
-                    self.wifi_label.set_markup(icons.world)
-                elif ethernet_state == "activating":
-                    self.wifi_label.set_markup(icons.world)
-                else:
-                    self.wifi_label.set_markup(icons.world_off)
-
-                tooltip_base = "Ethernet Connection"
-
-            elif primary_device == "wifi" and self.network_client.wifi_device:
-                if hasattr(self.network_client.wifi_device, 'ssid') and self.network_client.wifi_device.ssid != "Disconnected":
-                    strength = self.network_client.wifi_device.strength
-
-                    if strength >= 75:
-                        self.wifi_label.set_markup(icons.wifi_3)
-                    elif strength >= 50:
-                        self.wifi_label.set_markup(icons.wifi_2)
-                    elif strength >= 25:
-                        self.wifi_label.set_markup(icons.wifi_1)
-                    else:
-                        self.wifi_label.set_markup(icons.wifi_0)
-
-                    tooltip_base = self.network_client.wifi_device.ssid
-                else:
-                    self.wifi_label.set_markup(icons.world_off)
-                    tooltip_base = "Disconnected"
+                tooltip_base = self.network_client.wifi_device.ssid
             else:
                 self.wifi_label.set_markup(icons.world_off)
                 tooltip_base = "Disconnected"
+        else:
+            self.wifi_label.set_markup(icons.world_off)
+            tooltip_base = "Disconnected"
 
-            self.set_tooltip_text(tooltip_base)
+        self.set_tooltip_text(tooltip_base)
 
-            self.last_counters = current_counters
-            self.last_time = current_time
+        self.last_counters = current_counters
+        self.last_time = current_time
             
-        except Exception as e:
-            logger.error(f"Error in update_network: {e}")
-            # В случае ошибки продолжаем обновление
-            pass
-            
-        # Продолжаем обновление каждую секунду
         return True
 
     def _get_primary_device(self):
-        """Определяет основное сетевое устройство"""
-        # Приоритет: Ethernet > WiFi
         if (self.network_client.ethernet_device and 
             self.network_client.ethernet_device.internet in ["activated", "activating"]):
             return "ethernet"

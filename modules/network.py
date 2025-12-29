@@ -143,8 +143,6 @@ class Wifi(Service):
         """Обработчик завершения сканирования"""
         try:
             device.request_scan_finish(result)
-        except Exception:
-            pass
         finally:
             self._is_scanning = False
             self._invalidate_cache()
@@ -282,24 +280,15 @@ class Wifi(Service):
             
         if hasattr(self, '_device_handler_ids') and self._device:
             for handler_id in self._device_handler_ids:
-                try:
-                    self._device.disconnect(handler_id)
-                except:
-                    pass
+                self._device.disconnect(handler_id)
             self._device_handler_ids = []
                 
         if hasattr(self, '_client_handler_id') and self._client_handler_id and self._client:
-            try:
-                self._client.disconnect(self._client_handler_id)
-            except:
-                pass
+            self._client.disconnect(self._client_handler_id)
             self._client_handler_id = None
             
         if self._ap_signal_id and self._active_ap:
-            try:
-                self._active_ap.disconnect(self._ap_signal_id)
-            except:
-                pass
+            self._active_ap.disconnect(self._ap_signal_id)
             self._ap_signal_id = 0
         
         # Clear references
@@ -586,10 +575,7 @@ class WifiNetworkSlot(CenterBox):
         self._setup_action_widgets()
         
         if hasattr(self.network_client, 'connect'):
-            try:
-                self.network_client.connect("connection_error", self._on_connection_error)
-            except Exception:
-                pass
+            self.network_client.connect("connection_error", self._on_connection_error)
 
         # Подключаем обработчики нажатия
         if hasattr(self, 'connect_button'):
@@ -796,10 +782,7 @@ class NetworkConnections(Box):
         self._speed_timer_id = GLib.timeout_add(1000, self.update_network_speeds)
 
         if hasattr(self.network_client, 'connect'):
-            try:
-                self.network_client.connect("device-ready", self.on_device_ready)
-            except Exception:
-                pass
+            self.network_client.connect("device-ready", self.on_device_ready)
         
         if hasattr(self.network_client, 'wifi_device') and self.network_client.wifi_device: 
             GLib.idle_add(self.on_device_ready)
@@ -847,16 +830,13 @@ class NetworkConnections(Box):
                 self.upload_label.set_markup(upload_str)
 
                 # Определяем активность по порогам
-                self.downloading = (download_speed >= 10e6)  # 10 МБ/с
-                self.uploading = (upload_speed >= 2e6)       # 2 МБ/с
+                self.downloading = (download_speed >= 2e6)   
+                self.uploading = (upload_speed >= 2e6)
 
                 # Применяем цветовое выделение
-                if self.downloading:
-                    self.download_urgent()
-                elif self.uploading:
-                    self.upload_urgent()
-                else:
-                    self.remove_urgent()
+                if self.downloading: self.download_urgent()
+                elif self.uploading: self.upload_urgent()
+                else: self.remove_urgent()
 
                 # Обновляем tooltip
                 tooltip_text = f"Скачивание: {download_str}\nОтправка: {upload_str}"
@@ -877,12 +857,9 @@ class NetworkConnections(Box):
 
     def format_speed(self, speed):
         """Форматирование скорости"""
-        if speed < 1024:
-            return f"{speed:.0f} B/s"
-        elif speed < 1024 * 1024:
-            return f"{speed / 1024:.1f} KB/s"
-        else:
-            return f"{speed / (1024 * 1024):.1f} MB/s"
+        if speed < 1024: return f"{speed:.0f} B/s"
+        elif speed < 1024 * 1024: return f"{speed / 1024:.1f} KB/s"
+        else: return f"{speed / (1024 * 1024):.1f} MB/s"
 
     def upload_urgent(self):
         """Цветовое выделение для активной отправки"""
@@ -909,10 +886,7 @@ class NetworkConnections(Box):
         """Обработчик готовности устройства"""
         if hasattr(self.network_client, 'wifi_device') and self.network_client.wifi_device:
             if hasattr(self.network_client.wifi_device, 'connect'):
-                try:
-                    self.network_client.wifi_device.connect("changed", self._schedule_refresh)
-                except Exception:
-                    pass
+                self.network_client.wifi_device.connect("changed", self._schedule_refresh)
             self._start_periodic_refresh()
             self._schedule_refresh()
 
@@ -973,10 +947,7 @@ class NetworkConnections(Box):
         if (hasattr(self.network_client, 'wifi_device') and 
             self.network_client.wifi_device and 
             getattr(self.network_client.wifi_device, 'enabled', False)): 
-            try:
-                self.network_client.wifi_device.scan()
-            except Exception:
-                pass
+            self.network_client.wifi_device.scan()
                 
         GLib.timeout_add(3000, self._reset_scan_button)
 
@@ -992,32 +963,26 @@ class NetworkConnections(Box):
     def get_saved_networks(self):
         """Получение сохраненных сетей"""
         saved_networks = []
-        try:
-            if (hasattr(self.network_client, '_client') and 
-                self.network_client._client):
-                connections = self.network_client._client.get_connections()
-                for connection in connections:
-                    if connection.get_connection_type() == '802-11-wireless':
-                        setting = connection.get_setting_wireless()
-                        if setting and setting.get_ssid():
-                            ssid = NM.utils_ssid_to_utf8(setting.get_ssid().get_data())
-                            if ssid and ssid not in saved_networks: 
-                                saved_networks.append(ssid)
-        except Exception:
-            pass
+        if (hasattr(self.network_client, '_client') and 
+            self.network_client._client):
+            connections = self.network_client._client.get_connections()
+            for connection in connections:
+                if connection.get_connection_type() == '802-11-wireless':
+                    setting = connection.get_setting_wireless()
+                    if setting and setting.get_ssid():
+                        ssid = NM.utils_ssid_to_utf8(setting.get_ssid().get_data())
+                        if ssid and ssid not in saved_networks: 
+                            saved_networks.append(ssid)
         return saved_networks
 
     def get_current_network_ssid(self):
         """Получение текущего SSID"""
-        try:
-            if (hasattr(self.network_client, 'wifi_device') and 
-                self.network_client.wifi_device and 
-                hasattr(self.network_client.wifi_device, 'ssid') and
-                self.network_client.wifi_device.ssid and 
-                self.network_client.wifi_device.ssid not in ["Disconnected", "Выключено", "Не подключено"]):
-                return self.network_client.wifi_device.ssid
-        except Exception:
-            pass
+        if (hasattr(self.network_client, 'wifi_device') and 
+            self.network_client.wifi_device and 
+            hasattr(self.network_client.wifi_device, 'ssid') and
+            self.network_client.wifi_device.ssid and 
+            self.network_client.wifi_device.ssid not in ["Disconnected", "Выключено", "Не подключено"]):
+            return self.network_client.wifi_device.ssid
         return None
 
     def refresh_networks(self):
@@ -1027,10 +992,7 @@ class NetworkConnections(Box):
         
         available_networks = []
         if enabled and hasattr(self.network_client, 'wifi_device') and self.network_client.wifi_device:
-            try:
-                available_networks = self.network_client.wifi_device.access_points
-            except Exception:
-                pass
+            available_networks = self.network_client.wifi_device.access_points
         
         current_state = {
             'current_ssid': current_ssid, 
@@ -1080,8 +1042,7 @@ class NetworkConnections(Box):
         for ap_data in available_networks:
             ssid = ap_data.get("ssid")
             if ssid and ssid not in saved_networks and ssid != current_ssid:
-                self.available_box.add(WifiNetworkSlot(ap_data, self.network_client, self.get_toplevel(), 
-                                                     is_saved=False, is_connected=False))
+                self.available_box.add(WifiNetworkSlot(ap_data, self.network_client, self.get_toplevel(), is_saved=False, is_connected=False))
 
     def destroy(self):
         """Очистка ресурсов"""
@@ -1098,10 +1059,7 @@ class NetworkConnections(Box):
         # Disconnect wifi device signals
         if hasattr(self, 'network_client') and hasattr(self.network_client, 'wifi_device'):
             if hasattr(self.network_client.wifi_device, 'destroy'):
-                try:
-                    self.network_client.wifi_device.destroy()
-                except:
-                    pass
+                self.network_client.wifi_device.destroy()
         
         # Clear references
         self.network_client = None
@@ -1111,8 +1069,4 @@ class NetworkConnections(Box):
         super().destroy()
     
     def __del__(self):
-        """Деструктор"""
-        try:
-            self.destroy()
-        except:
-            pass
+        self.destroy()

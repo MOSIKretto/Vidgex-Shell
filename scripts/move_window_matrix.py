@@ -18,34 +18,27 @@ ROWS = 3
 COLS = 3
 
 def get_current_workspace():
-    try:
-        result = subprocess.run(
-            ['hyprctl', 'activeworkspace', '-j'], 
-            capture_output=True, 
-            text=True
-        )
-        
-        if result.returncode == 0 and result.stdout.strip():
-            data = json.loads(result.stdout)
-            return data['id']
-        return None
-    except:
-        return None
+    result = subprocess.run(
+        ['hyprctl', 'activeworkspace', '-j'], 
+        capture_output=True, 
+        text=True
+    )
+    
+    if result.returncode == 0 and result.stdout.strip():
+        return json.loads(result.stdout)['id']
+    return None
 
 def get_active_window():
-    try:
-        result = subprocess.run(
-            ['hyprctl', 'activewindow', '-j'], 
-            capture_output=True, 
-            text=True
-        )
-        
-        if result.returncode == 0 and result.stdout.strip():
-            data = json.loads(result.stdout)
-            return data['address']
-        return None
-    except:
-        return None
+    result = subprocess.run(
+        ['hyprctl', 'activewindow', '-j'], 
+        capture_output=True, 
+        text=True
+    )
+    
+    if result.returncode == 0 and result.stdout.strip():
+        data = json.loads(result.stdout)
+        return data['address']
+    return None
 
 def find_workspace_position(ws_id):
     for row in range(ROWS):
@@ -54,7 +47,7 @@ def find_workspace_position(ws_id):
                 return row, col
     return None, None
 
-def main():
+if __name__ == '__main__':
     if len(sys.argv) != 2: sys.exit(1)
     
     direction = sys.argv[1]
@@ -91,13 +84,8 @@ def main():
     next_ws = MATRIX[next_row][next_col]
     
     if direction in ["nextU", "nextD"]:
-        # Для вертикальных перемещений устанавливаем анимацию
         subprocess.run(['hyprctl', 'keyword', 'animation workspaces,1,6,overshot,slidevert'])
         subprocess.run(['hyprctl', 'dispatch', 'movetoworkspace', str(next_ws)])
         subprocess.run(['hyprctl', 'keyword', 'animation workspaces,1,6,overshot,slide'])
     else:
-        # Горизонтальные перемещения
         subprocess.run(['hyprctl', 'dispatch', 'movetoworkspace', str(next_ws)])
-
-if __name__ == '__main__':
-    main()

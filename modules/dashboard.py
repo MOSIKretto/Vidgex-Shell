@@ -1,12 +1,10 @@
 from fabric.widgets.box import Box
-from fabric.widgets.label import Label
 from fabric.widgets.stack import Stack
 
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-import modules.icons as icons
 from modules.mixer import Mixer
 from modules.wallpapers import WallpaperSelector
 from modules.widgets import Widgets
@@ -22,7 +20,7 @@ class Dashboard(Box):
             all_visible=True,
         )
 
-        self.notch = kwargs["notch"]
+        self.notch = kwargs.get("notch")
 
         self.widgets = Widgets(notch=self.notch)
         self.wallpapers = WallpaperSelector()
@@ -62,30 +60,6 @@ class Dashboard(Box):
         if event.button == 3:
             self.notch.close_notch()
 
-    def _setup_switcher_icons(self):
-        icon_map = {
-            "Виджеты": {"icon": icons.widgets, "name": "widgets"},
-            "Обои": {"icon": icons.wallpapers, "name": "wallpapers"},
-            "Аудио": {"icon": icons.speaker, "name": "mixer"},
-        }
-
-        buttons = self.switcher.get_children()
-        for btn in buttons:
-            if isinstance(btn, Gtk.ToggleButton):
-                for child in btn.get_children():
-                    if isinstance(child, Gtk.Label):
-                        label_text = child.get_text()
-                        if label_text in icon_map:
-                            details = icon_map[label_text]
-                            btn.remove(child)
-                            new_label = Label(
-                                name=f"switcher-icon-{details['name']}", 
-                                markup=details["icon"]
-                            )
-                            btn.add(new_label)
-                            new_label.show_all()
-        return False
-
     def go_to_next_child(self):
         children = self.stack.get_children()
         current_index = self.get_current_index(children)
@@ -109,6 +83,11 @@ class Dashboard(Box):
             self.wallpapers.search_entry.grab_focus()
 
     def go_to_section(self, section_name):
-        if section_name == "widgets": self.stack.set_visible_child(self.widgets)
-        elif section_name == "wallpapers": self.stack.set_visible_child(self.wallpapers)
-        elif section_name == "mixer": self.stack.set_visible_child(self.mixer)
+        section_map = {
+            "widgets": self.widgets,
+            "wallpapers": self.wallpapers,
+            "mixer": self.mixer,
+        }
+        widget = section_map.get(section_name)
+        if widget:
+            self.stack.set_visible_child(widget)

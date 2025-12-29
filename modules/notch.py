@@ -31,14 +31,8 @@ class Notch(Window):
         self._bar_ref = None
 
         super().__init__(
-            name="notch",
-            layer="top",
-            anchor=self._get_anchor(),
+            anchor="top",
             margin="-40px 0px 0px 0px",
-            keyboard_mode="none",
-            exclusivity="none",
-            visible=True,
-            all_visible=True,
             monitor=self.monitor_id,
         )
         
@@ -79,18 +73,10 @@ class Notch(Window):
         else:
             self._bar_ref = None
 
-    def _get_anchor(self):        
-        if "Top" == "start": return "top start"
-        elif "Top" == "end": return "top end"
-        else: return "top"
-
     def _init_components(self):
         self.monitor_manager = None
-        try:
-            from utils.monitor_manager import get_monitor_manager
-            self.monitor_manager = get_monitor_manager()
-        except:
-            pass
+        from utils.monitor_manager import get_monitor_manager
+        self.monitor_manager = get_monitor_manager()
         
         self.icon_resolver = IconResolver()
         self._icon_cache = {}
@@ -101,15 +87,12 @@ class Notch(Window):
 
     def _build_app_identifiers_cache(self):
         cache = {}
-        try:
-            apps = get_desktop_applications()
-            for app in apps:
-                identifiers = self._extract_app_identifiers(app)
-                for identifier in identifiers:
-                    if identifier and identifier.lower() not in cache:
-                        cache[identifier.lower()] = app
-        except:
-            pass
+        apps = get_desktop_applications()
+        for app in apps:
+            identifiers = self._extract_app_identifiers(app)
+            for identifier in identifiers:
+                if identifier and identifier.lower() not in cache:
+                    cache[identifier.lower()] = app
         return cache
 
     def _extract_app_identifiers(self, app):
@@ -157,25 +140,19 @@ class Notch(Window):
             icon_size=20
         )
 
-        self.window_icon.hide()
-
         self.workspace_label = Label(
             name="workspace-label"
         )
 
         self.active_window_container = Box(
             name="active-window-container",
-            orientation="h",
             spacing=8,
-            h_align="center",
-            v_align="center",
             children=[self.window_icon, self.workspace_label],
         )
 
         self.active_window_box = Box(
             name="active-window-box",
             h_align="center",
-            v_align="center",
             children=[self.active_window_container],
         )
 
@@ -190,34 +167,22 @@ class Notch(Window):
     def _setup_compact_stack(self):
         self.compact_stack = Stack(
             name="notch-compact-stack",
-            v_expand=True, 
-            h_expand=True,
             transition_type="slide-up-down", 
             transition_duration=100,
         )
-
+    
         self.compact_stack.add_named(self.active_window_box, "window")
-        self.compact_stack.set_visible_child_name("window")
-
+        
         self.compact = Gtk.EventBox(name="notch-compact")
         self.compact.set_visible(True)
         self.compact.add(self.compact_stack)
-        
-        event_mask = Gdk.EventMask.BUTTON_PRESS_MASK
-        event_mask |= Gdk.EventMask.SCROLL_MASK
-        event_mask |= Gdk.EventMask.SMOOTH_SCROLL_MASK
-        self.compact.add_events(event_mask)
-        
-        self.compact.connect("scroll-event", self._on_compact_scroll)
+
         self.compact.connect("button-press-event", self._on_active_window_click)
         self.compact.connect("enter-notify-event", self._on_button_enter)
-        self.compact.connect("leave-notify-event", self._on_button_leave)
 
     def _setup_main_stack_container(self):
         self.stack = Stack(
             name="notch-content",
-            v_expand=True, 
-            h_expand=True,
             transition_type="crossfade", 
             transition_duration=250,
         )
@@ -234,7 +199,6 @@ class Notch(Window):
         self.stack.add_style_class("panel")
         self.stack.add_style_class("bottom")
         self.stack.add_style_class("Top")
-        
 
     def _set_widget_sizes(self):
         self.compact.set_size_request(260, 40)
@@ -264,23 +228,14 @@ class Notch(Window):
 
         self.notch_box = CenterBox(
             name="notch-box",
-            orientation="h",
-            h_align="center",
-            v_align="center",
             start_children=self.corner_left,
             center_children=self.stack,
             end_children=self.corner_right,
         )
         self.notch_box.add_style_class("notch")
-
-        if "Notch":
-            transition_type = "slide-down"
-        else:
-            transition_type = "slide-up"
         
         self.notch_revealer = Revealer(
             name="notch-revealer",
-            transition_type=transition_type,
             transition_duration=250,
             child_revealed=True,
             child=self.notch_box,
@@ -289,7 +244,6 @@ class Notch(Window):
 
         self.notch_complete = Box(
             name="notch-complete",
-            orientation="h",
             children=[self.notch_revealer]
         )
 
@@ -326,7 +280,7 @@ class Notch(Window):
             handler1 = conn.connect("event::activewindow", self._on_active_changed_debounced)
             handler2 = conn.connect("event::workspace", self._on_active_changed_debounced)
             self._hypr_conn_handlers = [handler1, handler2]
-            self._signal_handlers.extend([(conn, h) for h in [handler1, handler2]])
+            self._signal_handlers.extend([(conn, handler1), (conn, handler2)])
         
         timer_id = GLib.timeout_add(500, self._update_window_display)
         self._window_update_timer = timer_id
@@ -337,11 +291,9 @@ class Notch(Window):
     def _on_active_changed_debounced(self, conn, event):
         if self._debounce_timer:
             GLib.source_remove(self._debounce_timer)
-        self._debounce_timer = GLib.timeout_add(100, self._on_active_changed, conn, event)
+            self._debounce_timer = None
+        self._debounce_timer = GLib.timeout_add(100, self._update_window_display)
         return False
-
-    def _on_active_changed(self, conn, event):
-        GLib.idle_add(self._update_window_display)
 
     def _finalize_initialization(self):
         self.show_all()
@@ -354,23 +306,14 @@ class Notch(Window):
                 window.set_event_compression(True)
 
     def open_notch(self, widget_name):
-        if not widget_name:
-            return
-            
-        if self.monitor_manager and not self._handle_monitor_focus(widget_name):
+        if self.monitor_manager and self._handle_monitor_focus(widget_name):
             return
             
         self._open_notch_internal(widget_name)
 
     def toggle_notch(self, widget_name):
-        if not widget_name:
-            return
-            
         if self._state['notch_open'] and self._state['current_widget'] == widget_name:
             self.close_notch()
-            return
-        
-        if self.monitor_manager and not self._handle_monitor_focus(widget_name):
             return
             
         self._open_notch_internal(widget_name)
@@ -395,18 +338,20 @@ class Notch(Window):
         self._state['notch_open'] = True
         self._state['current_widget'] = widget_name
 
+        self.bar.revealer_right.set_reveal_child(False)
+        self.bar.revealer_left.set_reveal_child(False)
+
     def _show_widgets(self, widgets):
         self.stack.set_visible_child(self.dashboard)
         self.dashboard.go_to_section("widgets")
-        if hasattr(self, 'applet_stack') and hasattr(self, widgets):
-            self.applet_stack.set_visible_child(eval(f"self.{widgets}"))
+        self.applet_stack.set_visible_child(getattr(self, widgets))
 
     def _show_otherboards(self, board):
         self.stack.set_visible_child(self.dashboard)
         self.dashboard.go_to_section(board)
 
     def _show_other(self, other):
-        self.stack.set_visible_child(eval(f"self.{other}"))
+        self.stack.set_visible_child(getattr(self, other))
 
     def _show_cliphist(self):
         self.stack.set_visible_child(self.cliphist)
@@ -419,86 +364,82 @@ class Notch(Window):
         entry.set_text("")
         entry.grab_focus()
 
-
     def close_notch(self):
-        if not self._state['notch_open']:
-            return
-            
-        try:
-            if self.monitor_manager:
-                self.monitor_manager.set_notch_state(self.monitor_id, False)
-        except:
-            pass
+        self.monitor_manager.set_notch_state(self.monitor_id, False)
             
         self.set_keyboard_mode("none")
         self.notch_box.remove_style_class("open")
         self.stack.remove_style_class("open")
 
-        if self.bar:
-            try:
-                self.bar.revealer_right.set_reveal_child(True)
-                self.bar.revealer_left.set_reveal_child(True)
-            except:
-                pass
+        self.bar.revealer_right.set_reveal_child(True)
+        self.bar.revealer_left.set_reveal_child(True)
         
-        if hasattr(self, 'applet_stack') and hasattr(self, 'nhistory'):
-            self.applet_stack.set_visible_child(self.nhistory)
+        self.applet_stack.set_visible_child(self.nhistory)
             
         self._state['notch_open'] = False
         self._state['current_widget'] = None
         self.stack.set_visible_child(self.compact)
 
     def _handle_monitor_focus(self, widget_name):
-        try:
-            real_focus = self._get_real_focused_monitor_id()
-            if real_focus is not None:
-                self.monitor_manager._focused_monitor_id = real_focus
-                    
-            focused_id = self.monitor_manager.get_focused_monitor_id()
-            if focused_id != self.monitor_id:
-                self.close_notch()
-                focused_notch = self.monitor_manager.get_instance(focused_id, 'notch')
-                if focused_notch:
-                    focused_notch._open_notch_internal(widget_name)
-                return False
+        real_focus = self._get_real_focused_monitor_id()
+        if real_focus is not None:
+            self.monitor_manager._focused_monitor_id = real_focus
                 
-            self.monitor_manager.close_all_notches_except(self.monitor_id)
-            self.monitor_manager.set_notch_state(self.monitor_id, True, widget_name)
+        focused_id = self.monitor_manager.get_focused_monitor_id()
+        if focused_id != self.monitor_id:
+            self.close_notch()
+            focused_notch = self.monitor_manager.get_instance(focused_id, 'notch')
+            if focused_notch:
+                focused_notch._open_notch_internal(widget_name)
             return True
-        except:
-            return True
+            
+        self.monitor_manager.close_all_notches_except(self.monitor_id)
+        self.monitor_manager.set_notch_state(self.monitor_id, True, widget_name)
+        return False
 
     _subprocess_cache = {}
     _cache_timestamps = {}
+    
+    @classmethod
+    def _cleanup_class_cache(cls):
+        """Cleanup class-level cache to prevent memory leaks"""
+        current_time = time.time()
+        keys_to_remove = []
+        for key, cached_time in cls._cache_timestamps.items():
+            if current_time - cached_time >= 2.0:
+                keys_to_remove.append(key)
+        for key in keys_to_remove:
+            cls._subprocess_cache.pop(key, None)
+            cls._cache_timestamps.pop(key, None)
 
     def _get_real_focused_monitor_id(self):
         cache_key = "focused_monitor"
         current_time = time.time()
 
-        if cache_key in self._subprocess_cache:
-            cached_time = self._cache_timestamps.get(cache_key, 0)
-            if current_time - cached_time < 2.0:
-                return self._subprocess_cache[cache_key]
-            else:
-                del self._subprocess_cache[cache_key]
-                del self._cache_timestamps[cache_key]
+        # Cleanup old cache entries
+        Notch._cleanup_class_cache()
 
-        try:
-            result = subprocess.run(
-                ["hyprctl", "monitors", "-j"],
-                capture_output=True,
-                text=True,
-                timeout=0.3
-            )
-            if result.returncode == 0:
-                monitors = json.loads(result.stdout)
-                for i, monitor in enumerate(monitors):
-                    if monitor.get('focused', False):
-                        self._subprocess_cache[cache_key] = i
-                        self._cache_timestamps[cache_key] = current_time
-                        return i
-        except:
-            pass
+        if cache_key in Notch._subprocess_cache:
+            cached_time = Notch._cache_timestamps.get(cache_key, 0)
+            if current_time - cached_time < 2.0:
+                return Notch._subprocess_cache[cache_key]
+            else:
+                Notch._subprocess_cache.pop(cache_key, None)
+                Notch._cache_timestamps.pop(cache_key, None)
+
+        result = subprocess.run(
+            ["hyprctl", "monitors", "-j"],
+            capture_output=True,
+            text=True,
+            timeout=0.3
+        )
+        if result.returncode == 0:
+            monitors = json.loads(result.stdout)
+            for i, monitor in enumerate(monitors):
+                if monitor.get('focused', False):
+                    Notch._subprocess_cache[cache_key] = i
+                    Notch._cache_timestamps[cache_key] = current_time
+                    return i
 
         return None
 
@@ -529,8 +470,6 @@ class Notch(Window):
         return False
 
     def _on_notch_hover_leave(self, widget, event):
-        if event.detail == Gdk.NotifyType.INFERIOR:
-            return False
         self._state['hovered'] = False
         return False
 
@@ -563,73 +502,54 @@ class Notch(Window):
             self._state['scrolling'] = False
             return False
             
-        GLib.timeout_add(500, reset_scrolling)
+        timer_id = GLib.timeout_add(500, reset_scrolling)
+        self._timers.append(timer_id)
         return True
 
     def _update_window_display(self, *args):
-        try:
-            workspace_id, window_title = self._get_current_window_and_workspace()
-            window_class = self._get_current_window_class()
-            
-            self.workspace_label.set_label(f"Workspace {workspace_id}")
-            
-            if window_class and window_class.strip():
-                self._set_icon_from_hyprland()
-                self.window_icon.show()
-                self.active_window_container.set_spacing(8)
-            else:
-                self.window_icon.hide()
-                self.active_window_container.set_spacing(0)
+        workspace_id, window_title = self._get_current_window_and_workspace()
+        window_class = self._get_current_window_class()
+        
+        self.workspace_label.set_label(f"Workspace {workspace_id}")
+        
+        if window_class and window_class.strip():
+            self._set_icon_from_hyprland()
+            self.window_icon.show()
+            self.active_window_container.set_spacing(8)
+        else:
+            self.window_icon.hide()
+            self.active_window_container.set_spacing(0)
                 
-        except:
-            self._set_fallback_display()
 
     def _get_current_window_and_workspace(self):
-        try:
-            if get_hyprland_connection():
-                # Получаем данные активного окна
-                window_data = json.loads(get_hyprland_connection().send_command("j/activewindow").reply.decode())
-                window_title = window_data.get("title", "")
-                
-                # Получаем данные активного рабочего пространства
-                workspace_data = json.loads(get_hyprland_connection().send_command("j/activeworkspace").reply.decode())
-                workspace_id = workspace_data.get("id", 1)
-                
-                return workspace_id, window_title
-        except Exception:
-            pass
+        if get_hyprland_connection():
+            window_data = json.loads(get_hyprland_connection().send_command("j/activewindow").reply.decode())
+            window_title = window_data.get("title", "")
+            
+            workspace_data = json.loads(get_hyprland_connection().send_command("j/activeworkspace").reply.decode())
+            workspace_id = workspace_data.get("id", 1)
+            
+            return workspace_id, window_title
+        
         return 1, ""
 
     def _set_icon_from_hyprland(self):
-        try:
-            if not get_hyprland_connection():
-                return
-                
-            window_data = json.loads(get_hyprland_connection().send_command("j/activewindow").reply.decode())
-            app_id = window_data.get("initialClass") or window_data.get("class", "")
+        window_data = json.loads(get_hyprland_connection().send_command("j/activewindow").reply.decode())
+        app_id = window_data.get("initialClass") or window_data.get("class", "")
+        
+        for icon_name in ["application-x-executable", "application-x-executable-symbolic"]:
+            self.window_icon.set_from_icon_name(icon_name, 20)
             
-            if not app_id:
-                return
-                
-            icon = self._get_icon_pixbuf(app_id)
-            if icon:
-                self.window_icon.set_from_pixbuf(icon)
-            else:
-                self._set_fallback_icon()
-                
-        except:
-            pass
+        icon = self._get_icon_pixbuf(app_id)
+        if icon:
+            self.window_icon.set_from_pixbuf(icon)
 
     def _get_icon_pixbuf(self, app_id):
-        if not app_id:
-            return None
-            
         if app_id in self._icon_cache:
             return self._icon_cache[app_id]
-            
-        icon = None
         
         app_key = app_id.lower()
+        icon = None
         if app_key in self._app_identifiers_cache:
             app = self._app_identifiers_cache[app_key]
             icon = app.get_icon_pixbuf(size=20)
@@ -643,19 +563,12 @@ class Notch(Window):
         
         if icon:
             self._icon_cache[app_id] = icon
+            # Limit cache size to prevent memory leaks
             if len(self._icon_cache) > 50:
-                del self._icon_cache[next(iter(self._icon_cache))]
+                oldest_key = next(iter(self._icon_cache))
+                del self._icon_cache[oldest_key]
             
         return icon
-
-    def _set_fallback_icon(self):
-        fallback_icons = ["application-x-executable", "application-x-executable-symbolic"]
-        for icon_name in fallback_icons:
-            try:
-                self.window_icon.set_from_icon_name(icon_name, 20)
-                break
-            except:
-                continue
 
     def _set_fallback_display(self):
         workspace_id, _ = self._get_current_window_and_workspace()
@@ -664,19 +577,15 @@ class Notch(Window):
         self.active_window_container.set_spacing(0)
 
     def _get_current_window_class(self):
-        try:
-            conn = get_hyprland_connection()
-            if conn:
-                data = json.loads(conn.send_command("j/activewindow").reply.decode())
-                return data.get("initialClass") or data.get("class", "")
-        except:
-            pass
+        conn = get_hyprland_connection()
+        if conn:
+            data = json.loads(conn.send_command("j/activewindow").reply.decode())
+            return data.get("initialClass") or data.get("class", "")
+        
         return ""
 
     def _on_key_press(self, widget, event):
-        keyval = event.keyval
-        
-        if keyval == Gdk.KEY_Escape:
+        if event.keyval == Gdk.KEY_Escape:
             self.close_notch()
             return True
 
@@ -689,26 +598,30 @@ class Notch(Window):
     def destroy(self):
         if hasattr(self, '_timers'):
             for timer_id in self._timers:
-                try:
-                    GLib.source_remove(timer_id)
-                except:
-                    pass
+                GLib.source_remove(timer_id)
             self._timers = []
         
         if hasattr(self, '_debounce_timer') and self._debounce_timer:
-            try:
-                GLib.source_remove(self._debounce_timer)
-            except:
-                pass
+            GLib.source_remove(self._debounce_timer)
             self._debounce_timer = None
         
         if hasattr(self, '_signal_handlers'):
             for conn, handler_id in self._signal_handlers:
                 try:
                     conn.disconnect(handler_id)
-                except:
+                except Exception:
                     pass
             self._signal_handlers = []
+        
+        if hasattr(self, '_hypr_conn_handlers'):
+            conn = get_hyprland_connection()
+            if conn:
+                for handler_id in self._hypr_conn_handlers:
+                    try:
+                        conn.disconnect(handler_id)
+                    except Exception:
+                        pass
+            self._hypr_conn_handlers = []
         
         if hasattr(self, '_icon_cache'):
             self._icon_cache.clear()
@@ -721,10 +634,7 @@ class Notch(Window):
             if hasattr(self, widget_name):
                 widget = getattr(self, widget_name)
                 if hasattr(widget, 'destroy'):
-                    try:
-                        widget.destroy()
-                    except:
-                        pass
+                    widget.destroy()
                 setattr(self, widget_name, None)
         
-        super().destroy()
+        super().destroy() 

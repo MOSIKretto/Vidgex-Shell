@@ -11,8 +11,6 @@ import cairo
 
 
 class CircleImage(Gtk.DrawingArea, Widget):
-    """A widget that displays an image in a circular shape with a 1:1 aspect ratio."""
-
     @Property(int, "read-write")
     def angle(self) -> int:
         return self._angle
@@ -30,12 +28,7 @@ class CircleImage(Gtk.DrawingArea, Widget):
         visible: bool = True,
         all_visible: bool = False,
         style: str | None = None,
-        tooltip_text: str | None = None,
         tooltip_markup: str | None = None,
-        h_align: Literal["fill", "start", "end", "center", "baseline"] | Gtk.Align | None = None,
-        v_align: Literal["fill", "start", "end", "center", "baseline"] | Gtk.Align | None = None,
-        h_expand: bool = False,
-        v_expand: bool = False,
         size: int | None = None,
         **kwargs,
     ):
@@ -46,18 +39,13 @@ class CircleImage(Gtk.DrawingArea, Widget):
             visible=visible,
             all_visible=all_visible,
             style=style,
-            tooltip_text=tooltip_text,
             tooltip_markup=tooltip_markup,
-            h_align=h_align,
-            v_align=v_align,
-            h_expand=h_expand,
-            v_expand=v_expand,
             size=size,
             **kwargs,
         )
-        self.size = size if size is not None else 100  # Default size if not provided
+        self.size = size if size is not None else 100
         self._angle = 0
-        self._orig_image: GdkPixbuf.Pixbuf | None = None  # Original image for reprocessing
+        self._orig_image: GdkPixbuf.Pixbuf | None = None
         self._image: GdkPixbuf.Pixbuf | None = None
         if image_file:
             pix = GdkPixbuf.Pixbuf.new_from_file(image_file)
@@ -69,7 +57,6 @@ class CircleImage(Gtk.DrawingArea, Widget):
         self.connect("draw", self.on_draw)
 
     def _process_image(self, pixbuf: GdkPixbuf.Pixbuf) -> GdkPixbuf.Pixbuf:
-        """Crop the image to a centered square and scale it to the widget’s size."""
         width, height = pixbuf.get_width(), pixbuf.get_height()
         if width != height:
             square_size = min(width, height)
@@ -85,10 +72,8 @@ class CircleImage(Gtk.DrawingArea, Widget):
     def on_draw(self, widget: "CircleImage", ctx: cairo.Context):
         if self._image:
             ctx.save()
-            # Create a circular clipping path
             ctx.arc(self.size / 2, self.size / 2, self.size / 2, 0, 2 * math.pi)
             ctx.clip()
-            # Rotate around the center of the square image
             ctx.translate(self.size / 2, self.size / 2)
             ctx.rotate(self._angle * math.pi / 180.0)
             ctx.translate(-self.size / 2, -self.size / 2)

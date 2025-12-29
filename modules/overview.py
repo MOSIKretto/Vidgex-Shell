@@ -12,15 +12,11 @@ from gi.repository import Gdk, Gtk, GLib, GdkPixbuf
 
 import json
 import cairo
-import logging
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 import modules.icons as icons
 from utils.icon_resolver import IconResolver
-
-# Настройка логирования
-logger = logging.getLogger(__name__)
 
 # Глобальные константы
 BASE_SCALE = 0.1
@@ -29,14 +25,9 @@ UPDATE_DELAY_MS = 150
 MAX_WORKSPACES = 9
 ICON_CACHE_SIZE = 100
 
-try:
-    screen = Gdk.Screen.get_default()
-    CURRENT_WIDTH = screen.get_width()
-    CURRENT_HEIGHT = screen.get_height()
-except Exception as e:
-    logger.warning(f"Could not get screen dimensions: {e}")
-    CURRENT_WIDTH = 1920
-    CURRENT_HEIGHT = 1080
+screen = Gdk.Screen.get_default()
+CURRENT_WIDTH = screen.get_width()
+CURRENT_HEIGHT = screen.get_height()
 
 icon_resolver = IconResolver()
 connection = Hyprland()
@@ -100,51 +91,43 @@ class WindowManager:
         self._cached_monitors = None
     
     def get_monitors(self) -> Dict[int, MonitorInfo]:
-        try:
-            monitors_data = connection.send_command("j/monitors").reply.decode()
-            monitors_json = json.loads(monitors_data)
-            
-            monitors = {}
-            for monitor in monitors_json:
-                monitors[monitor["id"]] = MonitorInfo(
-                    width=monitor["width"],
-                    height=monitor["height"],
-                    scale=monitor.get("scale", 1.0),
-                    x=monitor["x"],
-                    y=monitor["y"]
-                )
-            
-            self._cached_monitors = monitors
-            return monitors
-        except Exception as e:
-            logger.error(f"Error getting monitors: {e}")
-            return self._cached_monitors or {}
+        monitors_data = connection.send_command("j/monitors").reply.decode()
+        monitors_json = json.loads(monitors_data)
+        
+        monitors = {}
+        for monitor in monitors_json:
+            monitors[monitor["id"]] = MonitorInfo(
+                width=monitor["width"],
+                height=monitor["height"],
+                scale=monitor.get("scale", 1.0),
+                x=monitor["x"],
+                y=monitor["y"]
+            )
+        
+        self._cached_monitors = monitors
+        return monitors
     
     def get_windows(self) -> List[WindowInfo]:
-        try:
-            clients_data = connection.send_command("j/clients").reply.decode()
-            clients_json = json.loads(clients_data)
-            monitors = self.get_monitors()
-            
-            windows = []
-            for client in clients_json:
-                monitor_info = monitors.get(client["monitor"], MonitorInfo(CURRENT_WIDTH, CURRENT_HEIGHT))
-                windows.append(WindowInfo(
-                    address=client["address"],
-                    title=client["title"],
-                    app_id=client["initialClass"],
-                    workspace_id=client["workspace"]["id"],
-                    monitor_id=client["monitor"],
-                    position=tuple(client["at"]),
-                    size=tuple(client["size"]),
-                    transform=client.get("transform", 0)
-                ))
-            
-            self._cached_clients = windows
-            return windows
-        except Exception as e:
-            logger.error(f"Error getting windows: {e}")
-            return self._cached_clients or []
+        clients_data = connection.send_command("j/clients").reply.decode()
+        clients_json = json.loads(clients_data)
+        monitors = self.get_monitors()
+        
+        windows = []
+        for client in clients_json:
+            monitors.get(client["monitor"], MonitorInfo(CURRENT_WIDTH, CURRENT_HEIGHT))
+            windows.append(WindowInfo(
+                address=client["address"],
+                title=client["title"],
+                app_id=client["initialClass"],
+                workspace_id=client["workspace"]["id"],
+                monitor_id=client["monitor"],
+                position=tuple(client["at"]),
+                size=tuple(client["size"]),
+                transform=client.get("transform", 0)
+            ))
+        
+        self._cached_clients = windows
+        return windows
     
     def clear_cache(self):
         self._cached_clients = None
@@ -164,25 +147,17 @@ class ApplicationManager:
         current_time = GLib.get_monotonic_time() / 1000000
         
         if current_time - self._last_update > self._update_interval:
-            try:
-                self._all_apps = get_desktop_applications()
-                self._app_identifiers = self._build_app_identifiers_map()
-                self._last_update = current_time
-                logger.info(f"Loaded {len(self._all_apps)} applications")
-            except Exception as e:
-                logger.error(f"Error loading applications: {e}")
+            self._all_apps = get_desktop_applications()
+            self._app_identifiers = self._build_app_identifiers_map()
+            self._last_update = current_time
     
     def _normalize_window_class(self, class_name: str) -> str:
-        if not class_name:
-            return ""
         
         normalized = class_name.lower()
         
-        suffixes = [".bin", ".exe", ".so", "-bin", "-gtk", ".AppImage"]
-        for suffix in suffixes:
+        for suffix in [".bin", ".exe", ".so", "-bin", "-gtk", ".AppImage"]:
             if normalized.endswith(suffix):
                 normalized = normalized[:-len(suffix)]
-                break
         
         return normalized
     
@@ -192,10 +167,8 @@ class ApplicationManager:
         for app in self._all_apps:
             keys = set()
             
-            if app.name:
-                keys.add(app.name.lower())
-            if app.display_name:
-                keys.add(app.display_name.lower())
+            if app.name: keys.add(app.name.lower())
+            if app.display_name: keys.add(app.display_name.lower())
             if app.window_class:
                 keys.add(app.window_class.lower())
                 keys.add(self._normalize_window_class(app.window_class))
@@ -219,8 +192,6 @@ class ApplicationManager:
         return identifiers
     
     def find_app(self, app_identifier: str) -> Optional[object]:
-        if not app_identifier:
-            return None
         
         self._load_applications()
         
@@ -246,7 +217,6 @@ class ApplicationManager:
         
         return None
 
-
 def create_surface_from_widget(widget: Gtk.Widget) -> cairo.ImageSurface:
     alloc = widget.get_allocation()
     surface = cairo.ImageSurface(
@@ -262,7 +232,6 @@ def create_surface_from_widget(widget: Gtk.Widget) -> cairo.ImageSurface:
     
     widget.draw(cr)
     return surface
-
 
 class HyprlandWindowButton(Button):
     def __init__(
@@ -320,10 +289,7 @@ class HyprlandWindowButton(Button):
         
         icon_pixbuf = None
         if desktop_app and hasattr(desktop_app, 'get_icon_pixbuf'):
-            try:
-                icon_pixbuf = desktop_app.get_icon_pixbuf(size=size)
-            except Exception as e:
-                logger.debug(f"Error getting icon from desktop app: {e}")
+            icon_pixbuf = desktop_app.get_icon_pixbuf(size=size)
         
         if not icon_pixbuf:
             icon_pixbuf = icon_resolver.get_icon_pixbuf(self.window_info.app_id, size)
@@ -335,9 +301,7 @@ class HyprlandWindowButton(Button):
                     break
         
         if icon_pixbuf and (icon_pixbuf.get_width() != size or icon_pixbuf.get_height() != size):
-            icon_pixbuf = icon_pixbuf.scale_simple(
-                size, size, GdkPixbuf.InterpType.BILINEAR
-            )
+            icon_pixbuf = icon_pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
         
         if icon_pixbuf:
             self.icon_cache.put(self.window_info.app_id, size, icon_pixbuf)
@@ -363,8 +327,7 @@ class HyprlandWindowButton(Button):
                 return True
         return False
     
-    def _on_drag_data_get(self, widget: Gtk.Widget, context: Gdk.DragContext, 
-                         data: Gtk.SelectionData, info: int, time: int):
+    def _on_drag_data_get(self, widget: Gtk.Widget, context: Gdk.DragContext, data: Gtk.SelectionData, info: int, time: int):
         data.set_text(self.window_info.address, -1)
     
     def _on_drag_begin(self, widget: Gtk.Widget, context: Gdk.DragContext):
@@ -378,15 +341,11 @@ class HyprlandWindowButton(Button):
         ]
         
         for cmd in commands:
-            try:
-                connection.send_command(cmd)
-            except Exception as e:
-                logger.error(f"Error executing command {cmd}: {e}")
+            connection.send_command(cmd)
 
 
 class WorkspaceEventBox(EventBox):
-    def __init__(self, workspace_id: int, has_windows: bool, fixed: Optional[Gtk.Fixed] = None, 
-                 monitor_info: Optional[MonitorInfo] = None):
+    def __init__(self, workspace_id: int, has_windows: bool, fixed: Optional[Gtk.Fixed] = None, monitor_info: Optional[MonitorInfo] = None):
         self.workspace_id = workspace_id
         self.has_windows = has_windows
         
@@ -418,8 +377,6 @@ class WorkspaceEventBox(EventBox):
                 name="overview-add-label",
                 h_expand=True,
                 v_expand=True,
-                halign=Gtk.Align.CENTER,
-                valign=Gtk.Align.CENTER,
                 markup=icons.circle_plus,
             )
             main_container.add(plus_label)
@@ -430,8 +387,6 @@ class WorkspaceEventBox(EventBox):
         
         super().__init__(
             name="overview-workspace-bg",
-            h_expand=True,
-            v_expand=True,
             child=main_container,
             on_drag_data_received=self._on_drag_data_received,
             on_button_press_event=self._on_button_press,
@@ -444,23 +399,14 @@ class WorkspaceEventBox(EventBox):
             Gdk.DragAction.COPY,
         )
     
-    def _on_drag_data_received(self, widget: Gtk.Widget, context: Gdk.DragContext,
-                              x: int, y: int, data: Gtk.SelectionData, info: int, time: int):
-        # Разрешаем перемещение окон на все рабочие столы (включая пустые)
-        data_text = data.get_data().decode()
-        try:
-            connection.send_command(f"/dispatch movetoworkspacesilent {self.workspace_id},address:{data_text}")
-        except Exception as e:
-            logger.error(f"Error moving window to workspace: {e}")
+    def _on_drag_data_received(self, widget: Gtk.Widget, context: Gdk.DragContext, x: int, y: int, data: Gtk.SelectionData, info: int, time: int):
+        connection.send_command(f"/dispatch movetoworkspacesilent {self.workspace_id},address:{data.get_data().decode()}")
     
     def _on_button_press(self, widget: Gtk.Widget, event: Gdk.EventButton) -> bool:
         # Разрешаем клик только для рабочих столов с окнами
         if event.button == 1 and self.has_windows:
-            try:
-                connection.send_command(f"/dispatch workspace {self.workspace_id}")
-                return True
-            except Exception as e:
-                logger.error(f"Error switching to workspace: {e}")
+            connection.send_command(f"/dispatch workspace {self.workspace_id}")
+            return True
         return False
 
 
@@ -508,10 +454,7 @@ class Overview(Box):
         ]
         
         for event, handler in events:
-            try:
-                connection.connect(event, handler)
-            except Exception as e:
-                logger.warning(f"Could not connect to event {event}: {e}")
+            connection.connect(event, handler)
     
     def schedule_update(self, *args):
         if self._update_pending:
@@ -531,12 +474,8 @@ class Overview(Box):
         self._update_pending = False
         self._update_timer_id = 0
         
-        try:
-            self._update_ui()
-            return False
-        except Exception as e:
-            logger.error(f"Error during UI update: {e}")
-            return False
+        self._update_ui()
+        return False
     
     def _update_ui(self):
         self._clear_ui()
@@ -584,8 +523,7 @@ class Overview(Box):
         
         self.show_all()
     
-    def _add_window_to_container(self, window: WindowInfo, container: Gtk.Fixed, 
-                                monitors: Dict[int, MonitorInfo], scale: float):
+    def _add_window_to_container(self, window: WindowInfo, container: Gtk.Fixed, monitors: Dict[int, MonitorInfo], scale: float):
         monitor_info = monitors.get(window.monitor_id, MonitorInfo(CURRENT_WIDTH, CURRENT_HEIGHT))
         effective_scale = BASE_SCALE * scale
         
@@ -603,8 +541,7 @@ class Overview(Box):
         container.put(button, int(pos_x), int(pos_y))
         self.window_buttons[window.address] = button
     
-    def _create_workspace_widget(self, workspace_id: int, has_windows: bool, fixed_container: Gtk.Fixed, 
-                                monitor_info: MonitorInfo) -> Box:
+    def _create_workspace_widget(self, workspace_id: int, has_windows: bool, fixed_container: Gtk.Fixed, monitor_info: MonitorInfo) -> Box:
         workspace_label = Label(
             name="overview-workspace-label", 
             label=f"Workspace {workspace_id}"

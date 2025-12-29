@@ -33,30 +33,21 @@ class ClipHistoryManager:
         self.image_cache: Dict[str, GdkPixbuf.Pixbuf] = {}
     
     def load_items(self) -> List[ClipboardItem]:
-        try:
-            result = subprocess.run(["cliphist", "list"], capture_output=True, text=True)
-            return self._parse_items(result.stdout)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return []
+        result = subprocess.run(["cliphist", "list"], capture_output=True, text=True)
+        return self._parse_items(result.stdout)
     
     def decode_item(self, item_id: str) -> Optional[bytes]:
-        try:
-            result = subprocess.run(["cliphist", "decode", item_id], capture_output=True)
-            return result.stdout if result.returncode == 0 else None
-        except subprocess.CalledProcessError:
-            return None
+        result = subprocess.run(["cliphist", "decode", item_id], capture_output=True)
+        return result.stdout if result.returncode == 0 else None
     
     def manage_clipboard(self, action: str, item_id: Optional[str] = None) -> bool:
-        try:
-            if action == "delete" and item_id:
-                subprocess.run(["cliphist", "delete", item_id], check=True)
-                return True
-            elif action == "clear":
-                subprocess.run(["cliphist", "wipe"], check=True)
-                return True
-            return False
-        except subprocess.CalledProcessError:
-            return False
+        if action == "delete" and item_id:
+            subprocess.run(["cliphist", "delete", item_id], check=True)
+            return True
+        elif action == "clear":
+            subprocess.run(["cliphist", "wipe"], check=True)
+            return True
+        return False
     
     def _parse_items(self, output: str) -> List[ClipboardItem]:
         items = []
@@ -95,29 +86,26 @@ class ClipHistoryManager:
         future.add_done_callback(lambda f: self._on_image_loaded(f, item.item_id, callback))
     
     def _load_image_preview(self, item: ClipboardItem) -> Optional[GdkPixbuf.Pixbuf]:
-        try:
-            image_data = self.decode_item(item.item_id)
-            if not image_data:
-                return None
-            
-            loader = GdkPixbuf.PixbufLoader()
-            loader.write(image_data)
-            loader.close()
-            pixbuf = loader.get_pixbuf()
-            
-            max_size = 72
-            width, height = pixbuf.get_width(), pixbuf.get_height()
-            
-            if width > height:
-                new_width = max_size
-                new_height = int(height * max_size / width)
-            else:
-                new_height = max_size
-                new_width = int(width * max_size / height)
-            
-            return pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
-        except Exception:
+        image_data = self.decode_item(item.item_id)
+        if not image_data:
             return None
+        
+        loader = GdkPixbuf.PixbufLoader()
+        loader.write(image_data)
+        loader.close()
+        pixbuf = loader.get_pixbuf()
+        
+        max_size = 72
+        width, height = pixbuf.get_width(), pixbuf.get_height()
+        
+        if width > height:
+            new_width = max_size
+            new_height = int(height * max_size / width)
+        else:
+            new_height = max_size
+            new_width = int(width * max_size / height)
+        
+        return pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
     
     def _on_image_loaded(self, future: Future, item_id: str, callback) -> None:
         if future.cancelled():
@@ -131,26 +119,20 @@ class ClipHistoryManager:
             self.futures.pop(item_id, None)
     
     def copy_to_clipboard(self, item_id: str) -> bool:
-        try:
-            image_data = self.decode_item(item_id)
-            if not image_data:
-                return False
-            
-            subprocess.run(["wl-copy"], input=image_data, check=True)
-            return True
-        except Exception:
+        image_data = self.decode_item(item_id)
+        if not image_data:
             return False
+        
+        subprocess.run(["wl-copy"], input=image_data, check=True)
+        return True
     
     def cleanup(self):
         for future in self.futures.values():
             future.cancel()
         self.executor.shutdown(wait=False)
-        try:
-            import shutil
-            if os.path.exists(self.cache_dir):
-                shutil.rmtree(self.cache_dir)
-        except Exception:
-            pass
+        import shutil
+        if os.path.exists(self.cache_dir):
+            shutil.rmtree(self.cache_dir)
         self.image_cache.clear()
 
 
@@ -184,12 +166,8 @@ class ClipHistory(Box):
         self.scrolled_window = ScrolledWindow(
             name="scrolled-window",
             spacing=10,
-            h_expand=True,
             v_expand=True,
-            h_align="fill",
-            v_align="fill",
             child=self.viewport,
-            propagate_width=False,
             propagate_height=False,
         )
 
@@ -202,7 +180,6 @@ class ClipHistory(Box):
                 Box(
                     name="header_box",
                     spacing=10,
-                    orientation="h",
                     children=[
                         Button(
                             name="clear-button",
@@ -263,7 +240,8 @@ class ClipHistory(Box):
             self.item_widgets[item.item_id] = widget
 
         if end < len(items):
-            GLib.timeout_add(50, self._display_items_batch, items, end, batch_size)
+            timer_id = GLib.timeout_add(50, self._display_items_batch, items, end, batch_size)
+            # Note: These batch timers are short-lived and will complete naturally
         elif self.search_entry.get_text() and self.viewport.get_children():
             self._update_selection(0)
         
@@ -272,7 +250,6 @@ class ClipHistory(Box):
     def _show_empty_state(self):
         self.viewport.add(Box(
             name="no-clip-container",
-            orientation="v",
             h_align="center",
             v_align="center",
             h_expand=True,
@@ -414,5 +391,19 @@ class ClipHistory(Box):
             item = self.clipboard_items[self.selected_index]
             self._manage_clipboard_async("delete", item.item_id)
 
+    def destroy(self):
+        """Cleanup resources"""
+        if hasattr(self, 'manager'):
+            self.manager.cleanup()
+            self.manager = None
+        self.item_widgets.clear()
+        self.clipboard_items.clear()
+        super().destroy()
+    
     def __del__(self):
-        self.manager.cleanup()
+        """Fallback cleanup"""
+        if hasattr(self, 'manager') and self.manager:
+            try:
+                self.manager.cleanup()
+            except Exception:
+                pass
