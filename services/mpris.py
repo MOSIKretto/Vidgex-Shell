@@ -5,10 +5,8 @@ import gi
 from gi.repository import GLib
 
 import contextlib
-from loguru import logger
 
 class PlayerctlImportError(ImportError):
-    """An error to raise when playerctl is not installed."""
     def __init__(self, *args):
         super().__init__(
             "Playerctl is not installed, please install it first",
@@ -228,8 +226,6 @@ class MprisPlayer(Service):
 
 
 class MprisPlayerManager(Service):
-    """A service to manage mpris players."""
-
     @Signal
     def player_appeared(self, player: Playerctl.Player) -> Playerctl.Player: ...
 
@@ -252,13 +248,11 @@ class MprisPlayerManager(Service):
         super().__init__(**kwargs)
 
     def on_name_appeard(self, manager, player_name: Playerctl.PlayerName):
-        logger.info(f"[MprisPlayer] {player_name.name} appeared")
         new_player = Playerctl.Player.new_from_name(player_name)
         manager.manage_player(new_player)
         self.emit("player-appeared", new_player)
 
     def on_name_vanished(self, manager, player_name: Playerctl.PlayerName):
-        logger.info(f"[MprisPlayer] {player_name.name} vanished")
         self.emit("player-vanished", player_name.name)
 
     def add_players(self):
@@ -268,3 +262,10 @@ class MprisPlayerManager(Service):
     @Property(object, "readable")
     def players(self):
         return self._manager.get_property("players")
+    
+    def destroy(self):
+        """Cleanup resources"""
+        if hasattr(self, '_manager') and self._manager:
+            self._manager.disconnect_by_func(self.on_name_appeard)
+            self._manager.disconnect_by_func(self.on_name_vanished)
+            self._manager = None

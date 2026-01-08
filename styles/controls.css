@@ -1,6 +1,6 @@
 #control-slider {
   background-color: var(--surface);
-  margin: 0px 0px 0px 0px;
+  margin: 0;
   border-radius: 2px 10px 10px 2px;
 }
 
@@ -43,10 +43,6 @@
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-#control-slider slider:hover {
-  background-color: var(--foreground);
-}
-
 #control-small {
   padding: 4px;
   background-color: var(--shadow);
@@ -66,6 +62,32 @@
   color: var(--surface-bright);
   border: 3px solid var(--outline);
   border-radius: 12px;
+}
+
+/* Отключение hover эффектов для кнопок mute (яркость, громкость, микрофон) */
+/* Маленькие виджеты в баре (VolumeSmall, MicSmall, BrightnessSmall) */
+#button-volume button:hover,
+#button-mic button:hover,
+#button-brightness button:hover,
+#button-volume button:focus,
+#button-mic button:focus,
+#button-brightness button:focus,
+/* Иконки в слайдерах (VolumeIcon, MicIcon, BrightnessIcon) */
+#vol-icon button:hover,
+#mic-icon button:hover,
+#brightness-icon button:hover,
+#vol-icon button:focus,
+#mic-icon button:focus,
+#brightness-icon button:focus,
+/* Контейнеры для маленьких виджетов */
+#button-bar-vol button:hover,
+#button-bar-mic button:hover,
+#button-bar-brightness button:hover,
+#button-bar-vol button:focus,
+#button-bar-mic button:focus,
+#button-bar-brightness button:focus {
+  background-color: transparent;
+  border-radius: inherit;
 }
 
 #vol-label,

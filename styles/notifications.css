@@ -2,6 +2,7 @@
   border-radius: 16px;
   background-color: var(--surface);
   padding: 8px;
+  margin-top: 8px;
 }
 
 #action-button:hover {
@@ -26,16 +27,11 @@
 }
 
 #notification-summary {
-  font-weight: bold;
   color: var(--primary);
 }
 
 #notification-app-name {
   color: var(--outline);
-}
-
-#action-button {
-  margin-top: 8px;
 }
 
 #notification-stack-box {

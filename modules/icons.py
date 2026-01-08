@@ -1,30 +1,21 @@
-"""
-Оптимизированный модуль иконок с использованием единого шаблона
-"""
 from typing import Dict, Final
 
-# Конфигурация шрифта
 FONT_CONFIG: Final[Dict[str, str]] = {
     'family': 'tabler-icons',
     'weight': 'normal'
 }
 
-# Шаблон для иконок
 SPAN_TEMPLATE: Final[str] = "<span font-family='{family}' font-weight='{weight}'>{{icon}}</span>"
 SPAN: Final[str] = SPAN_TEMPLATE.format(**FONT_CONFIG)
 
 
-class IconManager:
-    """Менеджер для работы с иконками"""
-    
+class IconManager:    
     @staticmethod
     def wrap(icon_code: str) -> str:
-        """Обёртывает код иконки в span-тег"""
         return SPAN.format(icon=icon_code)
     
     @staticmethod
     def get_all() -> Dict[str, str]:
-        """Возвращает все иконки как словарь"""
         return {k: v for k, v in globals().items() 
                 if not k.startswith('_') and isinstance(v, str) and 'span' not in k.lower()}
 

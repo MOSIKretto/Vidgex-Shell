@@ -1,23 +1,21 @@
-@import url("./styles/applets.css");
-@import url("./styles/bar.css");
-@import url("./styles/buttons.css");
-@import url("./styles/calendar.css");
 @import url("./styles/colors.css");
-@import url("./styles/controls.css");
-@import url("./styles/dashboard.css");
-@import url("./styles/extras.css");
-@import url("./styles/launcher.css");
-@import url("./styles/metrics.css");
+@import url("./styles/common.css");
 @import url("./styles/notch.css");
-@import url("./styles/notifications.css");
-@import url("./styles/overview.css");
+@import url("./styles/buttons.css");
+@import url("./styles/applets.css");
+@import url("./styles/controls.css");
+@import url("./styles/launcher.css");
+@import url("./styles/dock.css");
+@import url("./styles/workspaces.css");
+@import url("./styles/metrics.css");
+@import url("./styles/dashboard.css");
+@import url("./styles/calendar.css");
 @import url("./styles/player.css");
 @import url("./styles/power.css");
 @import url("./styles/tools.css");
 @import url("./styles/wallpapers.css");
-@import url("./styles/systemprofiles.css");
-@import url("./styles/workspaces.css");
-@import url("./styles/dock.css");
+@import url("./styles/notifications.css");
+@import url("./styles/overview.css");
 
 * {
   all: unset;
@@ -78,7 +76,6 @@
   border-radius: 16px;
   padding: 8px 16px;
   font-weight: bold;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 #update-button:hover {
@@ -99,7 +96,6 @@
   border-radius: 16px;
   padding: 8px 16px;
   font-weight: bold;
-  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
 #later-button:hover {
@@ -122,4 +118,15 @@
 #toggle-updater-button:hover {
   background-color: var(--outline);
   border-radius: 8px;
+}
+
+#button-bar:active #button-bar-label {
+  border-radius: 40px;
+  color: var(--shadow);
+  background-color: var(--primary);
+}
+
+#corner {
+  background-color: var(--shadow);
+  border-radius: 0;
 }

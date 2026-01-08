@@ -56,16 +56,6 @@
   padding: 4px;
 }
 
-#prev-month-button:hover,
-#next-month-button:hover {
-  background-color: var(--surface-bright);
-}
-
-#prev-month-button:active,
-#next-month-button:active {
-  background-color: var(--primary);
-}
-
 #month-button-label {
   color: var(--primary);
   font-size: 20px;

@@ -1,115 +1,121 @@
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk
-
-import json
-import os
-import re
+from gi.repository import GLib, Gtk, GObject
+import json, threading, pickle, lzma
+from pathlib import Path
 from collections import OrderedDict
-from loguru import logger
 
-MAX_ICON_RESOLVER_CACHE = 100
+# Настройки
+CACHE_DIR = Path(GLib.get_user_cache_dir()) / "vidgex-shell"
+ICON_CACHE_FILE = CACHE_DIR / "icons.json"
+DESKTOP_CACHE_FILE = CACHE_DIR / "desktop_cache.lzma"
 
-ICON_CACHE_FILE = str(GLib.get_user_cache_dir()) + "/ax-shell/icons.json"
-
-class IconResolver:
-    def __init__(self, default_applicaiton_icon="application-x-executable-symbolic"):
-        self._icon_dict = OrderedDict()
-        if os.path.exists(ICON_CACHE_FILE):
-            with open(ICON_CACHE_FILE) as f:
-                cache_data = json.load(f)
-                # Convert to OrderedDict
-                self._icon_dict = OrderedDict(cache_data)
-
-        self.default_applicaiton_icon = default_applicaiton_icon
-
-    def get_icon_name(self, app_id):
-        if app_id in self._icon_dict:
-            # Move to end (most recently used)
-            self._icon_dict.move_to_end(app_id)
-            return self._icon_dict[app_id]
+class IconResolver(GObject.GObject):
+    def __init__(self, default_icon="application-x-executable-symbolic"):
+        super().__init__()
+        self._default_icon = default_icon
+        self._icon_cache = OrderedDict() # app_id -> icon_name
+        self._desktop_cache = {}        # app_id -> path
+        self._pixbuf_cache = {}         # (name, size) -> pixbuf
+        self._pixbuf_usage = 0
+        self._lock = threading.Lock()
         
-        new_icon = self._compositor_find_icon(app_id)
-        logger.info(f"[ICONS] found new icon: '{new_icon}' for app id: '{app_id}', storing...")
-        self._store_new_icon(app_id, new_icon)
-        return new_icon
-
-    def get_icon_pixbuf(self, app_id, size=16):
-        icon_theme = Gtk.IconTheme.get_default()
-        icon_name = self.get_icon_name(app_id)
+        self._theme = Gtk.IconTheme.get_default()
+        self._theme.connect('changed', self.clear_caches)
         
-        # Try to load the resolved icon
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        threading.Thread(target=self._load_all, daemon=True).start()
+        GLib.timeout_add_seconds(300, self._build_index)
+
+    def _load_all(self):
+        """Загрузка всех кэшей в одном потоке"""
         try:
-            return icon_theme.load_icon(icon_name, size, Gtk.IconLookupFlags.FORCE_SIZE)
-        except GLib.Error as primary_error:
-            logger.warning(f"Warning: Icon '{icon_name}' not found in theme. Error: {primary_error}")
+            if ICON_CACHE_FILE.exists():
+                self._icon_cache.update(json.loads(ICON_CACHE_FILE.read_text()))
+            if DESKTOP_CACHE_FILE.exists():
+                with lzma.open(DESKTOP_CACHE_FILE, 'rb') as f:
+                    self._desktop_cache.update(pickle.load(f))
+        except: pass
+        self._build_index()
+
+    def _build_index(self):
+        """Быстрое построение индекса desktop-файлов через GLib"""
+        new_index = {}
+        paths = [Path(d) / "applications" for d in GLib.get_system_data_dirs()]
+        paths.append(Path(GLib.get_user_data_dir()) / "applications")
         
-        # Fallback to the default application icon
-        try:
-            return icon_theme.load_icon(self.default_applicaiton_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
-        except GLib.Error as fallback_error:
-            logger.error(f"Error: Fallback icon '{self.default_applicaiton_icon}' also not found. Error: {fallback_error}")
-            return None
+        for p in filter(lambda x: x.exists(), paths):
+            for entry in p.glob("*.desktop"):
+                stem = entry.stem.lower()
+                new_index[stem] = str(entry)
+                # Добавляем варианты без дефисов для поиска
+                if '-' in stem: new_index[stem.replace('-', '')] = str(entry)
+        
+        with self._lock: self._desktop_cache.update(new_index)
+        return True
 
-    def _store_new_icon(self, app_id, icon):
-        # Add to cache with LRU eviction
-        self._icon_dict[app_id] = icon
-        # Limit cache size
-        if len(self._icon_dict) > MAX_ICON_RESOLVER_CACHE:
-            # Remove oldest item
-            self._icon_dict.popitem(last=False)
-        try:
-            with open(ICON_CACHE_FILE, "w") as f:
-                json.dump(self._icon_dict, f)
-        except Exception:
-            pass
+    def get_icon_name(self, app_id: str) -> str:
+        app_id = app_id.lower()
+        if app_id in self._icon_cache:
+            self._icon_cache.move_to_end(app_id)
+            return self._icon_cache[app_id]
 
-    def _get_icon_from_desktop_file(self, desktop_file_path):
-        icon_name = self.default_applicaiton_icon
-        with open(desktop_file_path) as f:
-            for line in f:
-                if line.startswith("Icon="):
-                    icon_name = line[5:].strip()
-                    break
+        icon_name = self._resolve(app_id)
+        with self._lock:
+            self._icon_cache[app_id] = icon_name
+            if len(self._icon_cache) > 200: self._icon_cache.popitem(last=False)
+        
+        GLib.idle_add(self._save_caches)
         return icon_name
 
-    def _get_desktop_file(self, app_id):
-        data_dirs = GLib.get_system_data_dirs()
-        app_id_clean = "".join(app_id.lower().split())
+    def _resolve(self, app_id: str) -> str:
+        # 1. Тема / 2. Desktop файл
+        if self._theme.has_icon(app_id): return app_id
         
-        for data_dir in data_dirs:
-            applications_dir = os.path.join(data_dir, "applications")
-            if not os.path.exists(applications_dir):
-                continue
-                
-            files = os.listdir(applications_dir)
+        path = self._desktop_cache.get(app_id) or self._desktop_cache.get(app_id.replace('-', ''))
+        if path:
+            kf = GLib.KeyFile.new()
+            try:
+                kf.load_from_file(path, GLib.KeyFileFlags.NONE)
+                icon = kf.get_string(GLib.KEY_FILE_DESKTOP_GROUP, "Icon")
+                if icon and (self._theme.has_icon(icon) or Path(icon).exists()):
+                    return icon
+            except: pass
             
-            # First try: exact match
-            for filename in files:
-                if app_id_clean in filename.lower():
-                    return os.path.join(applications_dir, filename)
-            
-            # Second try: word match
-            words = re.split(r"-|\.|_|\s", app_id)
-            for word in words:
-                if not word:
-                    continue
-                for filename in files:
-                    if word.lower() in filename.lower():
-                        return os.path.join(applications_dir, filename)
-        
-        return None
+        return self._default_icon
 
-    def _compositor_find_icon(self, app_id):
-        icon_theme = Gtk.IconTheme.get_default()
+    def get_icon_pixbuf(self, app_id: str, size: int = 32):
+        name = self.get_icon_name(app_id)
+        key = (name, size)
         
-        if icon_theme.has_icon(app_id):
-            return app_id
-        if icon_theme.has_icon(app_id + "-desktop"):
-            return app_id + "-desktop"
-            
-        desktop_file = self._get_desktop_file(app_id)
-        if desktop_file:
-            return self._get_icon_from_desktop_file(desktop_file)
-        else:
-            return self.default_applicaiton_icon
+        if key in self._pixbuf_cache: return self._pixbuf_cache[key]
+
+        try:
+            pix = self._theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
+        except:
+            pix = self._theme.load_icon(self._default_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
+
+        if pix:
+            with self._lock:
+                self._pixbuf_cache[key] = pix
+                self._pixbuf_usage += pix.get_width() * pix.get_height() * 4
+                if self._pixbuf_usage > 40 * 1024 * 1024: self.clear_caches(False)
+        return pix
+
+    def _save_caches(self):
+        """Сохранение данных (вызывать через idle_add или отдельный поток)"""
+        try:
+            ICON_CACHE_FILE.write_text(json.dumps(dict(self._icon_cache)))
+            with lzma.open(DESKTOP_CACHE_FILE, 'wb') as f:
+                pickle.dump(self._desktop_cache, f)
+        except: pass
+
+    def clear_caches(self, full=True, *args):
+        with self._lock:
+            self._pixbuf_cache.clear()
+            self._pixbuf_usage = 0
+            if full: self._icon_cache.clear()
+
+    def cleanup(self):
+        self._save_caches()
+        self.clear_caches()

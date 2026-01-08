@@ -78,32 +78,12 @@
   background-color: var(--shadow);
 }
 
-#player-btn.play-pause.stop label {
-  color: var(--foreground);
-}
-
-#player-btn.play-pause.stop:hover label {
-  color: var(--foreground);
-}
-
-#player-btn:hover {
-  background-color: var(--foreground);
-}
-
-#player-btn.play-pause.playing:hover {
-  background-color: var(--foreground);
-}
-
 #player-btn:hover label {
   color: var(--shadow);
 }
 
 #player-btn:active {
   background-color: var(--primary);
-}
-
-#player-btn:active label {
-  color: var(--foreground);
 }
 
 #player-time {
@@ -130,11 +110,7 @@
   color: var(--outline);
 }
 
-#player-switcher.stack-switcher > *:checked label {
-  font-size: 20px;
-  color: var(--foreground);
-}
-
+#player-switcher.stack-switcher > *:checked label,
 #player-switcher.stack-switcher > *:checked:hover label {
   font-size: 20px;
   color: var(--foreground);

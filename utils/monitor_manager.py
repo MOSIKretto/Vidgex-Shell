@@ -1,126 +1,115 @@
-"""Менеджер управления несколькими мониторами."""
-import json
-import subprocess
-from typing import Dict, List, Optional
-from gi.repository import GLib
+import json, subprocess, threading, time, weakref
+from typing import Dict, List, Tuple
+from gi.repository import GLib, GObject
 
-class MonitorManager:
-    """Управление мониторами и распределение компонентов."""
-    
+
+class MonitorManager(GObject.GObject):
+    __gsignals__ = {
+        'monitors-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'focused-monitor-changed': (GObject.SignalFlags.RUN_FIRST, None, (int,)),
+    }
     _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init()
-        return cls._instance
-    
-    def _init(self):
-        """Инициализация менеджера."""
-        self.monitors = []
-        self.monitor_instances = {}
-        self._focused_monitor_id = 0
-        self._notch_states = {}
-        self._update_timer_id = None
-        
-        # Загрузка информации о мониторах
-        self.refresh_monitors()
-        
-        # Периодическое обновление
-        self._update_timer_id = GLib.timeout_add_seconds(5, self._periodic_update)
-    
-    def get_monitors(self) -> List[Dict]:
-        """Получение списка мониторов."""
-        if not self.monitors:
-            self.refresh_monitors()
-        return self.monitors
-    
-    def refresh_monitors(self):
-        """Обновление информации о мониторах."""
-        try:
-            result = subprocess.run(
-                ["hyprctl", "monitors", "-j"],
-                capture_output=True,
-                text=True,
-                timeout=1
-            )
-            if result.returncode == 0:
-                self.monitors = json.loads(result.stdout)
-                
-                # Определение основного монитора
-                for i, monitor in enumerate(self.monitors):
-                    if monitor.get('focused', False):
-                        self._focused_monitor_id = i
-                        break
-        except (subprocess.TimeoutExpired, json.JSONDecodeError):
-            # Fallback для случая без Hyprland
-            self.monitors = [{'id': 0, 'name': 'default', 'width': 1920, 'height': 1080}]
-    
-    def get_focused_monitor_id(self) -> int:
-        """Получение ID активного монитора."""
-        return self._focused_monitor_id
-    
-    def set_focused_monitor(self, monitor_id: int):
-        """Установка активного монитора."""
-        if 0 <= monitor_id < len(self.monitors):
-            self._focused_monitor_id = monitor_id
-    
-    def register_monitor_instances(self, monitor_id: int, instances: Dict):
-        """Регистрация компонентов для монитора."""
-        self.monitor_instances[monitor_id] = instances
-    
-    def get_instance(self, monitor_id: int, instance_type: str):
-        """Получение компонента монитора по типу."""
-        instances = self.monitor_instances.get(monitor_id, {})
-        return instances.get(instance_type)
-    
-    def set_notch_state(self, monitor_id: int, is_open: bool, widget_name: str = None):
-        """Установка состояния выреза."""
-        self._notch_states[monitor_id] = {
-            'open': is_open,
-            'widget': widget_name
-        }
-    
-    def get_notch_state(self, monitor_id: int) -> Optional[Dict]:
-        """Получение состояния выреза."""
-        return self._notch_states.get(monitor_id)
-    
-    def close_all_notches_except(self, except_monitor_id: int):
-        """Закрытие всех вырезов кроме указанного."""
-        for monitor_id in list(self._notch_states.keys()):
-            if monitor_id != except_monitor_id:
-                self._notch_states[monitor_id]['open'] = False
-                
-                # Закрытие выреза через его экземпляр
-                notch_instance = self.get_instance(monitor_id, 'notch')
-                if notch_instance and hasattr(notch_instance, 'close_notch'):
-                    notch_instance.close_notch()
-    
-    def get_workspace_range_for_monitor(self, monitor_id: int) -> tuple:
-        """Получение диапазона рабочих столов для монитора."""
-        # Простая реализация - по 9 рабочих столов на монитор
-        start = monitor_id * 9 + 1
-        end = start + 8
-        return (start, end)
-    
-    def _periodic_update(self):
-        """Периодическое обновление состояния."""
-        self.refresh_monitors()
-        return True  # Продолжить таймер
-    
-    def cleanup(self):
-        """Очистка ресурсов."""
-        if hasattr(self, '_update_timer_id') and self._update_timer_id:
-            GLib.source_remove(self._update_timer_id)
-            self._update_timer_id = None
-        
-        if hasattr(self, 'monitors'):
-            self.monitors.clear()
-        if hasattr(self, 'monitor_instances'):
-            self.monitor_instances.clear()
-        if hasattr(self, '_notch_states'):
-            self._notch_states.clear()
+    _lock = threading.Lock()
 
-def get_monitor_manager():
-    """Фабрика для получения менеджера мониторов."""
+    def __new__(cls):
+        with cls._lock:
+            if not cls._instance:
+                cls._instance = super().__new__(cls)
+            return cls._instance
+
+    def __init__(self):
+        if hasattr(self, '_init'): return
+        super().__init__()
+        self._init = True
+        self._monitors: List[Dict] = []
+        self._focused_id = 0
+        self._cache_ts = 0.0
+        self._instances = {}
+        self._notch_states = {}
+        self._lock = threading.Lock()
+        self._updating = False
+        
+        self.refresh(async_mode=False)
+        GLib.timeout_add_seconds(30, self._timer_callback)
+
+    def _timer_callback(self):
+        self.refresh(async_mode=True)
+        return True
+
+    def _fetch(self) -> List[Dict]:
+        try:
+            res = subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0: return json.loads(res.stdout)
+        except Exception: pass
+        return []
+
+    def refresh(self, async_mode=True):
+        if self._updating: return
+        if not async_mode:
+            self._apply_update(self._fetch())
+            return
+
+        def _bg():
+            data = self._fetch()
+            GLib.idle_add(self._apply_update, data)
+        
+        self._updating = True
+        threading.Thread(target=_bg, daemon=True).start()
+
+    def _apply_update(self, data: List[Dict]):
+        with self._lock:
+            self._updating = False
+            if not data: return
+            
+            old_count = len(self._monitors)
+            old_focus = self._focused_id
+            self._monitors = data
+            self._cache_ts = time.monotonic()
+            
+            # Поиск фокуса
+            self._focused_id = next((i for i, m in enumerate(data) if m.get('focused')), 0)
+            
+            if old_count != len(data): self.emit('monitors-changed')
+            if old_focus != self._focused_id: self.emit('focused-monitor-changed', self._focused_id)
+
+    def get_monitors(self) -> List[Dict]:
+        if time.monotonic() - self._cache_ts > 30:
+            self.refresh(async_mode=True)
+        return self._monitors or [{
+            'id': 0, 'name': 'def', 'width': 1920, 'height': 1080, 'focused': True, 'activeWorkspace': {'id': 1}
+        }]
+
+    def get_focused_monitor_id(self) -> int:
+        return self._focused_id
+
+    def register_monitor_instances(self, m_id: int, instances: Dict):
+        with self._lock:
+            self._instances[m_id] = {k: weakref.ref(v) if v else None for k, v in instances.items()}
+
+    def get_instance(self, m_id: int, i_type: str):
+        with self._lock:
+            ref = self._instances.get(m_id, {}).get(i_type)
+            obj = ref() if ref else None
+            if ref and not obj: del self._instances[m_id][i_type]
+            return obj
+
+    def set_notch_state(self, m_id: int, is_open: bool, name: str = None):
+        self._notch_states[m_id] = {'open': is_open, 'widget': name}
+
+    def close_all_notches_except(self, exc_id: int):
+        for m_id, state in self._notch_states.items():
+            if m_id != exc_id and state.get('open'):
+                inst = self.get_instance(m_id, 'notch')
+                if inst and hasattr(inst, 'close_notch'):
+                    inst.close_notch()
+                state['open'] = False
+
+    def get_workspace_range_for_monitor(self, m_id: int) -> Tuple[int, int]:
+        return (m_id * 10 + 1, m_id * 10 + 10)
+
+    def cleanup(self):
+        self._monitors.clear()
+        self._instances.clear()
+
+def get_monitor_manager() -> MonitorManager:
     return MonitorManager()

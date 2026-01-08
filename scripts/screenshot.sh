@@ -92,7 +92,7 @@ if [ -f "$full_path" ]; then
         fi
     fi
 
-    ACTION=$(notify-send -a "Ax-Shell" -i "$full_path" "Screenshot saved" "in $full_path" \
+    ACTION=$(notify-send -a "Vidgex-Shell" -i "$full_path" "Screenshot saved" "in $full_path" \
         -A "view=View" -A "edit=Edit" -A "open=Open Folder")
 
     case "$ACTION" in
@@ -101,5 +101,5 @@ if [ -f "$full_path" ]; then
         open) xdg-open "$save_dir" ;;
     esac
 else
-    notify-send -a "Ax-Shell" "Screenshot Aborted"
+    notify-send -a "Vidgex-Shell" "Screenshot Aborted"
 fi

@@ -22,10 +22,6 @@
   font-size: 0px;
 }
 
-#workspaces > button.empty:hover {
-  background-color: var(--foreground);
-}
-
 #workspaces > button.urgent {
   background-color: var(--error-dim);
 }
@@ -38,10 +34,6 @@
 
 #workspaces > button.empty {
   background-color: var(--surface-bright);
-}
-
-#workspaces-num > button > label {
-  color: var(--foreground);
 }
 
 #workspaces-num {
@@ -75,10 +67,6 @@
 
 #workspaces-num > button.empty > label {
   color: var(--surface-bright);
-}
-
-#workspaces-num > button.empty:hover > label {
-  color: var(--foreground);
 }
 
 #workspaces-num > button.empty:hover {

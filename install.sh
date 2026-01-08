@@ -4,8 +4,7 @@ set -e          # Exit immediately if a command fails
 set -u          # Treat unset variables as errors
 set -o pipefail # Prevent errors in a pipeline from being masked
 
-REPO_URL="https://github.com/Axenide/Ax-Shell.git"
-INSTALL_DIR="$HOME/.config/Ax-Shell"
+INSTALL_DIR="$HOME/.config/Vidgex-Shell"
 PACKAGES=(
   awww-git
   brightnessctl
@@ -43,7 +42,6 @@ PACKAGES=(
   tesseract
   tesseract-data-eng
   tesseract-data-spa
-  tmux
   ttf-nerd-fonts-symbols-mono
   unzip
   upower
@@ -144,7 +142,6 @@ else
   echo "Local fonts are already installed. Skipping copy."
 fi
 
-python "$INSTALL_DIR/config/config.py"
 echo "Starting Ax-Shell..."
 killall ax-shell 2>/dev/null || true
 uwsm app -- python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &

@@ -1,0 +1,155 @@
+/* Общие transitions - определены в colors.css через :vars */
+
+#network-status-button:hover,
+#network-menu-button:hover,
+#bluetooth-status-button:hover,
+#bluetooth-menu-button:hover,
+#bluetooth-button:hover,
+#night-mode-button:hover,
+#caffeine-button:hover,
+#control-slider slider:hover,
+#player-btn:hover,
+#player-btn.play-pause.playing:hover,
+#hue-slider slider:hover,
+#hue-slider slider:active,
+#apply-color-button:hover,
+#workspaces > button.empty:hover {
+  background-color: var(--foreground);
+}
+
+#player-btn.play-pause.stop label,
+#player-btn.play-pause.stop:hover label,
+#player-btn:active label,
+#apply-color-button:active #apply-color-label,
+#workspaces-num > button > label,
+#workspaces-num > button.empty:hover > label {
+  color: var(--foreground);
+}
+
+/* Общие анимации */
+@keyframes tooltipShow {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes loadSlot {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes blink {
+  0% {
+    background-color: var(--primary);
+    box-shadow: 0 0 5px var(--primary);
+  }
+  50% {
+    background-color: var(--surface-bright);
+    box-shadow: 0 0 15px var(--primary);
+  }
+  100% {
+    background-color: var(--primary);
+    box-shadow: 0 0 5px var(--primary);
+  }
+}
+
+@keyframes icon-blink {
+  0% { opacity: 1; color: var(--primary); }
+  50% { opacity: 1; color: var(--surface); }
+  100% { opacity: 1; color: var(--primary); }
+}
+
+/* Общие стили для кнопок */
+button, 
+#close-button, 
+#clear-button, 
+#config-button, 
+#new-session-button,
+#random-wall-button, 
+#update-button, 
+#later-button, 
+#toggle-updater-button,
+#power-menu-button, 
+#toolbox-button, 
+#action-button, 
+#notif-close-button,
+#nav-button, 
+#nhh-button, 
+#prev-month-button, 
+#next-month-button {
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Общие hover эффекты */
+button:hover, 
+#close-button:hover, 
+#clear-button:hover, 
+#config-button:hover,
+#new-session-button:hover, 
+#random-wall-button:hover, 
+#update-button:hover,
+#later-button:hover, 
+#toggle-updater-button:hover, 
+#power-menu-button:hover,
+#toolbox-button:hover, 
+#action-button:hover, 
+#notif-close-button:hover,
+#nav-button:hover, 
+#nhh-button:hover, 
+#prev-month-button:hover, 
+#next-month-button:hover,
+#network-status-button.disabled:hover,
+#network-menu-button.disabled:hover,
+#bluetooth-status-button.disabled:hover,
+#bluetooth-menu-button.disabled:hover,
+#night-mode-button.disabled:hover,
+#caffeine-button.disabled:hover {
+  background-color: var(--surface-bright);
+}
+
+/* Общие active эффекты */
+button:active, 
+#close-button:active, 
+#clear-button:active, 
+#config-button:active,
+#new-session-button:active, 
+#random-wall-button:active, 
+#update-button:active,
+#later-button:active, 
+#toggle-updater-button:active, 
+#power-menu-button:active,
+#toolbox-button:active, 
+#action-button:active, 
+#notif-close-button:active,
+#nav-button:active, 
+#nhh-button:active, 
+#prev-month-button:active, 
+#next-month-button:active, 
+#prev-month-button:active,
+#next-month-button:active {
+  background-color: var(--primary);
+}
+
+/* Tooltip */
+tooltip {
+  border: 1px solid var(--surface);
+  background-color: var(--shadow);
+  border-radius: 12px;
+}
+
+tooltip > * {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+/* Общие стили для меток */
+label {
+  font-weight: bold;
+}
+
+/* Общие стили для пустых состояний */
+#no-notif,
+#no-clip {
+  font-size: 96px;
+  color: var(--surface);
+}

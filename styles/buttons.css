@@ -40,16 +40,6 @@
   min-width: 24px;
 }
 
-#network-status-button:hover,
-#network-menu-button:hover,
-#bluetooth-status-button:hover,
-#bluetooth-menu-button:hover,
-#bluetooth-button:hover,
-#night-mode-button:hover,
-#caffeine-button:hover {
-  background-color: var(--foreground);
-}
-
 #network-menu-button:active,
 #bluetooth-menu-button:active {
   border-radius: 0 26px 26px 0;
@@ -67,15 +57,6 @@
 #bluetooth-menu-button.disabled {
   border-left: 1px solid var(--surface-bright);
   border-radius: 0 26px 26px 0;
-}
-
-#network-status-button.disabled:hover,
-#network-menu-button.disabled:hover,
-#bluetooth-status-button.disabled:hover,
-#bluetooth-menu-button.disabled:hover,
-#night-mode-button.disabled:hover,
-#caffeine-button.disabled:hover {
-  background-color: var(--surface-bright);
 }
 
 #network-status-button,
@@ -96,22 +77,10 @@
   font-size: 24px;
 }
 
-#network-icon.disabled,
-#bluetooth-icon.disabled,
-#night-mode-icon.disabled,
-#caffeine-icon.disabled {
-  color: var(--outline);
-}
-
 #network-menu-label,
 #bluetooth-menu-label {
   color: var(--shadow);
   font-size: 16px;
-}
-
-#network-menu-label.disabled,
-#bluetooth-menu-label.disabled {
-  color: var(--outline);
 }
 
 #network-label,
@@ -126,7 +95,17 @@
 #network-label.disabled,
 #bluetooth-label.disabled,
 #night-mode-label.disabled,
-#caffeine-label.disabled {
+#caffeine-label.disabled,
+#network-ssid.disabled,
+#bluetooth-status.disabled,
+#night-mode-status.disabled,
+#caffeine-status.disabled,
+#network-menu-label.disabled,
+#bluetooth-menu-label.disabled,
+#network-icon.disabled,
+#bluetooth-icon.disabled,
+#night-mode-icon.disabled,
+#caffeine-icon.disabled {
   color: var(--outline);
 }
 
@@ -136,11 +115,4 @@
 #caffeine-status {
   color: var(--surface-bright);
   font-size: 12px;
-}
-
-#network-ssid.disabled,
-#bluetooth-status.disabled,
-#night-mode-status.disabled,
-#caffeine-status.disabled {
-  color: var(--outline);
 }
