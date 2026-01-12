@@ -12,6 +12,7 @@ gi.require_version('NM', '1.0')
 
 import time
 import psutil
+import subprocess
 
 import modules.icons as icons
 from services.network import NetworkClient
@@ -64,6 +65,18 @@ class WifiNetworkSlot(CenterBox):
     def _on_global_error(self, client, err_ssid, message):
         """Обработка сигнала ошибки от сервиса"""
         if err_ssid == self.network_data.get("ssid"):
+            # Вызов системного уведомления
+            try:
+                subprocess.run([
+                    'notify-send', 
+                    '❌ Ошибка подключения', 
+                    f'{message}', 
+                    '-a', 'Vidgex-Shell', 
+                    '-e'
+                ], check=True)
+            except subprocess.CalledProcessError:
+                pass  # Если notify-send не доступен, просто продолжаем
+            
             self._show_error("Ошибка")
 
     def _setup_action_widgets(self):
@@ -171,6 +184,18 @@ class WifiNetworkSlot(CenterBox):
 
     def _on_connection_error_callback(self, ssid, error_message): 
         """Коллбэк при прямой ошибке вызова"""
+        # Вызов системного уведомления
+        try:
+            subprocess.run([
+                'notify-send', 
+                '❌ Ошибка подключения', 
+                f'{error_message}', 
+                '-a', 'Vidgex-Shell', 
+                '-e'
+            ], check=True)
+        except subprocess.CalledProcessError:
+            pass  # Если notify-send не доступен, просто продолжаем
+        
         self._show_error("Ошибка")
 
     def _show_error(self, error_message):
