@@ -1,5 +1,6 @@
 import dbus
 
+
 class UPowerManager:
     def __init__(self):
         self.UPOWER_NAME = "org.freedesktop.UPower"

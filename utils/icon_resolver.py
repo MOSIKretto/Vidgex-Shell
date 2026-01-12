@@ -5,6 +5,7 @@ import json, threading, pickle, lzma
 from pathlib import Path
 from collections import OrderedDict
 
+
 # Настройки
 CACHE_DIR = Path(GLib.get_user_cache_dir()) / "vidgex-shell"
 ICON_CACHE_FILE = CACHE_DIR / "icons.json"

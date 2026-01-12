@@ -6,6 +6,7 @@ from gi.repository import NM, GLib
 gi.require_version('Gtk', '3.0')
 gi.require_version('NM', '1.0')
 
+
 class Wifi(Service):
     @Signal
     def changed(self) -> None: ...

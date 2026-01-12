@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button

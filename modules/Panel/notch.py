@@ -6,13 +6,13 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 from gi.repository import Gdk, GLib, Gtk
+
 import json
 import subprocess
 import weakref
 import functools
 from typing import Optional, List, Set, Tuple
 import gc
-
 
 from modules.Panel.Dashboard_Bar.dashboard import Dashboard
 from modules.Panel.cliphist import ClipHistory

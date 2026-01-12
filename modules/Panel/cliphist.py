@@ -8,6 +8,7 @@ from gi.repository import Gdk, GdkPixbuf, GLib
 import subprocess
 import modules.icons as icons
 
+
 class ClipHistory(Box):
     def __init__(self, notch, **kwargs):
         # Полное сохранение имен для CSS

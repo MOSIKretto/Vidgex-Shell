@@ -6,6 +6,7 @@ from gi.repository import GLib
 
 import contextlib
 
+
 class PlayerctlImportError(ImportError):
     def __init__(self, *args):
         super().__init__(

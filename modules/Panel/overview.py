@@ -4,9 +4,11 @@ from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
+
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk, GLib, GdkPixbuf
+
 import json
 import modules.icons as icons
 from utils.icon_resolver import IconResolver

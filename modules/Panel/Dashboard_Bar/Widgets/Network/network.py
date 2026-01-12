@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
@@ -7,7 +7,7 @@ from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
 
 import gi
-from gi.repository import Gtk, NM, GLib
+from gi.repository import Gtk, NM, GLib, Gdk
 gi.require_version('Gtk', '3.0')
 gi.require_version('NM', '1.0')
 

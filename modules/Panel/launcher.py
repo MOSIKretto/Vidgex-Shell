@@ -8,6 +8,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import Gdk
 import modules.icons as icons
 
+
 class AppLauncher(Box):
     def __init__(self, notch, **kwargs):
         super().__init__(name="app-launcher", visible=False, all_visible=False, **kwargs)

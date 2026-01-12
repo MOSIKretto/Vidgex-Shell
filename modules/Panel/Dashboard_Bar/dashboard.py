@@ -8,6 +8,7 @@ from modules.Panel.Dashboard_Bar.Mixer.mixer import Mixer
 from modules.Panel.Dashboard_Bar.Wallpaper.wallpapers import WallpaperSelector
 from modules.Panel.Dashboard_Bar.Widgets.widgets import Widgets
 
+
 class Dashboard(Box):
     # __slots__ минимизирует использование ОЗУ, фиксируя структуру объекта
     __slots__ = (
