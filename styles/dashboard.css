@@ -89,10 +89,7 @@
 }
 
 #switcher.stack-switcher > *:active,
-#switcher.stack-switcher > *:hover {
-  background-color: var(--surface-bright);
-}
-
+#switcher.stack-switcher > *:hover
 #switcher.stack-switcher > *:focus {
   background-color: var(--surface-bright);
 }
