@@ -283,15 +283,24 @@ class NetworkClient(Service):
         return self._connect(ssid, conn, getattr(self.wifi_device, "_device", None))
 
     def connect_to_new_network(self, ssid: str, password: str, success_callback=None, error_callback=None) -> bool:
-        self._connection_callbacks[ssid] = {'success_callback': success_callback, 'error_callback': error_callback}
+        """Проверяет подключение с паролем и только при успехе сохраняет профиль"""
+        def callback(ok, output, error):
+            if ok and ("activated" in output.lower() or "successfully activated" in output.lower()):
+                # Подключение успешно, можно оставить профиль
+                if success_callback:
+                    success_callback(ssid)
+            else:
+                # Удаляем профиль, если подключение не удалось
+                self.delete_saved_network(ssid)
+                error_msg = f"Неверный пароль для {ssid}" if "secret" in error.lower() or "password" in error.lower() or "auth" in error.lower() else f"Ошибка подключения: {error}"
+                if error_callback:
+                    error_callback(ssid, error_msg)
+        
         cmd = f'nmcli device wifi connect "{ssid}" password "{password}"'
-        exec_shell_command_async(cmd, lambda ok, out, err: self._on_new_network_connected(ssid, ok, out, err))
+        exec_shell_command_async(cmd, callback)
         return True
 
-    def _on_new_network_connected(self, ssid: str, success: bool, output: str, error: str):
-        if not success:
-            self._fire_error(ssid, f"Ошибка подключения: {error}")
-        self._connection_callbacks.pop(ssid, None)
+
 
     def _fire_error(self, ssid: str, msg: str):
         cb = self._connection_callbacks.get(ssid, {})
