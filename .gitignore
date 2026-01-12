@@ -5,33 +5,24 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+env/
 venv/
 .venv/
-.env
-.env.local
-.env.*
-
-# Build and distribution artifacts
-build/
-dist/
-*.egg-info/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Logs
-*.log
-
-# Coverage
+.ENV
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
 .coverage
-coverage/
-htmlcov/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
 ```

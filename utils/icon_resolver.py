@@ -6,7 +6,7 @@ from pathlib import Path
 from collections import OrderedDict
 
 
-# Настройки
+# Settings
 CACHE_DIR = Path(GLib.get_user_cache_dir()) / "vidgex-shell"
 ICON_CACHE_FILE = CACHE_DIR / "icons.json"
 DESKTOP_CACHE_FILE = CACHE_DIR / "desktop_cache.lzma"
@@ -15,9 +15,9 @@ class IconResolver(GObject.GObject):
     def __init__(self, default_icon="application-x-executable-symbolic"):
         super().__init__()
         self._default_icon = default_icon
-        self._icon_cache = OrderedDict() # app_id -> icon_name
-        self._desktop_cache = {}        # app_id -> path
-        self._pixbuf_cache = {}         # (name, size) -> pixbuf
+        self._icon_cache = OrderedDict()  # app_id -> icon_name
+        self._desktop_cache = {}          # app_id -> path
+        self._pixbuf_cache = {}           # (name, size) -> pixbuf
         self._pixbuf_usage = 0
         self._lock = threading.Lock()
         
@@ -29,30 +29,33 @@ class IconResolver(GObject.GObject):
         GLib.timeout_add_seconds(300, self._build_index)
 
     def _load_all(self):
-        """Загрузка всех кэшей в одном потоке"""
+        """Load all caches in one thread"""
         try:
             if ICON_CACHE_FILE.exists():
                 self._icon_cache.update(json.loads(ICON_CACHE_FILE.read_text()))
             if DESKTOP_CACHE_FILE.exists():
                 with lzma.open(DESKTOP_CACHE_FILE, 'rb') as f:
                     self._desktop_cache.update(pickle.load(f))
-        except: pass
+        except Exception:
+            pass
         self._build_index()
 
     def _build_index(self):
-        """Быстрое построение индекса desktop-файлов через GLib"""
+        """Fast building of desktop file index through GLib"""
         new_index = {}
         paths = [Path(d) / "applications" for d in GLib.get_system_data_dirs()]
         paths.append(Path(GLib.get_user_data_dir()) / "applications")
         
-        for p in filter(lambda x: x.exists(), paths):
-            for entry in p.glob("*.desktop"):
+        for path in filter(lambda x: x.exists(), paths):
+            for entry in path.glob("*.desktop"):
                 stem = entry.stem.lower()
                 new_index[stem] = str(entry)
-                # Добавляем варианты без дефисов для поиска
-                if '-' in stem: new_index[stem.replace('-', '')] = str(entry)
+                # Add variants without dashes for search
+                if '-' in stem:
+                    new_index[stem.replace('-', '')] = str(entry)
         
-        with self._lock: self._desktop_cache.update(new_index)
+        with self._lock:
+            self._desktop_cache.update(new_index)
         return True
 
     def get_icon_name(self, app_id: str) -> str:
@@ -64,16 +67,19 @@ class IconResolver(GObject.GObject):
         icon_name = self._resolve(app_id)
         with self._lock:
             self._icon_cache[app_id] = icon_name
-            if len(self._icon_cache) > 200: self._icon_cache.popitem(last=False)
+            if len(self._icon_cache) > 200:
+                self._icon_cache.popitem(last=False)
         
         GLib.idle_add(self._save_caches)
         return icon_name
 
     def _resolve(self, app_id: str) -> str:
-        # 1. Тема / 2. Desktop файл
-        if self._theme.has_icon(app_id): return app_id
+        # 1. Theme / 2. Desktop file
+        if self._theme.has_icon(app_id):
+            return app_id
         
-        path = self._desktop_cache.get(app_id) or self._desktop_cache.get(app_id.replace('-', ''))
+        path = (self._desktop_cache.get(app_id) or 
+                self._desktop_cache.get(app_id.replace('-', '')))
         if path:
             kf = GLib.KeyFile.new()
             try:
@@ -81,7 +87,8 @@ class IconResolver(GObject.GObject):
                 icon = kf.get_string(GLib.KEY_FILE_DESKTOP_GROUP, "Icon")
                 if icon and (self._theme.has_icon(icon) or Path(icon).exists()):
                     return icon
-            except: pass
+            except Exception:
+                pass
             
         return self._default_icon
 
@@ -89,33 +96,37 @@ class IconResolver(GObject.GObject):
         name = self.get_icon_name(app_id)
         key = (name, size)
         
-        if key in self._pixbuf_cache: return self._pixbuf_cache[key]
+        if key in self._pixbuf_cache:
+            return self._pixbuf_cache[key]
 
         try:
             pix = self._theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
-        except:
+        except Exception:
             pix = self._theme.load_icon(self._default_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
 
         if pix:
             with self._lock:
                 self._pixbuf_cache[key] = pix
                 self._pixbuf_usage += pix.get_width() * pix.get_height() * 4
-                if self._pixbuf_usage > 40 * 1024 * 1024: self.clear_caches(False)
+                if self._pixbuf_usage > 40 * 1024 * 1024:
+                    self.clear_caches(False)
         return pix
 
     def _save_caches(self):
-        """Сохранение данных (вызывать через idle_add или отдельный поток)"""
+        """Save data (call through idle_add or separate thread)"""
         try:
             ICON_CACHE_FILE.write_text(json.dumps(dict(self._icon_cache)))
             with lzma.open(DESKTOP_CACHE_FILE, 'wb') as f:
                 pickle.dump(self._desktop_cache, f)
-        except: pass
+        except Exception:
+            pass
 
     def clear_caches(self, full=True, *args):
         with self._lock:
             self._pixbuf_cache.clear()
             self._pixbuf_usage = 0
-            if full: self._icon_cache.clear()
+            if full:
+                self._icon_cache.clear()
 
     def cleanup(self):
         self._save_caches()

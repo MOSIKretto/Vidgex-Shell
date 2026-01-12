@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, monitor_file
 
@@ -17,7 +18,8 @@ class Brightness(Service):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.device = next(iter(os.listdir("/sys/class/backlight")), None)
+        backlight_devices = os.listdir("/sys/class/backlight")
+        self.device: Optional[str] = next(iter(backlight_devices), None)
         if not self.device:
             self.max_screen = -1
             return
@@ -46,9 +48,13 @@ class Brightness(Service):
 
     @screen_brightness.setter
     def screen_brightness(self, value: int):
-        value = max(0, min(value, self.max_screen))
-        exec_shell_command_async(f"brightnessctl --device '{self.device}' set {value}", None)
-        self.emit("screen", int((value / self.max_screen) * 100))
+        bounded_value = max(0, min(value, self.max_screen))
+        exec_shell_command_async(f"brightnessctl --device '{self.device}' set {bounded_value}", None)
+        if self.max_screen > 0:
+            percentage = int((bounded_value / self.max_screen) * 100)
+            self.emit("screen", percentage)
+        else:
+            self.emit("screen", 0)
 
     def destroy(self):
         if hasattr(self, 'monitor') and self.monitor:

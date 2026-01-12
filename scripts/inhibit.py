@@ -20,10 +20,13 @@ class Inhibitor:
     def shutdown(self) -> None:
         if self.inhibitor:
             self.inhibitor.destroy()
+            self.inhibitor = None
         if self.display:
-            self.display.dispatch()
-            self.display.roundtrip()
             self.display.disconnect()
+            self.display = None
+        # Clean up surface and inhibit_manager if they exist
+        self.surface = None
+        self.inhibit_manager = None
     
     def handle_registry_global(self, wl_registry, id_num: int, iface_name: str, version: int) -> None:
         if iface_name == "wl_compositor":
@@ -35,6 +38,7 @@ class Inhibitor:
 
 def main() -> None:
     done = Event()
+    # Set up signal handlers for clean shutdown
     for sig in (SIGINT, SIGTERM):
         signal(sig, lambda *_: done.set())
     
@@ -45,13 +49,13 @@ def main() -> None:
         inhibitor.display.connect()
         
         registry = inhibitor.display.get_registry()
-        registry.dispatcher["global"] = lambda *args: inhibitor.handle_registry_global(*args)
+        registry.dispatcher["global"] = inhibitor.handle_registry_global
         
         inhibitor.display.dispatch()
         inhibitor.display.roundtrip()
         
         if not inhibitor.surface or not inhibitor.inhibit_manager:
-            raise RuntimeError("Не удалось получить необходимые Wayland интерфейсы")
+            raise RuntimeError("Failed to get required Wayland interfaces")
         
         inhibitor.inhibitor = inhibitor.inhibit_manager.create_inhibitor(inhibitor.surface)
         inhibitor.display.roundtrip()
@@ -59,7 +63,7 @@ def main() -> None:
         done.wait()
         
     except Exception as e:
-        print(f"Ошибка: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
         inhibitor.shutdown()

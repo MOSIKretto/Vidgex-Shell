@@ -37,7 +37,7 @@ class Wifi(Service):
 
     def ap_update(self):
         self._notify("changed")
-        # Прямое уведомление без создания промежуточного списка строк
+        # Direct notifications without creating intermediate objects
         self.notify("enabled")
         self.notify("internet")
         self.notify("strength")
@@ -74,23 +74,31 @@ class Wifi(Service):
 
     @Property(str, "readable")
     def ssid(self) -> str:
-        if not self._ap: return "Disconnected"
-        s = self._ap.get_ssid()
-        return NM.utils_ssid_to_utf8(s.get_data()) if s else "Unknown"
+        if not self._ap: 
+            return "Disconnected"
+        ssid_bytes = self._ap.get_ssid()
+        return NM.utils_ssid_to_utf8(ssid_bytes.get_data()) if ssid_bytes else "Unknown"
 
     @Property(str, "readable")
     def icon_name(self) -> str:
-        if not self._ap: return "network-wireless-disabled-symbolic"
+        if not self._ap: 
+            return "network-wireless-disabled-symbolic"
         
-        i = self.internet
-        if i == "activated":
-            s = self.strength
-            if s >= 80: return "network-wireless-signal-excellent-symbolic"
-            if s >= 60: return "network-wireless-signal-good-symbolic"
-            if s >= 40: return "network-wireless-signal-ok-symbolic"
-            if s >= 20: return "network-wireless-signal-weak-symbolic"
+        internet_state = self.internet
+        if internet_state == "activated":
+            strength = self.strength
+            if strength >= 80: 
+                return "network-wireless-signal-excellent-symbolic"
+            if strength >= 60: 
+                return "network-wireless-signal-good-symbolic"
+            if strength >= 40: 
+                return "network-wireless-signal-ok-symbolic"
+            if strength >= 20: 
+                return "network-wireless-signal-weak-symbolic"
             return "network-wireless-signal-none-symbolic"
-        return "network-wireless-acquiring-symbolic" if i == "activating" else "network-wireless-offline-symbolic"
+        return ("network-wireless-acquiring-symbolic" 
+                if internet_state == "activating" 
+                else "network-wireless-offline-symbolic")
 
     @Property(int, "readable")
     def frequency(self) -> int:
@@ -98,33 +106,57 @@ class Wifi(Service):
 
     @Property(str, "readable")
     def internet(self) -> str:
-        a = self._device.get_active_connection()
-        if not a: return "deactivated"
-        s = a.get_state()
-        if s == NM.ActiveConnectionState.ACTIVATED: return "activated"
-        if s == NM.ActiveConnectionState.ACTIVATING: return "activating"
-        if s == NM.ActiveConnectionState.DEACTIVATING: return "deactivating"
+        active_conn = self._device.get_active_connection()
+        if not active_conn: 
+            return "deactivated"
+        state = active_conn.get_state()
+        if state == NM.ActiveConnectionState.ACTIVATED: 
+            return "activated"
+        if state == NM.ActiveConnectionState.ACTIVATING: 
+            return "activating"
+        if state == NM.ActiveConnectionState.DEACTIVATING: 
+            return "deactivating"
         return "deactivated"
 
     @Property(list, "readable")
     def access_points(self) -> list:
-        # Оптимизированный генератор для экономии памяти
-        return [{
-            "bssid": ap.get_bssid(),
-            "last_seen": ap.get_last_seen(),
-            "ssid": NM.utils_ssid_to_utf8(ap.get_ssid().get_data()) if ap.get_ssid() else "Unknown",
-            "active-ap": self._ap,
-            "strength": (s := ap.get_strength()),
-            "frequency": ap.get_frequency(),
-            "icon-name": "network-wireless-signal-excellent-symbolic" if s >= 80 else "network-wireless-signal-good-symbolic" if s >= 60 else "network-wireless-signal-ok-symbolic" if s >= 40 else "network-wireless-signal-weak-symbolic" if s >= 20 else "network-wireless-signal-none-symbolic"
-        } for ap in (self._device.get_access_points() if self._device else [])]
+        # Optimized generator to save memory
+        access_points = self._device.get_access_points() if self._device else []
+        result = []
+        for ap in access_points:
+            strength = ap.get_strength()
+            result.append({
+                "bssid": ap.get_bssid(),
+                "last_seen": ap.get_last_seen(),
+                "ssid": NM.utils_ssid_to_utf8(ap.get_ssid().get_data()) if ap.get_ssid() else "Unknown",
+                "active-ap": self._ap,
+                "strength": strength,
+                "frequency": ap.get_frequency(),
+                "icon-name": self._get_signal_icon(strength)
+            })
+        return result
+
+    def _get_signal_icon(self, strength: int) -> str:
+        """Helper method to determine icon based on signal strength."""
+        if strength >= 80:
+            return "network-wireless-signal-excellent-symbolic"
+        if strength >= 60:
+            return "network-wireless-signal-good-symbolic"
+        if strength >= 40:
+            return "network-wireless-signal-ok-symbolic"
+        if strength >= 20:
+            return "network-wireless-signal-weak-symbolic"
+        return "network-wireless-signal-none-symbolic"
 
     @Property(str, "readable")
     def state(self) -> str:
-        s = self._device.get_state()
-        if s == NM.DeviceState.ACTIVATED: return "activated"
-        if s == NM.DeviceState.DISCONNECTED: return "disconnected"
-        if s == NM.DeviceState.UNAVAILABLE: return "unavailable"
+        device_state = self._device.get_state()
+        if device_state == NM.DeviceState.ACTIVATED: 
+            return "activated"
+        if device_state == NM.DeviceState.DISCONNECTED: 
+            return "disconnected"
+        if device_state == NM.DeviceState.UNAVAILABLE: 
+            return "unavailable"
         return "unknown"
 
 class Ethernet(Service):
@@ -139,14 +171,21 @@ class Ethernet(Service):
 
     @Property(str, "readable")
     def internet(self) -> str:
-        a = self._device.get_active_connection()
-        if not a: return "disconnected"
-        s = a.get_state()
-        return "activated" if s == NM.ActiveConnectionState.ACTIVATED else "activating" if s == NM.ActiveConnectionState.ACTIVATING else "disconnected"
+        active_conn = self._device.get_active_connection()
+        if not active_conn: 
+            return "disconnected"
+        state = active_conn.get_state()
+        if state == NM.ActiveConnectionState.ACTIVATED: 
+            return "activated"
+        if state == NM.ActiveConnectionState.ACTIVATING: 
+            return "activating"
+        return "disconnected"
 
     @Property(str, "readable")
     def icon_name(self) -> str:
-        return "network-wired-symbolic" if self.internet == "activated" else "network-wired-disconnected-symbolic"
+        return ("network-wired-symbolic" 
+                if self.internet == "activated" 
+                else "network-wired-disconnected-symbolic")
 
 class NetworkClient(Service):
     @Signal
@@ -166,63 +205,89 @@ class NetworkClient(Service):
         try:
             self._client = NM.Client.new(None)
             GLib.idle_add(self._setup)
-        except:
+        except Exception:
             GLib.idle_add(self._setup_fallback)
 
     def _setup(self):
-        # Поиск устройств без лишних абстракций
-        devs = self._client.get_devices() or []
-        for d in devs:
-            t = d.get_device_type()
-            if t == NM.DeviceType.WIFI and not self.wifi_device:
-                self.wifi_device = Wifi(self._client, d)
-                d.connect("state-changed", self._on_wifi_fail)
-            elif t == NM.DeviceType.ETHERNET and not self.ethernet_device:
-                self.ethernet_device = Ethernet(self._client, d)
+        # Find devices without unnecessary abstractions
+        devices = self._client.get_devices() or []
+        for device in devices:
+            dev_type = device.get_device_type()
+            if dev_type == NM.DeviceType.WIFI and not self.wifi_device:
+                self.wifi_device = Wifi(self._client, device)
+                device.connect("state-changed", self._on_wifi_fail)
+            elif dev_type == NM.DeviceType.ETHERNET and not self.ethernet_device:
+                self.ethernet_device = Ethernet(self._client, device)
         self.emit("device-ready")
 
     def _setup_fallback(self):
-        # Легковесный объект вместо целого класса
-        self.wifi_device = type('FB', (), {'enabled': False, 'strength': 0, 'ssid': 'Disconnected', 'access_points': [], 'scan': lambda: None})()
+        # Lightweight object instead of entire class
+        self.wifi_device = type('Fallback', (), {
+            'enabled': False, 
+            'strength': 0, 
+            'ssid': 'Disconnected', 
+            'access_points': [], 
+            'scan': lambda: None
+        })()
         self.emit("device-ready")
 
     @Property(str, "readable")
     def primary_device(self) -> str:
-        if self.ethernet_device and self.ethernet_device.internet in ("activated", "activating"):
+        if (self.ethernet_device and 
+            self.ethernet_device.internet in ("activated", "activating")):
             return "ethernet"
-        if self.wifi_device and getattr(self.wifi_device, 'enabled', False) and getattr(self.wifi_device, 'ssid', "") not in ("", "Disconnected"):
+        if (self.wifi_device and 
+            getattr(self.wifi_device, 'enabled', False) and 
+            getattr(self.wifi_device, 'ssid', "") not in ("", "Disconnected")):
             return "wifi"
         return "none"
 
     def _on_wifi_fail(self, dev, state, *_):
         if state == NM.DeviceState.FAILED:
-            s = getattr(self.wifi_device, 'ssid', "Unknown")
-            self.emit("connection_error", s, "Error")
+            ssid = getattr(self.wifi_device, 'ssid', "Unknown")
+            self.emit("connection_error", ssid, "Error")
 
     def is_network_available(self, ssid: str) -> bool:
         return any(ap.get("ssid") == ssid for ap in getattr(self.wifi_device, 'access_points', []))
 
     def connect_to_saved_network(self, ssid: str, success_cb=None, error_cb=None) -> bool:
-        if not self._client or not self.is_network_available(ssid): return False
-        for c in (self._client.get_connections() or []):
-            if c.get_connection_type() == "802-11-wireless":
-                s_w = c.get_setting_wireless()
-                if s_w and NM.utils_ssid_to_utf8(s_w.get_ssid().get_data()) == ssid:
-                    self._client.activate_connection_async(c, getattr(self.wifi_device, "_device", None), None, None, None, None)
-                    if success_cb: success_cb()
+        if not self._client or not self.is_network_available(ssid): 
+            return False
+        for conn in (self._client.get_connections() or []):
+            if conn.get_connection_type() == "802-11-wireless":
+                wireless_setting = conn.get_setting_wireless()
+                if (wireless_setting and 
+                    NM.utils_ssid_to_utf8(wireless_setting.get_ssid().get_data()) == ssid):
+                    self._client.activate_connection_async(
+                        conn, 
+                        getattr(self.wifi_device, "_device", None), 
+                        None, 
+                        None, 
+                        None, 
+                        None
+                    )
+                    if success_cb: 
+                        success_cb()
                     return True
         return False
 
     def connect_to_new_network(self, ssid: str, password: str, success_cb=None, error_cb=None) -> bool:
-        exec_shell_command_async(f'nmcli dev wifi connect "{ssid}" password "{password}"', 
-            lambda ok, out, err: success_cb() if ok and success_cb else error_cb(ssid, err) if error_cb else None)
+        exec_shell_command_async(
+            f'nmcli dev wifi connect "{ssid}" password "{password}"', 
+            lambda ok, out, err: (
+                success_cb() if ok and success_cb 
+                else error_cb(ssid, err) if error_cb 
+                else None
+            )
+        )
         return True
 
     def delete_saved_network(self, ssid: str) -> bool:
-        for c in (self._client.get_connections() if self._client else []):
-            if c.get_connection_type() == "802-11-wireless":
-                s_w = c.get_setting_wireless()
-                if s_w and NM.utils_ssid_to_utf8(s_w.get_ssid().get_data()) == ssid:
-                    c.delete()
+        for conn in (self._client.get_connections() if self._client else []):
+            if conn.get_connection_type() == "802-11-wireless":
+                wireless_setting = conn.get_setting_wireless()
+                if (wireless_setting and 
+                    NM.utils_ssid_to_utf8(wireless_setting.get_ssid().get_data()) == ssid):
+                    conn.delete()
                     return True
         return False

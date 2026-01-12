@@ -38,10 +38,11 @@ class MprisPlayer(Service):
         self._signal_connectors: dict = {}
         self._player: Playerctl.Player = player
         super().__init__(**kwargs)
-        for sn in ["playback-status", "loop-status", "shuffle", "volume", "seeked"]:
-            self._signal_connectors[sn] = self._player.connect(
-                sn,
-                lambda *args, sn=sn: self.notifier(sn, args),
+        # Connect to player signals
+        for signal_name in ["playback-status", "loop-status", "shuffle", "volume", "seeked"]:
+            self._signal_connectors[signal_name] = self._player.connect(
+                signal_name,
+                lambda *args, sn=signal_name: self.notifier(sn, args),
             )
 
         self._signal_connectors["exit"] = self._player.connect(
@@ -58,21 +59,30 @@ class MprisPlayer(Service):
         def notify_property(prop):
             if self.get_property(prop) is not None:
                 self.notifier(prop)
-        for prop in [
+
+        # Properties that depend on metadata
+        metadata_props = [
             "metadata",
             "title",
             "artist",
             "arturl",
             "length",
-        ]:
-            GLib.idle_add(lambda p=prop: (notify_property(p), False))
-        for prop in [
+        ]
+        
+        # Properties that don't depend on metadata
+        general_props = [
             "can-seek",
             "can-pause",
             "can-shuffle",
             "can-go-next",
             "can-go-previous",
-        ]:
+        ]
+
+        # Schedule property updates
+        for prop in metadata_props:
+            GLib.idle_add(lambda p=prop: (notify_property(p), False))
+        
+        for prop in general_props:
             GLib.idle_add(lambda p=prop: (self.notifier(p), False))
 
     def update_status_once(self):
@@ -90,31 +100,31 @@ class MprisPlayer(Service):
         GLib.idle_add(notify_and_emit, priority=GLib.PRIORITY_DEFAULT_IDLE)
 
     def on_player_exit(self, player):
-        for id in list(self._signal_connectors.values()):
+        for handler_id in list(self._signal_connectors.values()):
             with contextlib.suppress(Exception):
-                self._player.disconnect(id)
-        del self._signal_connectors
+                self._player.disconnect(handler_id)
+        self._signal_connectors.clear()
         GLib.idle_add(lambda: (self.emit("exit", True), False))
-        del self._player
+        self._player = None
 
     def toggle_shuffle(self):
         if self.can_shuffle:
-            GLib.idle_add(lambda: (setattr(self, 'shuffle', not self.shuffle), False))
+            GLib.idle_add(lambda: setattr(self, 'shuffle', not self.shuffle))
 
     def play_pause(self):
         if self.can_pause:
-            GLib.idle_add(lambda: (self._player.play_pause(), False))
+            GLib.idle_add(lambda: self._player.play_pause())
 
     def next(self):
         if self.can_go_next:
-            GLib.idle_add(lambda: (self._player.next(), False))
+            GLib.idle_add(lambda: self._player.next())
 
     def previous(self):
         if self.can_go_previous:
-            GLib.idle_add(lambda: (self._player.previous(), False))
+            GLib.idle_add(lambda: self._player.previous())
 
     @Property(str, "readable")
-    def player_name(self) -> int:
+    def player_name(self) -> str:
         return self._player.get_property("player-name")
 
     @Property(int, "read-write", default_value=0)
@@ -129,28 +139,27 @@ class MprisPlayer(Service):
     def metadata(self) -> dict:
         return self._player.get_property("metadata")
 
-    @Property(str or None, "readable")
-    def arturl(self) -> str | None:
-        if "mpris:artUrl" in self.metadata.keys():
-            return self.metadata["mpris:artUrl"]
-        return None
+    @Property(str, "readable")
+    def arturl(self) -> str:
+        metadata = self.metadata
+        return metadata.get("mpris:artUrl", None)
 
-    @Property(str or None, "readable")
-    def length(self) -> str | None:
-        if "mpris:length" in self.metadata.keys():
-            return self.metadata["mpris:length"]
-        return None
+    @Property(str, "readable")
+    def length(self) -> str:
+        metadata = self.metadata
+        return metadata.get("mpris:length", None)
 
     @Property(str, "readable")
     def artist(self) -> str:
         artist = self._player.get_artist()
         if isinstance(artist, (list, tuple)):
             return ", ".join(artist)
-        return artist
+        return artist if artist else ""
 
     @Property(str, "readable")
     def album(self) -> str:
-        return self._player.get_album()
+        album = self._player.get_album()
+        return album if album else ""
 
     @Property(str, "readable")
     def title(self) -> str:
@@ -165,33 +174,40 @@ class MprisPlayer(Service):
 
     @shuffle.setter
     def shuffle(self, do_shuffle: bool):
+        result = self._player.set_shuffle(do_shuffle)
         self.notifier("shuffle")
-        return self._player.set_shuffle(do_shuffle)
+        return result
 
     @Property(str, "readable")
     def playback_status(self) -> str:
-        return {
+        status_map = {
             Playerctl.PlaybackStatus.PAUSED: "paused",
             Playerctl.PlaybackStatus.PLAYING: "playing",
             Playerctl.PlaybackStatus.STOPPED: "stopped",
-        }.get(self._player.get_property("playback_status"), "unknown")
+        }
+        raw_status = self._player.get_property("playback_status")
+        return status_map.get(raw_status, "unknown")
 
     @Property(str, "read-write")
     def loop_status(self) -> str:
-        return {
+        status_map = {
             Playerctl.LoopStatus.NONE: "none",
             Playerctl.LoopStatus.TRACK: "track",
             Playerctl.LoopStatus.PLAYLIST: "playlist",
-        }.get(self._player.get_property("loop_status"), "unknown")
+        }
+        raw_status = self._player.get_property("loop_status")
+        return status_map.get(raw_status, "unknown")
 
     @loop_status.setter
     def loop_status(self, status: str):
-        loop_status = {
+        loop_status_map = {
             "none": Playerctl.LoopStatus.NONE,
             "track": Playerctl.LoopStatus.TRACK,
             "playlist": Playerctl.LoopStatus.PLAYLIST,
-        }.get(status)
-        self._player.set_loop_status(loop_status) if loop_status else None
+        }
+        mapped_status = loop_status_map.get(status)
+        if mapped_status:
+            self._player.set_loop_status(mapped_status)
 
     @Property(bool, "readable", default_value=False)
     def can_go_next(self) -> bool:
@@ -212,7 +228,8 @@ class MprisPlayer(Service):
     @Property(bool, "readable", default_value=False)
     def can_shuffle(self) -> bool:
         try:
-            self._player.set_shuffle(self._player.get_property("shuffle"))
+            current_shuffle = self._player.get_property("shuffle")
+            self._player.set_shuffle(current_shuffle)
             return True
         except Exception:
             return False
@@ -220,7 +237,8 @@ class MprisPlayer(Service):
     @Property(bool, "readable", default_value=False)
     def can_loop(self) -> bool:
         try:
-            self._player.set_shuffle(self._player.get_property("shuffle"))
+            current_loop = self._player.get_property("loop_status")
+            self._player.set_loop_status(current_loop)
             return True
         except Exception:
             return False
@@ -241,14 +259,14 @@ class MprisPlayerManager(Service):
         bulk_connect(
             self._manager,
             {
-                "name-appeared": self.on_name_appeard,
+                "name-appeared": self.on_name_appeared,
                 "name-vanished": self.on_name_vanished,
             },
         )
         self.add_players()
         super().__init__(**kwargs)
 
-    def on_name_appeard(self, manager, player_name: Playerctl.PlayerName):
+    def on_name_appeared(self, manager, player_name: Playerctl.PlayerName):
         new_player = Playerctl.Player.new_from_name(player_name)
         manager.manage_player(new_player)
         self.emit("player-appeared", new_player)
@@ -267,6 +285,6 @@ class MprisPlayerManager(Service):
     def destroy(self):
         """Cleanup resources"""
         if hasattr(self, '_manager') and self._manager:
-            self._manager.disconnect_by_func(self.on_name_appeard)
+            self._manager.disconnect_by_func(self.on_name_appeared)
             self._manager.disconnect_by_func(self.on_name_vanished)
             self._manager = None

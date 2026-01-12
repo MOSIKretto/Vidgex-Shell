@@ -18,7 +18,8 @@ class MonitorManager(GObject.GObject):
             return cls._instance
 
     def __init__(self):
-        if hasattr(self, '_init'): return
+        if hasattr(self, '_init'):
+            return
         super().__init__()
         self._init = True
         self._monitors: List[Dict] = []
@@ -39,12 +40,15 @@ class MonitorManager(GObject.GObject):
     def _fetch(self) -> List[Dict]:
         try:
             res = subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=2)
-            if res.returncode == 0: return json.loads(res.stdout)
-        except Exception: pass
+            if res.returncode == 0:
+                return json.loads(res.stdout)
+        except Exception:
+            pass
         return []
 
     def refresh(self, async_mode=True):
-        if self._updating: return
+        if self._updating:
+            return
         if not async_mode:
             self._apply_update(self._fetch())
             return
@@ -59,18 +63,21 @@ class MonitorManager(GObject.GObject):
     def _apply_update(self, data: List[Dict]):
         with self._lock:
             self._updating = False
-            if not data: return
+            if not data:
+                return
             
             old_count = len(self._monitors)
             old_focus = self._focused_id
             self._monitors = data
             self._cache_ts = time.monotonic()
             
-            # Поиск фокуса
+            # Find focus
             self._focused_id = next((i for i, m in enumerate(data) if m.get('focused')), 0)
             
-            if old_count != len(data): self.emit('monitors-changed')
-            if old_focus != self._focused_id: self.emit('focused-monitor-changed', self._focused_id)
+            if old_count != len(data):
+                self.emit('monitors-changed')
+            if old_focus != self._focused_id:
+                self.emit('focused-monitor-changed', self._focused_id)
 
     def get_monitors(self) -> List[Dict]:
         if time.monotonic() - self._cache_ts > 30:
@@ -88,9 +95,11 @@ class MonitorManager(GObject.GObject):
 
     def get_instance(self, m_id: int, i_type: str):
         with self._lock:
-            ref = self._instances.get(m_id, {}).get(i_type)
+            ref_dict = self._instances.get(m_id, {})
+            ref = ref_dict.get(i_type)
             obj = ref() if ref else None
-            if ref and not obj: del self._instances[m_id][i_type]
+            if ref and not obj:
+                del ref_dict[i_type]
             return obj
 
     def set_notch_state(self, m_id: int, is_open: bool, name: str = None):

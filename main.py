@@ -3,10 +3,6 @@ import signal
 import atexit
 import setproctitle
 from typing import Dict, List, Optional, Tuple, Callable, Any
-from functools import lru_cache
-
-import gi
-gi.require_version("GLib", "2.0")
 
 from fabric import Application
 from fabric.utils import get_relative_path
@@ -38,7 +34,7 @@ class ShellManager:
             return
         self._cleaned_up = True
 
-        # Выполняем обработчики очистки в обратном порядке
+        # Execute cleanup handlers in reverse order
         for handler in reversed(self.cleanup_handlers):
             try:
                 handler()
@@ -46,7 +42,7 @@ class ShellManager:
                 pass
         self.cleanup_handlers.clear()
 
-        # Отвязываем компоненты друг от друга
+        # Unbind components from each other
         for instances in self.components.values():
             bar = instances.get('bar')
             notch = instances.get('notch')
@@ -56,7 +52,7 @@ class ShellManager:
             if notch is not None:
                 notch.bar = None
 
-        # Уничтожаем компоненты
+        # Destroy components
         for instances in self.components.values():
             for component in instances.values():
                 if component is not None and hasattr(component, 'destroy'):
@@ -65,10 +61,10 @@ class ShellManager:
                     except Exception:
                         pass
         
-        # Очищаем словарь компонентов
+        # Clear components dictionary
         self.components.clear()
 
-        # Завершаем приложение
+        # Quit application
         if self.app:
             try:
                 self.app.quit()
@@ -110,8 +106,7 @@ class ShellManager:
             instances['corners'] = corners
             instances['notification'] = notification
             
-            app_widgets.append(corners)
-            app_widgets.append(notification)
+            app_widgets.extend([corners, notification])
 
         if multi_monitor and monitor_manager:
             monitor_manager.register_monitor_instances(
@@ -119,7 +114,7 @@ class ShellManager:
                 {k: v for k, v in instances.items() if k != 'notification'}
             )
 
-        app_widgets.extend((bar, notch, dock))
+        app_widgets.extend([bar, notch, dock])
         return instances
 
     def run(self) -> int:

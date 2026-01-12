@@ -6,6 +6,15 @@ class UPowerManager:
         self.UPOWER_NAME = "org.freedesktop.UPower"
         self.UPOWER_PATH = "/org/freedesktop/UPower"
         self.DBUS_PROPERTIES = "org.freedesktop.DBus.Properties"
+        self.STATE_MAP = {
+            0: "Unknown",
+            1: "Loading",
+            2: "Discharging",
+            3: "Empty",
+            4: "Fully charged",
+            5: "Pending charge",
+            6: "Pending discharge"
+        }
         self.bus = dbus.SystemBus()
     
     def _get_upower_object(self):
@@ -86,18 +95,7 @@ class UPowerManager:
     def get_state(self, battery):
         props = self._get_properties_interface(battery)
         state = int(props.Get(f"{self.UPOWER_NAME}.Device", "State"))
-        
-        states = {
-            0: "Unknown",
-            1: "Loading",
-            2: "Discharging",
-            3: "Empty",
-            4: "Fully charged",
-            5: "Pending charge",
-            6: "Pending discharge"
-        }
-        
-        return states.get(state, "Unknown")
+        return self.STATE_MAP.get(state, "Unknown")
     
     def destroy(self):
         if hasattr(self, 'bus') and self.bus:
