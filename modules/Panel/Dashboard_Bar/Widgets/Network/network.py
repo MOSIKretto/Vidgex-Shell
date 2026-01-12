@@ -67,13 +67,25 @@ class WifiNetworkSlot(CenterBox):
         if err_ssid == self.network_data.get("ssid"):
             # Вызов системного уведомления
             try:
-                subprocess.run([
-                    'notify-send', 
-                    '❌ Ошибка подключения', 
-                    f'{message}', 
-                    '-a', 'Vidgex-Shell', 
-                    '-e'
-                ], check=True)
+                # Extract the SSID from the error message to format properly
+                if "Неверный пароль для " in message:
+                    # Extract network name from error message like "Неверный пароль для NETWORK_NAME"
+                    ssid_part = message.replace("Неверный пароль для ", "")
+                    subprocess.run([
+                        'notify-send', 
+                        '❌ Ошибка подключения', 
+                        f'Неверный пароль для {ssid_part}', 
+                        '-a', 'Vidgex-Shell', 
+                        '-e'
+                    ], check=True)
+                else:
+                    subprocess.run([
+                        'notify-send', 
+                        '❌ Ошибка подключения', 
+                        f'{message}', 
+                        '-a', 'Vidgex-Shell', 
+                        '-e'
+                    ], check=True)
             except subprocess.CalledProcessError:
                 pass  # Если notify-send не доступен, просто продолжаем
             
@@ -186,13 +198,25 @@ class WifiNetworkSlot(CenterBox):
         """Коллбэк при прямой ошибке вызова"""
         # Вызов системного уведомления
         try:
-            subprocess.run([
-                'notify-send', 
-                '❌ Ошибка подключения', 
-                f'{error_message}', 
-                '-a', 'Vidgex-Shell', 
-                '-e'
-            ], check=True)
+            # Extract the SSID from the error message to format properly
+            if "Неверный пароль для " in error_message:
+                # Extract network name from error message like "Неверный пароль для NETWORK_NAME"
+                ssid_part = error_message.replace("Неверный пароль для ", "")
+                subprocess.run([
+                    'notify-send', 
+                    '❌ Ошибка подключения', 
+                    f'Неверный пароль для {ssid_part}', 
+                    '-a', 'Vidgex-Shell', 
+                    '-e'
+                ], check=True)
+            else:
+                subprocess.run([
+                    'notify-send', 
+                    '❌ Ошибка подключения', 
+                    f'{error_message}', 
+                    '-a', 'Vidgex-Shell', 
+                    '-e'
+                ], check=True)
         except subprocess.CalledProcessError:
             pass  # Если notify-send не доступен, просто продолжаем
         

@@ -286,16 +286,28 @@ class NetworkClient(Service):
         """Проверяет подключение с паролем и только при успехе сохраняет профиль"""
         def callback(ok, output, error):
             if ok and ("activated" in output.lower() or "successfully activated" in output.lower()):
-                # Подключение успешно, можно оставить профиль
+                # Подключение успешно - теперь можно уведомить об успехе
                 if success_callback:
                     success_callback(ssid)
             else:
                 # Удаляем профиль, если подключение не удалось
                 self.delete_saved_network(ssid)
-                error_msg = f"Неверный пароль для {ssid}" if "secret" in error.lower() or "password" in error.lower() or "auth" in error.lower() else f"Ошибка подключения: {error}"
+                # Проверяем тип ошибки для правильного сообщения
+                error_msg = f"Неверный пароль для {ssid}" if (
+                    "secret" in error.lower() or 
+                    "password" in error.lower() or 
+                    "auth" in error.lower() or 
+                    "802.1X" in error.lower()
+                ) else f"Ошибка подключения: {error}"
+                
+                # Также генерируем сигнал ошибки для UI
+                self.emit("connection_error", ssid, error_msg)
+                
                 if error_callback:
                     error_callback(ssid, error_msg)
         
+        # Сначала пробуем подключиться временным способом, чтобы проверить пароль
+        # Если подключение успешно, NetworkManager автоматически создаст профиль
         cmd = f'nmcli device wifi connect "{ssid}" password "{password}"'
         exec_shell_command_async(cmd, callback)
         return True
