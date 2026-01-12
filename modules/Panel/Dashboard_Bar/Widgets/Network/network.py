@@ -12,18 +12,9 @@ gi.require_version('NM', '1.0')
 
 import time
 import psutil
-import subprocess
 
 import modules.icons as icons
 from services.network import NetworkClient
-
-from fabric.widgets.box import Box
-from fabric.widgets.button import Button
-from fabric.widgets.centerbox import CenterBox
-from fabric.widgets.image import Image
-from fabric.widgets.label import Label
-import gi
-from gi.repository import Gtk, GLib
 
 class WifiNetworkSlot(CenterBox):
     active_pw_block = None
@@ -57,26 +48,12 @@ class WifiNetworkSlot(CenterBox):
         self.connect_button.connect('button-press-event', self._on_button_press)
         self.delete_button.connect('button-press-event', self._on_delete_button_press)
         
-        # Подписываемся на сигнал ошибки от NetworkClient
-        if hasattr(self.network_client, "connect"):
-            # Используем connection-error, как определено в классе NetworkClient
-            self.network_client.connect("connection-error", self._on_global_error)
+        # Слушаем глобальные ошибки, чтобы сбросить кнопку, если ошибка пришла асинхронно
+        self.network_client.connect("connection-error", self._on_global_error)
 
     def _on_global_error(self, client, err_ssid, message):
         """Обработка сигнала ошибки от сервиса"""
         if err_ssid == self.network_data.get("ssid"):
-            # Вызов системного уведомления
-            try:
-                subprocess.run([
-                    'notify-send', 
-                    '❌ Ошибка подключения', 
-                    f'{message}', 
-                    '-a', 'Vidgex-Shell', 
-                    '-e'
-                ], check=True)
-            except subprocess.CalledProcessError:
-                pass  # Если notify-send не доступен, просто продолжаем
-            
             self._show_error("Ошибка")
 
     def _setup_action_widgets(self):
@@ -166,7 +143,7 @@ class WifiNetworkSlot(CenterBox):
     def _on_password_entered(self, ssid, password):
         self._close_active_password_block()
         self._set_connecting_state(True)
-        # Вызываем метод подключения. Логика удаления битых профилей теперь внутри connect_to_new_network
+        # Логика теперь в NetworkClient: если пароль неверный, сеть удалится из сохраненных и придет ошибка
         self.network_client.connect_to_new_network(ssid, password, 
                                                  self._on_connection_success, 
                                                  self._on_connection_error_callback)
@@ -184,18 +161,6 @@ class WifiNetworkSlot(CenterBox):
 
     def _on_connection_error_callback(self, ssid, error_message): 
         """Коллбэк при прямой ошибке вызова"""
-        # Вызов системного уведомления
-        try:
-            subprocess.run([
-                'notify-send', 
-                '❌ Ошибка подключения', 
-                f'{error_message}', 
-                '-a', 'Vidgex-Shell', 
-                '-e'
-            ], check=True)
-        except subprocess.CalledProcessError:
-            pass  # Если notify-send не доступен, просто продолжаем
-        
         self._show_error("Ошибка")
 
     def _show_error(self, error_message):
