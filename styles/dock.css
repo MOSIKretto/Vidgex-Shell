@@ -1,6 +1,7 @@
 #dock {
   background-color: var(--shadow);
   padding: 8px;
+  /* margin оставляем как есть, это внешние отступы контейнера */
   margin: 8px 8px 0 8px;
   border-radius: 20px 20px 0 0;
 }
@@ -31,7 +32,21 @@
   box-shadow: 
     0 2px 8px alpha(var(--shadow), 0.2),
     0 1px 4px alpha(var(--shadow), 0.1);
+    
+  /* --- ЗАМЕНА SPACING=4 --- */
+  /* Добавляем боковые отступы каждой кнопке */
+  margin-left: 2px;
+  margin-right: 2px;
 }
+
+#dock-app-button:first-child {
+  margin-left: 0;
+}
+
+#dock-app-button:last-child {
+  margin-right: 0;
+}
+/* ------------------------ */
 
 #dock-app-button:hover {
   background-color: alpha(var(--surface-bright), 0.8);
@@ -70,7 +85,6 @@
   margin: -8px 0 0 0;
 }
 
-/* Стиль активной кнопки - без тени и с одинаковым скруглением */
 #dock-app-button.active {
   background-color: alpha(var(--primary), 0.2);
   border: 2px solid var(--primary);

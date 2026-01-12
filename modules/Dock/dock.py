@@ -7,18 +7,20 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib, Gtk
-
-import cairo
 import json
+import cairo
 
 from widgets.corners import MyCorner
 from utils.icon_resolver import IconResolver
 from widgets.wayland import WaylandWindow as Window
 
-
 def createSurfaceFromWidget(widget):
     alloc = widget.get_allocation()
-    surface = cairo.ImageSurface(cairo.Format.ARGB32, alloc.width, alloc.height)
+    surface = cairo.ImageSurface(
+        cairo.Format.ARGB32,
+        alloc.width,
+        alloc.height,
+    )
     cr = cairo.Context(surface)
     cr.set_source_rgba(255, 255, 255, 0)
     cr.rectangle(0, 0, alloc.width, alloc.height)
@@ -26,60 +28,74 @@ def createSurfaceFromWidget(widget):
     widget.draw(cr)
     return surface
 
-
 class Dock(Window):
     _instances = []
 
     def __init__(self, monitor_id=0, integrated_mode=False, **kwargs):
         self.monitor_id = monitor_id
         self.integrated_mode = integrated_mode
-        self.icon_size = 38
-        self.effective_occlusion_size = 36 + self.icon_size
-        self.always_show = False if not self.integrated_mode else False
+        self.always_show = False
+        
+        self.icon_size = 24
+        self.icon_scale_factor = 0.035 
 
-        if not self.integrated_mode:
+        layer = "top"
+        exclusivity = "none"
+        if integrated_mode:
             self.actual_dock_is_horizontal = True
-            super().__init__(
-                name="dock-window",
-                layer="top",
-                anchor="bottom",
-                margin="0px 0px 0px 0px",
-                exclusivity="auto" if self.always_show else "none",
-                monitor=monitor_id,
-                **kwargs,
-            )
-            Dock._instances.append(self)
         else:
             self.actual_dock_is_horizontal = True
+            if self.always_show:
+                exclusivity = "auto"
 
-        if not self.integrated_mode:
-            self.set_margin("-8px 0px 0px 0px")
-
+        super().__init__(
+            name="dock-window",
+            layer=layer,
+            anchor="bottom",
+            margin="0px 0px 0px 0px", 
+            exclusivity=exclusivity,
+            monitor=monitor_id,
+            visible=False,
+            **kwargs,
+        )
+        
+        Dock._instances.append(self)
+        
         self.conn = get_hyprland_connection()
         self.icon_resolver = IconResolver()
-        
+
         self._all_apps = get_desktop_applications()
         self.app_identifiers = self._build_app_identifiers_map()
         
-        self.hide_id = None
         self._drag_in_progress = False
         self.is_mouse_over_dock_area = False
-        self._current_active_window = None
-        self._prevent_occlusion = False
+        self._current_active_window_class = None
         self._forced_occlusion = False
         self._destroyed = False
-        self._occlusion_timer_id = None
-        self._event_handlers = []
-        self.dock_geometry = None
-        self.monitor_info = None
-        self._monitor_info_timer = None
         
         self._update_pending = False
-        self._button_cache = {}
+        self._occlusion_pending = False
 
-        self.view = Box(name="viewport", spacing=4, orientation=Gtk.Orientation.HORIZONTAL)
-        self.wrapper = Box(name="dock", children=[self.view], orientation=Gtk.Orientation.HORIZONTAL)
+        self.dock_geometry = None
+        self.monitor_info = None
 
+        self._setup_ui()
+        self._setup_event_handlers()
+        
+        self._update_monitor_info_once()
+
+    def _setup_ui(self):
+        self.view = Box(name="viewport", spacing=0)
+        self.wrapper = Box(name="dock", children=[self.view])
+        self.wrapper.set_orientation(Gtk.Orientation.HORIZONTAL)
+        self.view.set_orientation(Gtk.Orientation.HORIZONTAL)
+
+        if self.integrated_mode:
+            self.add(self.wrapper)
+        else:
+            self._setup_dock_window()
+
+    def _setup_dock_window(self):
         self.dock_eventbox = EventBox()
         self.dock_eventbox.add(self.wrapper)
         self.dock_eventbox.connect("enter-notify-event", self._on_dock_enter)
@@ -93,7 +109,7 @@ class Dock(Window):
             name="dock-corner-right", orientation=Gtk.Orientation.VERTICAL, h_align="end",
             children=[Box(v_expand=True, v_align="fill"), MyCorner("bottom-left")]
         )
-
+        
         self.dock_full = Box(
             name="dock-full", orientation=Gtk.Orientation.HORIZONTAL, h_expand=True, h_align="fill",
             children=[self.corner_left, self.dock_eventbox, self.corner_right]
@@ -102,7 +118,6 @@ class Dock(Window):
         self.dock_revealer = Revealer(
             name="dock-revealer",
             transition_type="slide-up",
-            transition_duration=250,
             child_revealed=False,
             child=self.dock_full
         )
@@ -118,352 +133,223 @@ class Dock(Window):
             h_align="center",
         )
         self.add(self.main_box)
+        self._setup_drag_drop()
 
+    def _setup_drag_drop(self):
+        target_entry = Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)
         self.view.drag_source_set(
-            Gdk.ModifierType.BUTTON1_MASK,
-            [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)],
-            Gdk.DragAction.MOVE
+            Gdk.ModifierType.BUTTON1_MASK, [target_entry], Gdk.DragAction.MOVE
         )
         self.view.drag_dest_set(
-            Gtk.DestDefaults.ALL,
-            [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)],
-            Gdk.DragAction.MOVE
+            Gtk.DestDefaults.ALL, [target_entry], Gdk.DragAction.MOVE
         )
         self.view.connect("drag-data-get", self.on_drag_data_get)
         self.view.connect("drag-data-received", self.on_drag_data_received)
         self.view.connect("drag-begin", self.on_drag_begin)
         self.view.connect("drag-end", self.on_drag_end)
 
-        self._monitor_info_timer = GLib.timeout_add(100, self._update_monitor_info)
+    def _setup_event_handlers(self):
+        events = [
+            ("event::openwindow", self._schedule_full_update),
+            ("event::closewindow", self._schedule_full_update),
+            ("event::movewindow", self._schedule_occlusion_check),
+            ("event::resizewindow", self._schedule_occlusion_check),
+            ("event::workspace", self._schedule_occlusion_check),
+            ("event::activewindow", self._on_active_window_event),
+            ("event::monitoradded", self._update_monitor_info_once),
+            ("event::monitorremoved", self._update_monitor_info_once)
+        ]
+        
+        for event, handler in events:
+            self.conn.connect(event, handler)
 
         if self.conn.ready:
-            self.update_dock()
-            self.update_active_window()
-            if not self.integrated_mode:
-                self._occlusion_timer_id = GLib.timeout_add(500, self._check_occlusion_wrapper)
+            self._on_ready()
         else:
-            self._event_handlers.append(self.conn.connect("event::ready", lambda *args: self._on_ready()))
-
-        events = [
-            ("event::openwindow", self._on_window_change),
-            ("event::closewindow", self._on_window_change),
-            ("event::activewindow", self.update_active_window),
-        ]
-
-        if not self.integrated_mode:
-            events.extend([
-                ("event::workspace", self._on_window_change),
-                ("event::movewindow", self._on_window_change),
-            ])
-
-        for event_name, handler in events:
-            self._event_handlers.append(self.conn.connect(event_name, handler))
+            self.conn.connect("event::ready", lambda *args: self._on_ready())
 
     def _on_ready(self):
-        if self._destroyed:
+        if self._destroyed: return
+        self.show_all()
+        self._schedule_full_update()
+
+    def _schedule_full_update(self, *args):
+        if self._update_pending or self._destroyed:
             return
-        self.update_dock()
-        self.update_active_window()
-        if not self.integrated_mode:
-            self._occlusion_timer_id = GLib.timeout_add(250, self._check_occlusion_wrapper)
+        self._update_pending = True
+        GLib.idle_add(self._perform_full_update)
 
-    def _check_occlusion_wrapper(self):
-        return False if self._destroyed else self.check_occlusion_state()
+    def _schedule_occlusion_check(self, *args):
+        if self.integrated_mode or self._occlusion_pending or self._destroyed:
+            return
+        self._occlusion_pending = True
+        GLib.idle_add(self._perform_occlusion_check)
 
-    def _update_monitor_info(self):
-        if self._destroyed or not self.conn:
-            return False
+    def _on_active_window_event(self, *args):
+        self._update_active_window_state()
+
+    def _perform_full_update(self):
+        self._update_pending = False
+        if self._destroyed: return False
+
+        clients = self._get_hyprland_json("j/clients")
+        self._rebuild_dock_icons(clients)
         
+        if not self.integrated_mode:
+            self._perform_occlusion_logic(clients)
+            
+        return False
+
+    def _perform_occlusion_check(self):
+        self._occlusion_pending = False
+        if self._destroyed or self.integrated_mode: return False
+        
+        clients = self._get_hyprland_json("j/clients")
+        self._perform_occlusion_logic(clients)
+        return False
+
+    def _get_hyprland_json(self, command):
         try:
-            monitors = json.loads(self.conn.send_command("j/monitors").reply.decode())
+            return json.loads(self.conn.send_command(command).reply.decode())
+        except Exception:
+            return []
+
+    def _update_monitor_info_once(self, *args):
+        try:
+            monitors = self._get_hyprland_json("j/monitors")
             for monitor in monitors:
                 if monitor.get("id") == self.monitor_id:
                     self.monitor_info = monitor
+                    
+                    m_height = self.monitor_info.get("height", 1080)
+                    calculated_size = int(m_height * self.icon_scale_factor)
+                    
+                    if abs(self.icon_size - calculated_size) > 2:
+                        self.icon_size = calculated_size
+                        self._schedule_full_update() # Перестроить иконки с новым размером
+                        
+                    self.dock_geometry = None
                     break
         except Exception:
             pass
 
-        return False
+    def _ensure_geometry(self):
+        if self.dock_geometry: return
+        if not self.monitor_info: 
+            self._update_monitor_info_once()
+            if not self.monitor_info: return
 
-    def _update_dock_geometry(self):
-        if not self.monitor_info:
-            self._update_monitor_info()
-            return False
-        
         alloc = self.get_allocation()
-        m = self.monitor_info
+        m_x = self.monitor_info.get("x", 0)
+        m_y = self.monitor_info.get("y", 0)
+        m_w = self.monitor_info.get("width")
+        m_h = self.monitor_info.get("height")
         
+        if not m_w or not m_h: return
+
+        estimated_dock_height = self.icon_size + 24
+        
+        dock_w = alloc.width
+        
+        pos_x = m_x + (m_w - dock_w) // 2
+        
+        pos_y = m_y + m_h - estimated_dock_height
+
         self.dock_geometry = {
-            'x': m.get("x", 0) + (m.get("width", 1920) - alloc.width) // 2,
-            'y': m.get("y", 0) + m.get("height", 1200) - alloc.height - 50,
-            'width': alloc.width,
-            'height': alloc.height
+            'x': pos_x,
+            'y': pos_y,
+            'w': dock_w,
+            'h': estimated_dock_height
         }
-        return False
 
-    def _on_window_change(self, *args):
-        if not self._update_pending:
-            self._update_pending = True
-            GLib.idle_add(self._perform_dock_update)
+    def _perform_occlusion_logic(self, clients):
+        if self.integrated_mode: return
 
-    def _perform_dock_update(self):
-        self._update_pending = False
-        self.update_dock()
-        if not self.integrated_mode:
-            self.check_occlusion_state()
-        return False
+        self._ensure_geometry()
+        
+        if not self.dock_geometry: return
+
+        try:
+            active_ws_data = json.loads(self.conn.send_command("j/activeworkspace").reply.decode())
+            current_ws_id = active_ws_data.get("id", 0)
+        except:
+            current_ws_id = 0
+
+        d_x = self.dock_geometry['x']
+        d_y = self.dock_geometry['y']
+        d_w = self.dock_geometry['w']
+        d_h = self.dock_geometry['h']
+        
+        overlap = False
+        for win in clients:
+            if win.get("workspace", {}).get("id") != current_ws_id:
+                continue
+            if win.get("monitor") != self.monitor_id:
+                continue
+
+            if win.get("floating") and not win.get("fullscreen"):
+                 continue
+
+            w_at = win.get("at", [0, 0])
+            w_sz = win.get("size", [0, 0])
+            
+            if (w_at[0] < d_x + d_w) and (w_at[0] + w_sz[0] > d_x):
+                if (w_at[1] < d_y + d_h) and (w_at[1] + w_sz[1] > d_y):
+                    overlap = True
+                    break
+
+        should_hide = overlap and not self.is_mouse_over_dock_area and not self._drag_in_progress
+        
+        if self._forced_occlusion: should_hide = True
+
+        is_revealed = self.dock_revealer.get_reveal_child()
+        
+        if should_hide:
+            if is_revealed: self.dock_revealer.set_reveal_child(False)
+        else:
+            if not is_revealed: self.dock_revealer.set_reveal_child(True)
 
     def _build_app_identifiers_map(self):
         identifiers = {}
         for app in self._all_apps:
-            for attr in ['name', 'display_name', 'window_class']:
-                val = getattr(app, attr, None)
-                if val:
-                    identifiers[val.lower()] = app
-            for attr in ['executable', 'command_line']:
-                val = getattr(app, attr, None)
-                if val:
-                    identifiers[val.split('/')[-1].lower()] = app
+            keys = [app.name, app.display_name, app.window_class]
+            if app.executable: keys.append(app.executable.split('/')[-1])
+            if app.command_line: keys.append(app.command_line.split()[0].split('/')[-1])
+            for k in keys:
+                if k: identifiers[str(k).lower()] = app
         return identifiers
 
-    def _normalize_window_class(self, class_name):
-        if not class_name:
-            return ""
-        normalized = class_name.lower()
-        for suffix in (".bin", ".exe", ".so", "-bin", "-gtk"):
-            if normalized.endswith(suffix):
-                return normalized[:-len(suffix)]
-        return normalized
+    def _normalize_class(self, name):
+        if not name: return ""
+        n = name.lower()
+        for s in (".bin", ".exe", ".so", "-bin", "-gtk"):
+            if n.endswith(s): return n[:-len(s)]
+        return n
 
-    def _classes_match(self, class1, class2):
-        return class1 and class2 and self._normalize_window_class(class1) == self._normalize_window_class(class2)
-
-    def _is_window_overlapping_dock(self, window):
-        if not self.dock_geometry:
-            self._update_dock_geometry()
-            if not self.dock_geometry:
-                return False
-
-        w_at, w_size = window.get("at", [0, 0]), window.get("size", [0, 0])
-        dock = self.dock_geometry
-
-        x_overlap = w_at[0] < dock['x'] + dock['width'] and w_at[0] + w_size[0] > dock['x']
-        y_overlap = w_at[1] < dock['y'] - 30 + dock['height'] + 30 and w_at[1] + w_size[1] > dock['y'] - 30
-
-        return x_overlap and y_overlap and window.get("monitor", -1) == self.monitor_id
-
-    def check_occlusion_state(self):
-        if self.integrated_mode or self._destroyed or not self.conn or self._drag_in_progress or self.is_mouse_over_dock_area:
-            return False
-
-        self._update_dock_geometry()
-        try:
-            clients = json.loads(self.conn.send_command("j/clients").reply.decode())
-            current_ws = json.loads(self.conn.send_command("j/activeworkspace").reply.decode()).get("id", 0)
-        except Exception:
-            return True
-
-        overlapping = False
-        try:
-            for w in clients:
-                if w.get("workspace", {}).get("id") == current_ws:
-                    if self._is_window_overlapping_dock(w):
-                        overlapping = True
-                        break
-        except Exception:
-            overlapping = False
-
-        if overlapping:
-            if self.dock_revealer.get_reveal_child():
-                self.dock_revealer.set_reveal_child(False)
-            if not self.always_show:
-                self.dock_full.add_style_class("occluded")
-        else:
-            if not self.dock_revealer.get_reveal_child():
-                self.dock_revealer.set_reveal_child(True)
-            self.dock_full.remove_style_class("occluded")
-
-        return True
-
-    def find_app(self, app_identifier):
-        if not app_identifier:
-            return None
-        if isinstance(app_identifier, dict):
-            for key in ["window_class", "executable", "command_line", "name", "display_name"]:
-                app = self.find_app_by_key(app_identifier.get(key))
-                if app:
-                    return app
-            return None
-        return self.find_app_by_key(app_identifier)
-
-    def find_app_by_key(self, key_value):
-        if not key_value:
-            return None
-        normalized_id = str(key_value).lower()
-        app = self.app_identifiers.get(normalized_id)
-        if app:
-            return app
-        return None
-
-    def create_button(self, app_identifier, instances, window_class=None):
-        desktop_app = self.find_app(app_identifier)
-
-        icon_img = None
-        if desktop_app:
-            icon_img = desktop_app.get_icon_pixbuf(size=self.icon_size)
-
-        id_value = app_identifier["name"] if isinstance(app_identifier, dict) else app_identifier
-
-        for icon_name in [id_value, "application-x-executable-symbolic", "image-missing"]:
-            if not icon_img:
-                icon_img = self.icon_resolver.get_icon_pixbuf(icon_name, self.icon_size)
-            else:
-                break
-
-        display_name = desktop_app.display_name or desktop_app.name if desktop_app else None
-        tooltip = display_name or (id_value if isinstance(id_value, str) else "Unknown")
-        if not display_name and instances and instances[0].get("title"):
-            tooltip = instances[0]["title"]
-
-        button = Button(
-            child=Box(name="dock-icon", orientation="v", h_align="center", children=[Image(pixbuf=icon_img)]),
-            on_clicked=lambda *a: self.handle_app(app_identifier, button.instances, button.desktop_app),
-            tooltip_text=tooltip,
-            name="dock-app-button",
-        )
-
-        button.app_identifier = app_identifier
-        button.desktop_app = desktop_app
-        button.instances = instances
-        button.window_class = window_class
-        button.id_key = window_class
-
-        button.add_style_class("instance")
-
-        button.drag_source_set(
-            Gdk.ModifierType.BUTTON1_MASK,
-            [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)],
-            Gdk.DragAction.MOVE
-        )
-        button.drag_dest_set(
-            Gtk.DestDefaults.ALL,
-            [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)],
-            Gdk.DragAction.MOVE
-        )
-        for signal, handler in [
-            ("drag-begin", self.on_drag_begin),
-            ("drag-end", self.on_drag_end),
-            ("drag-data-get", self.on_drag_data_get),
-            ("drag-data-received", self.on_drag_data_received),
-            ("enter-notify-event", self._on_child_enter)
-        ]:
-            button.connect(signal, handler)
-
-        return button
-
-    def handle_app(self, app_identifier, instances, desktop_app=None):
-        if self._destroyed or not self.conn:
-            return
-        if instances:
-            try:
-                focused = json.loads(self.conn.send_command("j/activewindow").reply.decode()).get("address", "")
-            except Exception:
-                focused = ""
-            
-            idx = -1
-            if focused:
-                for i, inst in enumerate(instances):
-                    if inst["address"] == focused:
-                        idx = i
-                        break
-            
-            next_inst = instances[(idx + 1) % len(instances)]
-            exec_shell_command(f"hyprctl dispatch focuswindow address:{next_inst['address']}")
-            return
-
-        if desktop_app and desktop_app.launch():
-            return
-        
-        if not desktop_app:
-             desktop_app = self.find_app(app_identifier)
-
-        cmd_to_run = None
-        if isinstance(app_identifier, dict):
-            cmd_to_run = (app_identifier.get('command_line') or
-                          app_identifier.get('executable') or
-                          app_identifier.get('name'))
-        elif isinstance(app_identifier, str):
-            cmd_to_run = app_identifier
-
-        if cmd_to_run:
-            exec_shell_command_async(f"nohup {cmd_to_run} &")
-
-    def update_active_window(self, *args):
-        if self._destroyed or not self.conn:
-            return
-        
-        try:
-            active_window = json.loads(self.conn.send_command("j/activewindow").reply.decode())
-            active_class = active_window.get("initialClass") or active_window.get("class") if active_window else None
-            self._current_active_window = active_class
-        except Exception:
-            return
-
-        for button in self.view.get_children():
-            if hasattr(button, 'window_class') and button.window_class:
-                if active_class and self._classes_match(active_class, button.window_class):
-                    button.add_style_class("active")
-                else:
-                    button.remove_style_class("active")
-
-    def update_dock(self, *args):
-        if self._destroyed or not self.conn:
-            return
-        
-        try:
-            clients = json.loads(self.conn.send_command("j/clients").reply.decode())
-        except Exception:
-            return
-            
+    def _rebuild_dock_icons(self, clients):
         running_windows = {}
-
         for c in clients:
-            window_id = c.get("initialClass", "").lower() or c.get("class", "").lower()
-            if not window_id:
-                title = c.get("title", "").lower()
-                possible_name = title.split(" - ")[0].strip()
-                window_id = possible_name if possible_name and len(possible_name) > 1 else title or "unknown-app"
+            raw_id = c.get("initialClass") or c.get("class") or c.get("title", "")
+            if not raw_id: continue
+            raw_id_lower = raw_id.lower()
+            if " - " in raw_id_lower: 
+                raw_id_lower = raw_id_lower.split(" - ")[0].strip()
+            running_windows.setdefault(raw_id_lower, []).append(c)
+            norm = self._normalize_class(raw_id_lower)
+            if norm != raw_id_lower:
+                running_windows.setdefault(norm, []).extend(running_windows[raw_id_lower])
 
-            running_windows.setdefault(window_id, []).append(c)
-            norm_id = self._normalize_window_class(window_id)
-            if norm_id != window_id:
-                running_windows.setdefault(norm_id, []).extend(running_windows[window_id])
-
-        used_window_classes = set()
-        
-        
-        current_buttons = self.view.get_children()
-        active_keys = set()
-        
-        existing_button_map = {btn.id_key: btn for btn in current_buttons if hasattr(btn, 'id_key')}
-        
-        new_children_order = []
+        new_children = []
         processed_classes = set()
 
         for class_name, instances in running_windows.items():
-            if class_name in processed_classes:
-                continue
+            if class_name in processed_classes: continue
             
-            app = (self.app_identifiers.get(class_name) or
-                   self.app_identifiers.get(self._normalize_window_class(class_name)) or
-                   self.find_app_by_key(class_name))
-
-            if not app and instances and instances[0].get("title"):
-                title = instances[0].get("title", "")
-                potential_name = title.split(" - ")[0].strip()
-                if len(potential_name) > 2:
-                    app = self.find_app_by_key(potential_name)
-
+            app = self.app_identifiers.get(class_name)
+            if not app:
+                norm = self._normalize_class(class_name)
+                app = self.app_identifiers.get(norm)
+            
             identifier = {
                 "name": app.name,
                 "display_name": app.display_name,
@@ -471,221 +357,194 @@ class Dock(Window):
                 "executable": app.executable,
                 "command_line": app.command_line
             } if app else class_name
-            
-            if class_name in existing_button_map:
-                btn = existing_button_map[class_name]
-                btn.instances = instances
-                if not btn.desktop_app and instances and instances[0].get("title"):
-                    btn.set_tooltip_text(instances[0]["title"])
-                new_children_order.append(btn)
-                active_keys.add(class_name)
-            else:
-                new_btn = self.create_button(identifier, instances, class_name)
-                new_children_order.append(new_btn)
-                active_keys.add(class_name)
-            
+
+            btn = self.create_button(identifier, instances, class_name)
+            new_children.append(btn)
             processed_classes.add(class_name)
-            
-        for btn in current_buttons:
-             if hasattr(btn, 'id_key') and btn.id_key not in active_keys:
-                 btn.destroy()
 
-        current_view_children = self.view.get_children() 
-        
-        if current_view_children != new_children_order:
-            for child in current_view_children:
-                self.view.remove(child)
+        old_children = self.view.get_children()
+        for child in old_children:
+            child.destroy() 
             
-            for child in new_children_order:
-                self.view.add(child)
-
-        self._drag_in_progress = False
+        self.view.children = new_children
         
         if not self.integrated_mode:
-            GLib.idle_add(self._update_size)
+            self.dock_geometry = None 
             
-        self.update_active_window()
+        self._update_active_window_state()
 
-    def _update_size(self):
-        if self._destroyed or self.integrated_mode:
-            return False
-        width, _ = self.view.get_preferred_width()
-        current_width = self.get_allocated_width()
-        if abs(width - current_width) > 2:
-            self.set_size_request(width, -1)
-            self._update_dock_geometry()
-        return False
-
-    def _on_hover_enter(self, *args):
-        if self.integrated_mode:
-            return
-        self.is_mouse_over_dock_area = True
-        if self.hide_id:
-            GLib.source_remove(self.hide_id)
-            self.hide_id = None
-        self.dock_revealer.set_reveal_child(True)
-        if not self.always_show:
-            self.dock_full.remove_style_class("occluded")
-
-    def _on_hover_leave(self, *args):
-        if self.integrated_mode:
-            return
-        self.is_mouse_over_dock_area = False
-        self.check_occlusion_state()
-
-    def _on_dock_enter(self, widget, event):
-        if self.integrated_mode:
-            return True
-        self.is_mouse_over_dock_area = True
-        if self.hide_id:
-            GLib.source_remove(self.hide_id)
-            self.hide_id = None
-        self.dock_revealer.set_reveal_child(True)
-        if not self.always_show:
-            self.dock_full.remove_style_class("occluded")
-        return True
-
-    def _on_dock_leave(self, widget, event):
-        if self.integrated_mode or event.detail == Gdk.NotifyType.INFERIOR:
-            return True
-        self.is_mouse_over_dock_area = False
-        self.check_occlusion_state()
-        if not self.always_show:
-            self.dock_full.add_style_class("occluded")
-        return True
-
-    def _on_child_enter(self, widget, event):
-        if self.integrated_mode:
-            return False
-        self.is_mouse_over_dock_area = True
-        if self.hide_id:
-            GLib.source_remove(self.hide_id)
-            self.hide_id = None
-        return False
-
-    def on_drag_begin(self, widget, drag_context):
-        self._drag_in_progress = True
-        self.wrapper.add_style_class("drag-in-progress")
-        Gtk.drag_set_icon_surface(drag_context, createSurfaceFromWidget(widget))
-
-    def on_drag_end(self, widget, drag_context):
-        if not self._drag_in_progress:
-            return
-
-        def process_drag_end():
-            display = Gdk.Display.get_default()
-            _, x, y, _ = display.get_pointer()
-
-            alloc = self.view.get_allocation()
-            if not (alloc.x <= x <= alloc.x + alloc.width and alloc.y <= y <= alloc.y + alloc.height):
-                instances_dragged = getattr(widget, 'instances', [])
-                if instances_dragged:
-                    address = instances_dragged[0].get("address")
-                    if address:
-                        exec_shell_command(f"hyprctl dispatch focuswindow address:{address}")
-
-            self._drag_in_progress = False
-            self.wrapper.remove_style_class("drag-in-progress")
-            if not self.integrated_mode:
-                self.check_occlusion_state()
-
-        GLib.idle_add(process_drag_end)
-
-    def _find_drag_target(self, widget):
-        children = self.view.get_children()
-        while widget is not None and widget not in children:
-            widget = widget.get_parent() if hasattr(widget, "get_parent") else None
-        return widget
-
-    def on_drag_data_get(self, widget, drag_context, data_obj, info, time):
-        target = self._find_drag_target(widget.get_parent() if isinstance(widget, Box) else widget)
-        if target is not None:
-            try:
-                idx = self.view.get_children().index(target)
-                data_obj.set_text(str(idx), -1)
-            except ValueError:
-                pass
-
-    def on_drag_data_received(self, widget, drag_context, x, y, data_obj, info, time):
-        target = self._find_drag_target(widget.get_parent() if isinstance(widget, Box) else widget)
-        if target is None:
-            return
+    def create_button(self, app_identifier, instances, window_class):
+        desktop_app = None
+        if isinstance(app_identifier, dict) and "name" in app_identifier:
+             desktop_app = self.app_identifiers.get(str(app_identifier["name"]).lower())
         
+        icon_pixbuf = None
+        display_name = None
+        
+        # Используем self.icon_size, который вычисляется математически
+        current_icon_size = self.icon_size
+
+        if desktop_app:
+            icon_pixbuf = desktop_app.get_icon_pixbuf(size=current_icon_size)
+            display_name = desktop_app.display_name or desktop_app.name
+        
+        id_val = app_identifier["name"] if isinstance(app_identifier, dict) else app_identifier
+        
+        if not icon_pixbuf:
+            icon_pixbuf = self.icon_resolver.get_icon_pixbuf(id_val, current_icon_size)
+        if not icon_pixbuf:
+            icon_pixbuf = self.icon_resolver.get_icon_pixbuf("application-x-executable-symbolic", current_icon_size)
+        if not icon_pixbuf: 
+            icon_pixbuf = self.icon_resolver.get_icon_pixbuf("image-missing", current_icon_size)
+
+        content = Box(name="dock-icon", orientation="v", h_align="center", children=[Image(pixbuf=icon_pixbuf)])
+        
+        tooltip = display_name or str(id_val)
+        if not display_name and instances and instances[0].get("title"):
+            tooltip = instances[0]["title"]
+
+        btn = Button(
+            child=content,
+            on_clicked=lambda *a: self.handle_app(app_identifier, instances, desktop_app),
+            tooltip_text=tooltip,
+            name="dock-app-button",
+        )
+        
+        btn.app_data = {
+            "id": app_identifier,
+            "app": desktop_app,
+            "instances": instances,
+            "win_class": window_class
+        }
+
+        if instances:
+            btn.add_style_class("instance")
+
+        self._setup_btn_dnd(btn)
+        
+        return btn
+
+    # ... (Остальные методы handle_app, dnd, hover без изменений) ...
+    def _setup_btn_dnd(self, btn):
+        target = Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)
+        btn.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [target], Gdk.DragAction.MOVE)
+        btn.drag_dest_set(Gtk.DestDefaults.ALL, [target], Gdk.DragAction.MOVE)
+        btn.connect("drag-begin", self.on_drag_begin)
+        btn.connect("drag-end", self.on_drag_end)
+        btn.connect("drag-data-get", self.on_drag_data_get)
+        btn.connect("drag-data-received", self.on_drag_data_received)
+        btn.connect("enter-notify-event", self._on_child_enter)
+
+    def handle_app(self, app_identifier, instances, desktop_app):
+        if not instances:
+            if desktop_app:
+                if not desktop_app.launch():
+                     cmd = desktop_app.command_line or desktop_app.executable
+                     if cmd: exec_shell_command_async(f"nohup {cmd} &")
+            else:
+                cmd = None
+                if isinstance(app_identifier, dict):
+                    cmd = app_identifier.get("command_line") or app_identifier.get("executable") or app_identifier.get("name")
+                elif isinstance(app_identifier, str):
+                    cmd = app_identifier
+                if cmd: exec_shell_command_async(f"nohup {cmd} &")
+        else:
+            try:
+                focused_addr = json.loads(self.conn.send_command("j/activewindow").reply.decode()).get("address")
+            except:
+                focused_addr = ""
+            idx = -1
+            for i, inst in enumerate(instances):
+                if inst["address"] == focused_addr:
+                    idx = i
+                    break
+            next_inst = instances[(idx + 1) % len(instances)]
+            exec_shell_command(f"hyprctl dispatch focuswindow address:{next_inst['address']}")
+
+    def _update_active_window_state(self):
         try:
-            children = self.view.get_children()
-            source_index = int(data_obj.get_text())
-            target_index = children.index(target)
+            aw = json.loads(self.conn.send_command("j/activewindow").reply.decode())
+            cls = aw.get("initialClass") or aw.get("class")
+            self._current_active_window_class = self._normalize_class(cls) if cls else None
+        except:
+            self._current_active_window_class = None
+        active = self._current_active_window_class
+        for btn in self.view.get_children():
+            btn_data = getattr(btn, "app_data", {})
+            win_class = btn_data.get("win_class")
+            is_active = False
+            if win_class and active:
+                is_active = self._normalize_class(win_class) == active
+            if is_active: btn.add_style_class("active")
+            else: btn.remove_style_class("active")
 
-            if source_index != target_index and source_index < len(children):
-                child = children.pop(source_index)
-                children.insert(target_index, child)
-                
-                for child in children:
-                    self.view.reorder_child(child, -1)
-                    
-        except (ValueError, IndexError):
-            pass
+    def _on_hover_enter(self, *a):
+        if self.integrated_mode: return
+        self.is_mouse_over_dock_area = True
+        self.dock_revealer.set_reveal_child(True)
 
-    def force_occlusion(self):
-        if self.integrated_mode:
-            return
-        self._saved_always_show = self.always_show
-        self.always_show = False
-        self._forced_occlusion = True
-        if not self.is_mouse_over_dock_area:
-            self.dock_revealer.set_reveal_child(False)
+    def _on_hover_leave(self, *a):
+        if self.integrated_mode: return
+        self.is_mouse_over_dock_area = False
+        self._schedule_occlusion_check()
 
-    def restore_from_occlusion(self):
-        if self.integrated_mode:
-            return
-        self._forced_occlusion = False
-        if hasattr(self, '_saved_always_show'):
-            self.always_show = self._saved_always_show
-            delattr(self, '_saved_always_show')
-        self.check_occlusion_state()
+    def _on_dock_enter(self, w, e):
+        if self.integrated_mode: return True
+        self.is_mouse_over_dock_area = True
+        self.dock_revealer.set_reveal_child(True)
+        return True
 
-    @staticmethod
-    def update_visibility(visible):
-        for dock in Dock._instances:
-            dock.set_visible(visible)
-            if visible:
-                GLib.idle_add(dock.check_occlusion_state)
-            elif hasattr(dock, 'dock_revealer') and dock.dock_revealer.get_reveal_child():
-                dock.dock_revealer.set_reveal_child(False)
+    def _on_dock_leave(self, w, e):
+        if self.integrated_mode: return True
+        if e.detail == Gdk.NotifyType.INFERIOR: return False
+        self.is_mouse_over_dock_area = False
+        self._schedule_occlusion_check()
+        return True
+    
+    def _on_child_enter(self, w, e):
+        if not self.integrated_mode:
+            self.is_mouse_over_dock_area = True
+        return False
+
+    def on_drag_begin(self, widget, context):
+        self._drag_in_progress = True
+        Gtk.drag_set_icon_surface(context, createSurfaceFromWidget(widget))
+
+    def on_drag_end(self, widget, context):
+        if not self._drag_in_progress: return
+        def finalize_drag():
+            self._drag_in_progress = False
+            if not self.integrated_mode:
+                self._schedule_occlusion_check()
+            return False
+        GLib.idle_add(finalize_drag)
+
+    def on_drag_data_get(self, widget, context, data, info, time):
+        parent = widget.get_parent()
+        while widget and not isinstance(widget, Button):
+            widget = widget.get_parent()
+        if widget and widget in self.view.get_children():
+            idx = self.view.get_children().index(widget)
+            data.set_text(str(idx), -1)
+
+    def on_drag_data_received(self, widget, context, x, y, data, info, time):
+        try:
+            src_idx = int(data.get_text())
+        except: return
+        target = widget
+        while target and not isinstance(target, Button):
+            target = target.get_parent()
+        children = self.view.get_children()
+        if target not in children: return
+        tgt_idx = children.index(target)
+        if src_idx != tgt_idx:
+            item = children.pop(src_idx)
+            children.insert(tgt_idx, item)
+            for child in children:
+                self.view.remove(child)
+                self.view.add(child)
+            self.view.show_all()
 
     def destroy(self):
-        if self._destroyed:
-            return
         self._destroyed = True
-
-        for timer_attr in ['_occlusion_timer_id', 'hide_id', '_monitor_info_timer']:
-            timer_id = getattr(self, timer_attr, None)
-            if timer_id:
-                GLib.source_remove(timer_id)
-                setattr(self, timer_attr, None)
-
-        if hasattr(self, '_event_handlers') and self._event_handlers:
-            if self.conn:
-                for handler_id in self._event_handlers:
-                    self.conn.disconnect(handler_id)
-            self._event_handlers.clear()
-
-        if self in Dock._instances:
-            Dock._instances.remove(self)
-
-        for button in self.view.get_children():
-            button.destroy()
-        
-        self._all_apps = []
-        self.app_identifiers.clear()
-        self.dock_geometry = None
-        self.monitor_info = None
-
-        self.conn = None
-        self.icon_resolver = None
-
         super().destroy()
-
-    def __del__(self):
-        if not self._destroyed:
-            self.destroy()

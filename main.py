@@ -10,7 +10,7 @@ gi.require_version("GLib", "2.0")
 from fabric import Application
 from fabric.utils import get_relative_path
 
-from modules.Panel.Dashboard_Bar.Widgets.notifications import NotificationPopup
+from modules.Panel.Dashboard_Bar.Widgets.Notifications.popup import NotificationPopup
 from modules.Panel.notch import Notch
 from modules.Panel.Dashboard_Bar.bar import Bar
 from widgets.corners import Corners
@@ -83,7 +83,6 @@ class ShellManager:
             return None, False, [{'id': 0, 'name': 'default'}]
 
     def create_components(self, monitor_id: int, multi_monitor: bool, app_widgets: List, monitor_manager: Optional[object]) -> Dict:
-        
         args = (monitor_id,) if multi_monitor else ()
         
         bar = Bar(*args)

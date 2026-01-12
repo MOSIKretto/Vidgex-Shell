@@ -29,11 +29,24 @@ def _cleanup_temp_artwork_files():
 
 atexit.register(_cleanup_temp_artwork_files)
 
-
 def get_player_icon_markup_by_name(player_name):
     return icons.disc
  
-from modules.common import add_hover_cursor
+def add_hover_cursor(widget):
+    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+    
+    def on_enter(w, _):
+        win = w.get_window()
+        if win:
+            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+        
+    def on_leave(w, _):
+        win = w.get_window()
+        if win:
+            win.set_cursor(None)
+    
+    widget.connect("enter-notify-event", on_enter)
+    widget.connect("leave-notify-event", on_leave)
 
 class PlayerBox(Box):
     def __init__(self, mpris_player=None):

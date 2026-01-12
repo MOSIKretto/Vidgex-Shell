@@ -16,7 +16,7 @@ import json
 
 from services.upower import UPowerManager
 import modules.icons as icons
-from modules.Panel.Dashboard_Bar.Widgets.network import NetworkClient
+from services.network import NetworkClient
 
 
 class MetricsProvider:
@@ -706,187 +706,134 @@ class Battery(Box):
         elif self.current_mode == "balanced" and self.bat_balanced: self.bat_balanced.add_style_class("active")
         elif self.current_mode == "performance" and self.bat_perf: self.bat_perf.add_style_class("active")
 
+
 class NetworkApplet(Button):
     def __init__(self, **kwargs):
         super().__init__(name="button-bar", **kwargs)
-        self.download_label = Label(name="download-label", markup="Download: 0 B/s")
+
         self.network_client = NetworkClient()
-        self.upload_label = Label(name="upload-label", markup="Upload: 0 B/s")
-        self.wifi_label = Label(name="network-icon-label", markup="WiFi: Unknown")
-
         self.is_mouse_over = False
-        self.downloading = False
-        self.uploading = False
+        self._revealed = False
 
-        self.download_icon = Label(name="download-icon-label", markup=icons.download, v_align="center", h_align="center", h_expand=True, v_expand=True)
-        self.upload_icon = Label(name="upload-icon-label", markup=icons.upload, v_align="center", h_align="center", h_expand=True, v_expand=True)
+        self.download_label = Label(name="download-label", markup="0 B/s")
+        self.upload_label = Label(name="upload-label", markup="0 B/s")
+        self.wifi_label = Label(name="network-icon-label", markup=icons.world_off)
 
-        self.download_box = Box(
-            children=[self.download_icon, self.download_label],
+        self.download_revealer = Revealer(
+            child=Box(children=[
+                Label(name="download-icon-label", markup=icons.download),
+                self.download_label,
+            ]),
+            transition_type="slide-right",
+            child_revealed=False,
         )
 
-        self.upload_box = Box(
-            children=[self.upload_label, self.upload_icon],
+        self.upload_revealer = Revealer(
+            child=Box(children=[
+                self.upload_label,
+                Label(name="upload-icon-label", markup=icons.upload),
+            ]),
+            transition_type="slide-left",
+            child_revealed=False,
         )
 
-        self.download_revealer = Revealer(child=self.download_box, transition_type="slide-right", child_revealed=False)
-        self.upload_revealer = Revealer(child=self.upload_box, transition_type="slide-left", child_revealed=False)
-
-        self.main_container = Box(
+        self.add(Box(
             orientation="h",
             children=[self.upload_revealer, self.wifi_label, self.download_revealer],
-        )
-
-        self.add(self.main_container)
+        ))
 
         self.last_counters = psutil.net_io_counters()
         self.last_time = time.time()
-        
-        self._network_timer = GLib.timeout_add(1000, self.update_network)
 
-        self._enter_handler = self.connect("enter-notify-event", self.on_mouse_enter)
-        self._leave_handler = self.connect("leave-notify-event", self.on_mouse_leave)
-    
+        self._network_timer = GLib.timeout_add(1000, self.update_network)
+        self._enter_handler = self.connect("enter-notify-event", self._on_enter)
+        self._leave_handler = self.connect("leave-notify-event", self._on_leave)
+
     def destroy(self):
         if self._network_timer:
             GLib.source_remove(self._network_timer)
-            self._network_timer = None
-            
-        if hasattr(self, 'network_client'):
-            if hasattr(self.network_client, 'destroy'):
-                self.network_client.destroy()
-            elif hasattr(self.network_client, 'close'):
-                self.network_client.close()
 
-            self.network_client = None
-            
-        if hasattr(self, '_enter_handler'):
-            self.disconnect(self._enter_handler)
+        for h in (self._enter_handler, self._leave_handler):
+            if h:
+                self.disconnect(h)
 
-        if hasattr(self, '_leave_handler'):
-            self.disconnect(self._leave_handler)
-                
+        if self.network_client:
+            for m in ("destroy", "close"):
+                if hasattr(self.network_client, m):
+                    getattr(self.network_client, m)()
+                    break
+
         super().destroy()
 
     def update_network(self):
-        current_time = time.time()
-        elapsed = current_time - self.last_time
-        current_counters = psutil.net_io_counters()
-        download_speed = (current_counters.bytes_recv - self.last_counters.bytes_recv) / elapsed
-        upload_speed = (current_counters.bytes_sent - self.last_counters.bytes_sent) / elapsed
-        download_str = self.format_speed(download_speed)
-        upload_str = self.format_speed(upload_speed)
-        self.download_label.set_markup(download_str)
-        self.upload_label.set_markup(upload_str)
+        now = time.time()
+        elapsed = now - self.last_time
+        if elapsed <= 0:
+            return True
 
-        self.downloading = (download_speed >= 10e6)
-        self.uploading = (upload_speed >= 2e6)
+        counters = psutil.net_io_counters()
+        recv = (counters.bytes_recv - self.last_counters.bytes_recv) / elapsed
+        sent = (counters.bytes_sent - self.last_counters.bytes_sent) / elapsed
 
-        if not self.is_mouse_over:
-            if self.downloading: self.download_urgent()
-            elif self.uploading: self.upload_urgent()
-            else: self.remove_urgent()
+        self.download_label.set_markup(self.format_speed(recv))
+        self.upload_label.set_markup(self.format_speed(sent))
 
-        show_download = self.downloading or self.is_mouse_over
-        show_upload = self.uploading or self.is_mouse_over
-        self.download_revealer.set_reveal_child(show_download)
-        self.upload_revealer.set_reveal_child(show_upload)
+        self._update_reveal()
+        self._update_wifi_icon()
 
-        primary_device = self._get_primary_device()
-
-        tooltip_base = ""
-
-        if primary_device == "ethernet" and self.network_client.ethernet_device:
-            ethernet_state = self.network_client.ethernet_device.internet
-
-            if ethernet_state == "activated": self.wifi_label.set_markup(icons.world)
-            elif ethernet_state == "activating": self.wifi_label.set_markup(icons.world)
-            else: self.wifi_label.set_markup(icons.world_off)
-
-            tooltip_base = "Ethernet Connection"
-
-        elif primary_device == "wifi" and self.network_client.wifi_device:
-            if hasattr(self.network_client.wifi_device, 'ssid') and self.network_client.wifi_device.ssid != "Disconnected":
-                strength = self.network_client.wifi_device.strength
-
-                if strength >= 75: self.wifi_label.set_markup(icons.wifi_3)
-                elif strength >= 50: self.wifi_label.set_markup(icons.wifi_2)
-                elif strength >= 25: self.wifi_label.set_markup(icons.wifi_1)
-                else: self.wifi_label.set_markup(icons.wifi_0)
-
-                tooltip_base = self.network_client.wifi_device.ssid
-            else:
-                self.wifi_label.set_markup(icons.world_off)
-                tooltip_base = "Disconnected"
-        else:
-            self.wifi_label.set_markup(icons.world_off)
-            tooltip_base = "Disconnected"
-
-        self.set_tooltip_text(tooltip_base)
-
-        self.last_counters = current_counters
-        self.last_time = current_time
-            
+        self.last_counters = counters
+        self.last_time = now
         return True
 
-    def _get_primary_device(self):
-        if (self.network_client.ethernet_device and self.network_client.ethernet_device.internet in ["activated", "activating"]):
-            return "ethernet"
-        elif (self.network_client.wifi_device and hasattr(self.network_client.wifi_device, 'enabled') and 
-            self.network_client.wifi_device.enabled and hasattr(self.network_client.wifi_device, 'ssid') and
-            self.network_client.wifi_device.ssid not in ["Disconnected", "Выключено", "Не подключено"]):
-            return "wifi"
-        return "none"
+    def _update_reveal(self):
+        if self._revealed == self.is_mouse_over:
+            return
+        self._revealed = self.is_mouse_over
+        self.download_revealer.set_reveal_child(self._revealed)
+        self.upload_revealer.set_reveal_child(self._revealed)
+
+    def _update_wifi_icon(self):
+        nc = self.network_client
+
+        if nc.ethernet_device and nc.ethernet_device.internet in ("activated", "activating"):
+            self.wifi_label.set_markup(icons.world)
+            self.set_tooltip_text("Ethernet Connection")
+            return
+
+        wd = nc.wifi_device
+        if not (wd and getattr(wd, "enabled", False)):
+            self._set_disconnected()
+            return
+
+        ssid = getattr(wd, "ssid", None)
+        if not ssid or ssid in ("Disconnected", "Выключено", "Не подключено"):
+            self._set_disconnected()
+            return
+
+        s = wd.strength
+        self.wifi_label.set_markup(
+            icons.wifi_3 if s >= 75 else
+            icons.wifi_2 if s >= 50 else
+            icons.wifi_1 if s >= 25 else
+            icons.wifi_0
+        )
+        self.set_tooltip_text(ssid)
+
+    def _set_disconnected(self):
+        self.wifi_label.set_markup(icons.world_off)
+        self.set_tooltip_text("Disconnected")
 
     def format_speed(self, speed):
-        if speed < 1024: return f"{speed:.0f} B/s"
-        elif speed < 1024 * 1024: return f"{speed / 1024:.1f} KB/s"
-        else: return f"{speed / (1024 * 1024):.1f} MB/s"
+        if speed < 1024:
+            return f"{speed:.0f} B/s"
+        if speed < 1024 * 1024:
+            return f"{speed / 1024:.1f} KB/s"
+        return f"{speed / (1024 * 1024):.1f} MB/s"
 
-    def on_mouse_enter(self, *_):
+    def _on_enter(self, *_):
         self.is_mouse_over = True
-        self.download_revealer.set_reveal_child(True)
-        self.upload_revealer.set_reveal_child(True)
-        return
+        self._update_reveal()
 
-    def on_mouse_leave(self, *_):
+    def _on_leave(self, *_):
         self.is_mouse_over = False
-        self.download_revealer.set_reveal_child(self.downloading)
-        self.upload_revealer.set_reveal_child(self.uploading)
-
-        if self.downloading: self.download_urgent()
-        elif self.uploading: self.upload_urgent()
-        else: self.remove_urgent()
-        return
-
-    def upload_urgent(self):
-        self.add_style_class("upload")
-        self.wifi_label.add_style_class("urgent")
-        self.upload_label.add_style_class("urgent")
-        self.upload_icon.add_style_class("urgent")
-        self.download_icon.add_style_class("urgent")
-        self.download_label.add_style_class("urgent")
-        self.upload_revealer.set_reveal_child(True)
-        self.download_revealer.set_reveal_child(self.downloading)
-        return
-
-    def download_urgent(self):
-        self.add_style_class("download")
-        self.wifi_label.add_style_class("urgent")
-        self.download_label.add_style_class("urgent")
-        self.download_icon.add_style_class("urgent")
-        self.upload_icon.add_style_class("urgent")
-        self.upload_label.add_style_class("urgent")
-        self.download_revealer.set_reveal_child(True)
-        self.upload_revealer.set_reveal_child(self.uploading)
-        return
-
-    def remove_urgent(self):
-        self.remove_style_class("download")
-        self.remove_style_class("upload")
-        self.wifi_label.remove_style_class("urgent")
-        self.download_label.remove_style_class("urgent")
-        self.upload_label.remove_style_class("urgent")
-        self.download_icon.remove_style_class("urgent")
-        self.upload_icon.remove_style_class("urgent")
-        return
+        self._update_reveal()

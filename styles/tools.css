@@ -10,8 +10,9 @@
   color: var(--foreground);
 }
 
-#toolbox-button.recording label {
-  color: var(--red-dim);
+#toolbox-button.recording:hover label,
+#toolbox-button.recording:focus label {
+  color: var(--primary);
 }
 
 #toolbox-button:hover,
@@ -23,11 +24,6 @@
 #toolbox-button:hover label,
 #toolbox-button:focus label {
   color: var(--primary);
-}
-
-#toolbox-button.recording:hover label,
-#toolbox-button.recording:focus label {
-  color: var(--red-dim);
 }
 
 #toolbox-button:active {

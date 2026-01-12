@@ -43,31 +43,9 @@
   transition: all 0.1s ease;
 }
 
-#download-label.urgent {
-  color: var(--shadow);
-}
-
-#network-icon-label.urgent {
-  color: var(--shadow);
-}
-
-#button-bar.download {
-  background-color: var(--green);
-  border-radius: 12px;
-}
-
-#button-bar.upload {
-  background-color: var(--yellow);
-  border-radius: 12px;
-}
-
 #download-icon-label {
   color: var(--green);
   font-size: 16px;
-}
-
-#download-icon-label.urgent {
-  color: var(--shadow);
 }
 
 #upload-icon-label {
@@ -82,14 +60,6 @@
   padding: 4px;
   border-radius: 12px;
   transition: all 0.1s ease;
-}
-
-#upload-label.urgent {
-  color: var(--shadow);
-}
-
-#upload-icon-label.urgent {
-  color: var(--shadow);
 }
 
 #battery-container {

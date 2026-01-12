@@ -167,11 +167,6 @@
   }
 }
 
-/* Стили для urgent состояния (активные передачи) */
-.urgent {
-  color: var(--yellow);
-}
-
 /* Стили для кнопки pressed */
 #bluetooth-scan.pressed,
 #bluetooth-back.pressed,
@@ -214,4 +209,14 @@
 #bluetooth-connect.connected.pressed label,
 #bluetooth-connect.connected:active label {
   color: var(--cursor);
+}
+
+#password-block {
+    margin: 8px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+#wifi-network-slot {
+    margin-bottom: 4px;
 }

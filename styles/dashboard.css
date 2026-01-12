@@ -51,21 +51,11 @@
     0 0 0px 2px var(--shadow);
 }
 
-#gpu-label {
-  color: var(--primary);
-}
-#cpu-label {
-  color: var(--blue);
-}
-#ram-label {
-  color: var(--yellow);
-}
-#disk-label {
-  color: var(--magenta);
-}
-#temp-label {
-  color: var(--red);
-}
+#gpu-label { color: var(--primary); }
+#cpu-label { color: var(--blue); }
+#ram-label { color: var(--yellow); }
+#disk-label { color: var(--magenta); }
+#temp-label { color: var(--red); }
 
 #box-1,
 #box-2,

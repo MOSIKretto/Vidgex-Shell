@@ -9,9 +9,9 @@ from modules.Panel.Dashboard_Bar.Widgets.buttons import Buttons
 from modules.Panel.Dashboard_Bar.Widgets.calendar import Calendar
 from modules.Panel.Dashboard_Bar.Widgets.controls import ControlSliders
 from modules.Panel.Dashboard_Bar.Widgets.metrics import Metrics
-from modules.Panel.Dashboard_Bar.Widgets.network import NetworkConnections
+from modules.Panel.Dashboard_Bar.Widgets.Network.network import NetworkConnections
 from modules.Panel.Dashboard_Bar.Widgets.player import Player
-from modules.Panel.Dashboard_Bar.Widgets.notifications import NotificationHistory
+from modules.Panel.Dashboard_Bar.Widgets.Notifications.history import NotificationHistory
 
 
 class Widgets(Box):
