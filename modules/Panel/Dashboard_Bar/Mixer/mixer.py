@@ -1,3 +1,4 @@
+from typing import Dict, List, Optional, Tuple, Any
 from fabric.audio.service import Audio
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
@@ -8,7 +9,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 class MixerSlider(Scale):
-    def __init__(self, stream, label_ref, **kwargs):
+    def __init__(self, stream, label_ref: Label, **kwargs):
         super().__init__(
             name="control-slider",
             orientation="h",
@@ -37,7 +38,7 @@ class MixerSlider(Scale):
         
         self.update_ui(vol)
 
-    def update_ui(self, vol):
+    def update_ui(self, vol: float) -> None:
         # Округление без модуля math
         v_int = int(vol + 0.5)
         txt = f"{v_int}%"
@@ -49,7 +50,7 @@ class MixerSlider(Scale):
         else:
             self.remove_style_class("muted")
 
-    def on_value_changed(self, _):
+    def on_value_changed(self, _) -> None:
         if self._updating: return
         
         vol = self.get_value() * 100
@@ -60,14 +61,14 @@ class MixerSlider(Scale):
         # если CSS это поддерживает, или просто убираем тяжелый GObject.timeout
         self.add_style_class("active")
 
-    def on_stream_changed(self, stream):
+    def on_stream_changed(self, stream) -> None:
         self._updating = True
         vol = stream.volume
         self.set_value(vol / 100)
         self.update_ui(vol)
         self._updating = False
 
-    def destroy(self):
+    def destroy(self) -> None:
         self.stream.disconnect(self._str_id)
         self.disconnect(self._val_id)
         self.stream = None
@@ -75,15 +76,15 @@ class MixerSlider(Scale):
         super().destroy()
 
 class MixerSection(Box):
-    def __init__(self, title, **kwargs):
+    def __init__(self, title: str, **kwargs):
         super().__init__(name="mixer-section", orientation="v", spacing=8, h_expand=True)
         self.title_label = Label(name="mixer-section-title", label=title, h_expand=True)
         self.content_box = Box(name="mixer-content", orientation="v", spacing=8, h_expand=True)
         self.add(self.title_label)
         self.add(self.content_box)
-        self.widgets = {}
+        self.widgets: Dict[Any, Tuple[MixerSlider, Label, Box]] = {}
 
-    def update_streams(self, streams):
+    def update_streams(self, streams: List) -> None:
         new_set = set(streams)
         old_set = set(self.widgets.keys())
 
@@ -114,6 +115,7 @@ class MixerSection(Box):
         
         self.show_all()
 
+
 class Mixer(Box):
     def __init__(self, **kwargs):
         super().__init__(name="mixer", orientation="v", spacing=8, h_expand=True, v_expand=True)
@@ -140,7 +142,7 @@ class Mixer(Box):
         self.update_mixer()
         self.show_all()
 
-    def _setup_scrolled(self, title):
+    def _setup_scrolled(self, title: str) -> 'MixerSection':
         sw = ScrolledWindow(h_expand=True, v_expand=False, v_policy="auto", h_policy="never")
         sw.set_size_request(-1, 150)
         sec = MixerSection(title)
@@ -148,11 +150,21 @@ class Mixer(Box):
         self.main_container.add(sw)
         return sec
 
-    def update_mixer(self, *args):
+    def update_mixer(self, *args) -> None:
         # Сбор данных без лишних промежуточных списков
-        self.out_sec.update_streams([self.audio.speaker] + list(self.audio.applications) if self.audio.speaker else list(self.audio.applications))
-        self.in_sec.update_streams([self.audio.microphone] + list(self.audio.recorders) if self.audio.microphone else list(self.audio.recorders))
+        output_streams = []
+        if self.audio.speaker:
+            output_streams.append(self.audio.speaker)
+        output_streams.extend(list(self.audio.applications))
+        
+        input_streams = []
+        if self.audio.microphone:
+            input_streams.append(self.audio.microphone)
+        input_streams.extend(list(self.audio.recorders))
+        
+        self.out_sec.update_streams(output_streams)
+        self.in_sec.update_streams(input_streams)
 
-    def destroy(self):
+    def destroy(self) -> None:
         self.audio.disconnect_by_func(self.update_mixer)
         super().destroy()

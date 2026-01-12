@@ -1,3 +1,4 @@
+from typing import Any, Dict, List, Optional, Tuple
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
@@ -20,13 +21,16 @@ class WifiNetworkSlot(CenterBox):
     active_pw_block = None
     active_slot = None
 
-    def __init__(self, network_data, network_client, parent_window, is_saved=False, is_connected=False, **kwargs):
+    def __init__(self, network_data: Dict[str, Any], network_client: NetworkClient, parent_window: Gtk.Widget, is_saved: bool = False, is_connected: bool = False, **kwargs):
         super().__init__(name="wifi-network-slot", **kwargs)
-        self.network_data, self.network_client, self.parent_window = network_data, network_client, parent_window
-        self.is_saved, self.is_connected = is_saved, is_connected
+        self.network_data: Dict[str, Any] = network_data
+        self.network_client: NetworkClient = network_client
+        self.parent_window: Gtk.Widget = parent_window
+        self.is_saved: bool = is_saved
+        self.is_connected: bool = is_connected
         
-        ssid = network_data.get("ssid", "Unknown")
-        strength = network_data.get("strength", 0)
+        ssid: str = network_data.get("ssid", "Unknown")
+        strength: int = network_data.get("strength", 0)
         
         self.network_icon = Image(icon_name=network_data.get("icon-name", "network-wireless-signal-none-symbolic"), size=16)
         self.network_label = Label(label=ssid, h_expand=True, h_align="start", ellipsization="end")
@@ -51,14 +55,14 @@ class WifiNetworkSlot(CenterBox):
         # Слушаем глобальные ошибки, чтобы сбросить кнопку, если ошибка пришла асинхронно
         self.network_client.connect("connection-error", self._on_global_error)
 
-    def _on_global_error(self, client, err_ssid, message):
+    def _on_global_error(self, client: NetworkClient, err_ssid: str, message: str) -> None:
         """Обработка сигнала ошибки от сервиса"""
         if err_ssid == self.network_data.get("ssid"):
             self._show_error("Ошибка")
 
-    def _setup_action_widgets(self):
-        ssid = self.network_data.get("ssid")
-        is_available = self.network_client.is_network_available(ssid) if hasattr(self.network_client, 'is_network_available') and ssid else False
+    def _setup_action_widgets(self) -> None:
+        ssid: str = self.network_data.get("ssid")
+        is_available: bool = self.network_client.is_network_available(ssid) if hasattr(self.network_client, 'is_network_available') and ssid else False
         
         if self.is_connected:
             action_widgets = [self.connected_label, self.delete_button]
@@ -73,23 +77,23 @@ class WifiNetworkSlot(CenterBox):
             
         self.end_children = Box(orientation="horizontal", spacing=4, children=action_widgets)
 
-    def _on_button_press(self, widget, event):
+    def _on_button_press(self, widget: Button, event: Gdk.Event) -> bool:
         widget.add_style_class('pressed')
         GLib.timeout_add(150, lambda: widget.remove_style_class('pressed') if widget else False)
         return False
 
-    def _on_delete_button_press(self, widget, event):
+    def _on_delete_button_press(self, widget: Button, event: Gdk.Event) -> bool:
         widget.add_style_class('pressed')
         GLib.timeout_add(150, lambda: widget.remove_style_class('pressed') if widget else False)
         return False
 
-    def on_connect_clicked(self, button):
+    def on_connect_clicked(self, button: Button) -> None:
         if self.is_saved: 
             self._connect_to_saved_network(self.network_data.get("ssid"))
         else: 
             self._toggle_password_input()
 
-    def _toggle_password_input(self):
+    def _toggle_password_input(self) -> None:
         parent_box = self.get_parent()
         if not parent_box: return
 
@@ -134,13 +138,13 @@ class WifiNetworkSlot(CenterBox):
         self.pw_block.show_all()
         GLib.idle_add(lambda: entry.grab_focus())
 
-    def _close_active_password_block(self):
+    def _close_active_password_block(self) -> None:
         if WifiNetworkSlot.active_pw_block:
             WifiNetworkSlot.active_pw_block.destroy()
             WifiNetworkSlot.active_pw_block = None
             WifiNetworkSlot.active_slot = None
 
-    def _on_password_entered(self, ssid, password):
+    def _on_password_entered(self, ssid: str, password: str) -> None:
         self._close_active_password_block()
         self._set_connecting_state(True)
         # Логика теперь в NetworkClient: если пароль неверный, сеть удалится из сохраненных и придет ошибка
@@ -148,7 +152,7 @@ class WifiNetworkSlot(CenterBox):
                                                  self._on_connection_success, 
                                                  self._on_connection_error_callback)
 
-    def _set_connecting_state(self, connecting):
+    def _set_connecting_state(self, connecting: bool) -> None:
         if connecting: 
             self.connect_button.set_sensitive(False)
             self.connect_button.set_label("Подключение...")
@@ -156,31 +160,31 @@ class WifiNetworkSlot(CenterBox):
             self.connect_button.set_sensitive(True)
             self.connect_button.set_label("Подключиться")
 
-    def _on_connection_success(self, ssid):
+    def _on_connection_success(self, ssid: str) -> None:
         self._set_connecting_state(False)
 
-    def _on_connection_error_callback(self, ssid, error_message): 
+    def _on_connection_error_callback(self, ssid: str, error_message: str) -> None: 
         """Коллбэк при прямой ошибке вызова"""
         self._show_error("Ошибка")
 
-    def _show_error(self, error_message):
+    def _show_error(self, error_message: str) -> None:
         self._set_connecting_state(False)
         self.connect_button.set_label(error_message)
         self.connect_button.set_sensitive(False)
         # Возвращаем кнопку в исходное состояние через 3 секунды
         GLib.timeout_add(3000, self._restore_connect_button)
 
-    def _restore_connect_button(self):
+    def _restore_connect_button(self) -> bool:
         if self.connect_button:
             self.connect_button.set_label("Подключиться")
             self.connect_button.set_sensitive(True)
         return False
 
-    def on_delete_clicked(self, button):
+    def on_delete_clicked(self, button: Button) -> None:
         ssid = self.network_data.get("ssid")
         if ssid: self.network_client.delete_saved_network(ssid)
 
-    def _connect_to_saved_network(self, ssid):
+    def _connect_to_saved_network(self, ssid: str) -> None:
         self._set_connecting_state(True)
         self.network_client.connect_to_saved_network(ssid, 
                                                    self._on_connection_success, 
@@ -293,7 +297,7 @@ class NetworkConnections(Box):
         if hasattr(self.network_client, 'wifi_device') and self.network_client.wifi_device: 
             GLib.idle_add(self.on_device_ready)
 
-    def _on_button_press(self, widget, event):
+    def _on_button_press(self, widget: Button, event: Gdk.Event) -> bool:
         """Обработчик нажатия кнопки с анимацией"""
         # Добавляем класс для анимации нажатия
         widget.add_style_class('pressed')
@@ -303,7 +307,7 @@ class NetworkConnections(Box):
         
         return False 
 
-    def _init_network_counters(self):
+    def _init_network_counters(self) -> None:
         """Инициализация счетчиков сети"""
         try:
             self.last_counters = psutil.net_io_counters()
@@ -312,7 +316,7 @@ class NetworkConnections(Box):
             self.last_counters = None
             print("Ошибка: psutil не установлен. Установите: pip install psutil")
 
-    def update_network_speeds(self):
+    def update_network_speeds(self) -> bool:
         if self.last_counters is None:
             self._init_network_counters()
             return True
@@ -344,7 +348,7 @@ class NetworkConnections(Box):
 
         return True
 
-    def format_speed(self, speed):
+    def format_speed(self, speed: float) -> str:
         """Форматирование скорости"""
         if speed < 1024: return f"{speed:.0f} B/s"
         elif speed < 1024 * 1024: return f"{speed / 1024:.1f} KB/s"

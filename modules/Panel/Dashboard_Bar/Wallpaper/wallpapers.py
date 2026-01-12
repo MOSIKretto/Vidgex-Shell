@@ -1,3 +1,4 @@
+from typing import Any, Dict, List, Optional, Set, Tuple
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -27,9 +28,9 @@ class WallpaperSelector(Box):
     CURRENT_WALL = Path.home() / ".current.wall"
     THUMBNAIL_SIZE = 96
     MAX_RECENT = 10
-    IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"})
+    IMAGE_EXTENSIONS: Set[str] = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"})
     
-    SCHEMES = {
+    SCHEMES: Dict[str, str] = {
         "scheme-tonal-spot": "Tonal Spot",
         "scheme-content": "Content",
         "scheme-expressive": "Expressive",
@@ -40,11 +41,6 @@ class WallpaperSelector(Box):
         "scheme-rainbow": "Rainbow",
     }
     
-    DICE_ICONS = (
-        icons.dice_1, icons.dice_2, icons.dice_3,
-        icons.dice_4, icons.dice_5, icons.dice_6,
-    )
-
     def __init__(self, **kwargs):
         super().__init__(
             name="wallpapers",
@@ -66,7 +62,7 @@ class WallpaperSelector(Box):
     # ----------------------
     # Init
     # ----------------------
-    def _init_directories(self):
+    def _init_directories(self) -> None:
         old_cache = self.CACHE_DIR / "wallpapers"
         if old_cache.exists():
             shutil.rmtree(old_cache)
@@ -75,16 +71,16 @@ class WallpaperSelector(Box):
         self.THUMBS_DIR.mkdir(parents=True, exist_ok=True)
         self.WALLPAPERS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _init_state(self):
-        self.files = []
-        self.thumbnails = {}
+    def _init_state(self) -> None:
+        self.files: List[str] = []
+        self.thumbnails: Dict[str, GdkPixbuf.Pixbuf] = {}
         self.selected_index = -1
         self.is_applying_scheme = False
         self.config = self._load_config()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._load_lock = threading.Lock()
 
-    def _load_config(self):
+    def _load_config(self) -> Dict[str, Any]:
         defaults = {
             "current_wallpaper": None,
             "color_scheme": "scheme-tonal-spot",
@@ -96,11 +92,11 @@ class WallpaperSelector(Box):
             return {**defaults, **config}
         return defaults
 
-    def _save_config(self):
+    def _save_config(self) -> None:
         with open(self.CONFIG_FILE, 'w') as f:
             json.dump(self.config, f, indent=2)
 
-    def _create_ui(self):
+    def _create_ui(self) -> None:
         self.model = Gtk.ListStore(GdkPixbuf.Pixbuf, str)
         self.viewport = Gtk.IconView(
             name="wallpaper-icons",
@@ -153,7 +149,7 @@ class WallpaperSelector(Box):
         self.add(header)
         self.pack_start(self.scrolled_window, True, True, 0)
 
-    def _load_wallpapers(self):
+    def _load_wallpapers(self) -> None:
         files = []
         for entry in self.WALLPAPERS_DIR.iterdir():
             if entry.is_file() and self._is_image(entry.name):
@@ -168,12 +164,12 @@ class WallpaperSelector(Box):
         GLib.idle_add(self._load_visible_thumbnails)
         GLib.idle_add(self._apply_saved_config)
 
-    def _populate_model_initial(self):
+    def _populate_model_initial(self) -> None:
         self.model.clear()
         for filename in self.files:
             self.model.append([None, filename])  # Pixbuf пока None
 
-    def _load_visible_thumbnails(self):
+    def _load_visible_thumbnails(self) -> bool:
         visible_count = min(len(self.files), 50)  # первые 50
         for i in range(visible_count):
             filename = self.files[i]
@@ -181,7 +177,7 @@ class WallpaperSelector(Box):
                 self._executor.submit(self._load_thumbnail, filename)
         return False
 
-    def _normalize_filename(self, entry):
+    def _normalize_filename(self, entry: Path) -> Optional[str]:
         name = entry.name
         new_name = name.lower().replace(" ", "-")
         new_path = self.WALLPAPERS_DIR / new_name
@@ -190,7 +186,7 @@ class WallpaperSelector(Box):
             return new_name
         return name
 
-    def _load_thumbnail(self, filename):
+    def _load_thumbnail(self, filename: str) -> None:
         cache_path = self._get_cache_path(filename)
         full_path = self.WALLPAPERS_DIR / filename
 
@@ -199,18 +195,21 @@ class WallpaperSelector(Box):
                 return
 
         def create_pixbuf():
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(cache_path))
-            with self._load_lock:
-                self.thumbnails[filename] = pixbuf
-            # обновляем модель
-            for row in self.model:
-                if row[1] == filename:
-                    row[0] = pixbuf
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(cache_path))
+                with self._load_lock:
+                    self.thumbnails[filename] = pixbuf
+                # обновляем модель
+                for row in self.model:
+                    if row[1] == filename:
+                        row[0] = pixbuf
+            except Exception:
+                pass
             return False
 
         GLib.idle_add(create_pixbuf)
 
-    def _generate_thumbnail(self, source, dest):
+    def _generate_thumbnail(self, source: Path, dest: Path) -> bool:
         try:
             with Image.open(source) as img:
                 w, h = img.size
@@ -223,7 +222,7 @@ class WallpaperSelector(Box):
         except Exception:
             return False
 
-    def _filter_viewport(self, query=""):
+    def _filter_viewport(self, query: str = "") -> None:
         self.model.clear()
         query_lower = query.casefold()
         filtered = sorted(
@@ -238,22 +237,22 @@ class WallpaperSelector(Box):
         elif len(self.model) > 0:
             self._update_selection(0)
 
-    def _get_cache_path(self, filename):
+    def _get_cache_path(self, filename: str) -> Path:
         file_hash = hashlib.md5(filename.encode()).hexdigest()
         return self.CACHE_DIR / f"{file_hash}.png"
 
     @staticmethod
-    def _is_image(filename):
+    def _is_image(filename: str) -> bool:
         return Path(filename).suffix.lower() in WallpaperSelector.IMAGE_EXTENSIONS
 
-    def _apply_saved_config(self):
+    def _apply_saved_config(self) -> None:
         saved = self.config.get("current_wallpaper")
         if saved and Path(saved).exists():
             name = Path(saved).name
             if name in self.files:
                 self._apply_wallpaper(name, notify=False)
 
-    def _apply_wallpaper(self, filename, notify=False):
+    def _apply_wallpaper(self, filename: str, notify: bool = False) -> bool:
         if filename not in self.files:
             return False
         
@@ -282,11 +281,11 @@ class WallpaperSelector(Box):
             exec_shell_command_async(f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨' -a 'Vidgex-Shell' -i '{full_path}' -e")
         return True
 
-    def _on_wallpaper_activated(self, iconview, path):
+    def _on_wallpaper_activated(self, iconview, path) -> None:
         filename = self.model[path][1]
         self._apply_wallpaper(filename)
 
-    def _on_scheme_changed(self, widget):
+    def _on_scheme_changed(self, widget) -> None:
         if self.is_applying_scheme:
             return
         scheme = widget.get_active_id()
@@ -303,19 +302,23 @@ class WallpaperSelector(Box):
         finally:
             self.is_applying_scheme = False
 
-    def set_random_wallpaper(self, widget=None, external=False):
+    def set_random_wallpaper(self, widget=None, external: bool = False) -> None:
         if not self.files:
             return
         filename = random.choice(self.files)
         if self._apply_wallpaper(filename, notify=external):
             self._randomize_dice_icon()
 
-    def _randomize_dice_icon(self):
+    def _randomize_dice_icon(self) -> None:
+        DICE_ICONS = (
+            icons.dice_1, icons.dice_2, icons.dice_3,
+            icons.dice_4, icons.dice_5, icons.dice_6,
+        )
         label = self.random_btn.get_child()
         if isinstance(label, Label):
-            label.set_markup(random.choice(self.DICE_ICONS))
+            label.set_markup(random.choice(DICE_ICONS))
 
-    def _setup_file_monitor(self):
+    def _setup_file_monitor(self) -> None:
         gfile = Gio.File.new_for_path(str(self.WALLPAPERS_DIR))
         self.file_monitor = gfile.monitor_directory(Gio.FileMonitorFlags.NONE, None)
         self.file_monitor.connect("changed", self._on_dir_changed)
@@ -323,7 +326,7 @@ class WallpaperSelector(Box):
         vadj = self.scrolled_window.get_vadjustment()
         vadj.connect("value-changed", self._on_scroll)
 
-    def _on_scroll(self, adjustment):
+    def _on_scroll(self, adjustment) -> None:
         start = int(adjustment.get_value())
         page_size = int(adjustment.get_page_size())
         total = len(self.files)
@@ -334,14 +337,14 @@ class WallpaperSelector(Box):
             if filename not in self.thumbnails:
                 self._executor.submit(self._load_thumbnail, filename)
 
-    def _on_dir_changed(self, monitor, file, other_file, event_type):
+    def _on_dir_changed(self, monitor, file, other_file, event_type) -> None:
         filename = file.get_basename()
         if event_type == Gio.FileMonitorEvent.DELETED:
             self._handle_file_deleted(filename)
         elif event_type in (Gio.FileMonitorEvent.CREATED, Gio.FileMonitorEvent.CHANGED):
             self._handle_file_created_or_changed(filename)
 
-    def _handle_file_deleted(self, filename):
+    def _handle_file_deleted(self, filename: str) -> None:
         if filename not in self.files:
             return
         with self._load_lock:
@@ -352,7 +355,7 @@ class WallpaperSelector(Box):
             cache_path.unlink()
         GLib.idle_add(self._filter_viewport, self.search_entry.get_text())
 
-    def _handle_file_created_or_changed(self, filename):
+    def _handle_file_created_or_changed(self, filename: str) -> None:
         if not self._is_image(filename):
             return
         full_path = self.WALLPAPERS_DIR / filename
@@ -372,7 +375,7 @@ class WallpaperSelector(Box):
             cache_path.unlink()
         self._executor.submit(self._load_thumbnail, filename)
 
-    def _on_key_press(self, widget, event):
+    def _on_key_press(self, widget, event) -> bool:
         state = event.state
         key = event.keyval
         if state & Gdk.ModifierType.SHIFT_MASK:
@@ -387,7 +390,7 @@ class WallpaperSelector(Box):
             return True
         return False
 
-    def _handle_scheme_navigation(self, key):
+    def _handle_scheme_navigation(self, key) -> bool:
         schemes_list = list(self.SCHEMES.keys())
         current_id = self.scheme_dropdown.get_active_id()
         current_idx = schemes_list.index(current_id) if current_id in schemes_list else 0
@@ -402,7 +405,7 @@ class WallpaperSelector(Box):
             return True
         return False
 
-    def _move_selection(self, key):
+    def _move_selection(self, key) -> None:
         total = len(self.model)
         if total == 0:
             return
@@ -423,7 +426,7 @@ class WallpaperSelector(Box):
         if 0 <= new_idx < total and new_idx != self.selected_index:
             self._update_selection(new_idx)
 
-    def _get_columns_count(self, total):
+    def _get_columns_count(self, total: int) -> int:
         columns = self.viewport.get_columns()
         if columns <= 0 and total > 0:
             first_path = Gtk.TreePath.new_from_indices([0])
@@ -435,19 +438,19 @@ class WallpaperSelector(Box):
             return total
         return max(1, columns)
 
-    def _update_selection(self, index):
+    def _update_selection(self, index: int) -> None:
         self.viewport.unselect_all()
         path = Gtk.TreePath.new_from_indices([index])
         self.viewport.select_path(path)
         self.viewport.scroll_to_path(path, False, 0.5, 0.5)
         self.selected_index = index
 
-    def _on_focus_out(self, widget, event):
+    def _on_focus_out(self, widget, event) -> bool:
         if self.get_mapped():
             widget.grab_focus()
         return False
 
-    def destroy(self):
+    def destroy(self) -> None:
         if hasattr(self, '_executor') and self._executor:
             self._executor.shutdown(wait=False)
             self._executor = None
@@ -458,6 +461,6 @@ class WallpaperSelector(Box):
         self.files.clear()
         super().destroy()
 
-    def __del__(self):
+    def __del__(self) -> None:
         if hasattr(self, '_executor') and self._executor:
             self._executor.shutdown(wait=False)

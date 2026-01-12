@@ -2,7 +2,8 @@ import sys
 import signal
 import atexit
 import setproctitle
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable, Any
+from functools import lru_cache
 
 import gi
 gi.require_version("GLib", "2.0")
@@ -25,11 +26,11 @@ class ShellManager:
 
     def __init__(self):
         self.app: Optional[Application] = None
-        self.components: Dict[int, Dict] = {}
-        self.cleanup_handlers: List[callable] = []
+        self.components: Dict[int, Dict[str, Any]] = {}
+        self.cleanup_handlers: List[Callable[[], None]] = []
         self._cleaned_up: bool = False
 
-    def register_cleanup(self, handler: callable) -> None:
+    def register_cleanup(self, handler: Callable[[], None]) -> None:
         self.cleanup_handlers.append(handler)
 
     def cleanup(self) -> None:
@@ -37,6 +38,7 @@ class ShellManager:
             return
         self._cleaned_up = True
 
+        # Выполняем обработчики очистки в обратном порядке
         for handler in reversed(self.cleanup_handlers):
             try:
                 handler()
@@ -44,28 +46,29 @@ class ShellManager:
                 pass
         self.cleanup_handlers.clear()
 
+        # Отвязываем компоненты друг от друга
         for instances in self.components.values():
             bar = instances.get('bar')
             notch = instances.get('notch')
             
-            if bar and hasattr(bar, 'notch'):
+            if bar is not None:
                 bar.notch = None
-            if notch and hasattr(notch, 'bar'):
+            if notch is not None:
                 notch.bar = None
 
-        for monitor_id, instances in list(self.components.items()):
-            for component_name, component in list(instances.items()):
-                if component and hasattr(component, 'destroy'):
+        # Уничтожаем компоненты
+        for instances in self.components.values():
+            for component in instances.values():
+                if component is not None and hasattr(component, 'destroy'):
                     try:
                         component.destroy()
                     except Exception:
                         pass
-
-                instances[component_name] = None
-            self.components[monitor_id] = {}
-
+        
+        # Очищаем словарь компонентов
         self.components.clear()
 
+        # Завершаем приложение
         if self.app:
             try:
                 self.app.quit()
@@ -73,7 +76,7 @@ class ShellManager:
                 pass
             self.app = None
 
-    def setup_monitors(self) -> Tuple[Optional[object], bool, List[Dict]]:
+    def setup_monitors(self) -> Tuple[Optional[Any], bool, List[Dict[str, Any]]]:
         try:
             from utils.monitor_manager import get_monitor_manager
             manager = get_monitor_manager()
@@ -82,7 +85,7 @@ class ShellManager:
         except (ImportError, RuntimeError):
             return None, False, [{'id': 0, 'name': 'default'}]
 
-    def create_components(self, monitor_id: int, multi_monitor: bool, app_widgets: List, monitor_manager: Optional[object]) -> Dict:
+    def create_components(self, monitor_id: int, multi_monitor: bool, app_widgets: List[Any], monitor_manager: Optional[Any]) -> Dict[str, Any]:
         args = (monitor_id,) if multi_monitor else ()
         
         bar = Bar(*args)
@@ -148,7 +151,7 @@ class ShellManager:
         import __main__ as main_module
         main_module.app = self.app
         
-        all_notches = [inst['notch'] for inst in self.components.values() if 'notch' in inst]
+        all_notches = [inst['notch'] for inst in self.components.values() if 'notch' in inst and inst['notch'] is not None]
         if all_notches:
             main_module.notch = all_notches[0]
             if len(all_notches) > 1:
