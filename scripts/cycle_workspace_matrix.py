@@ -21,27 +21,26 @@ def get_current_workspace():
     
     if result.returncode == 0 and result.stdout.strip():
         return json.loads(result.stdout)['id']
-    return None
+    return 5  # Default fallback
 
 def find_workspace_position(ws_id):
-    for row in range(ROWS):
-        for col in range(COLS):
-            if MATRIX[row][col] == ws_id:
-                return row, col
-    return None, None
+    for row_idx, row in enumerate(MATRIX):
+        try:
+            col_idx = row.index(ws_id)
+            return row_idx, col_idx
+        except ValueError:
+            continue
+    return 1, 1  # Default fallback
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2: sys.exit(1)
+    if len(sys.argv) != 2: 
+        sys.exit(1)
     
     direction = sys.argv[1]
-    current_ws = get_current_workspace() or 5
+    current_ws = get_current_workspace()
     current_row, current_col = find_workspace_position(current_ws)
     
-    if current_row is None:
-        current_row, current_col = 1, 1
-        current_ws = 5
-    
-    # Вычисляем следующий рабочий стол
+    # Calculate next workspace
     if direction == "nextR":
         next_col = (current_col + 1) % COLS
         next_row = current_row
@@ -58,7 +57,8 @@ if __name__ == '__main__':
         next_row = (current_row + 1) % ROWS
         next_col = current_col
 
-    else: sys.exit(1)
+    else: 
+        sys.exit(1)
     
     next_ws = MATRIX[next_row][next_col]
     if direction in ["nextU", "nextD"]:

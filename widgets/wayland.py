@@ -1,21 +1,11 @@
 from gi.repository import Gdk, Gtk, GtkLayerShell
 import cairo
 import weakref
-from typing import Optional, Tuple, Set, Union, List, Final
+from typing import Optional, Tuple, Set, Union, List
 from functools import lru_cache
 
 from fabric.widgets.window import Window
 
-
-_EDGE_MAP: Final = {"left": 0, "right": 1, "top": 2, "bottom": 3}
-_LAYER_MAP: Final = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
-_KEYBOARD_MAP: Final = {"none": 0, "exclusive": 1, "on_demand": 2}
-_EXCLUSIVITY_MAP: Final = {"none": 1, "normal": 2, "auto": 3}
-
-_REVERSE_EDGE_MAP: Final = ("left", "right", "top", "bottom")
-_REVERSE_LAYER_MAP: Final = ("background", "bottom", "top", "overlay")
-_REVERSE_KEYBOARD_MAP: Final = ("none", "exclusive", "on_demand")
-_REVERSE_EXCLUSIVITY_MAP: Final = ("", "none", "normal", "auto")
 
 class WaylandWindow(Window):
     __slots__ = (
@@ -103,11 +93,13 @@ class WaylandWindow(Window):
 
     @property
     def layer(self) -> str:
-        return _REVERSE_LAYER_MAP[self._layer if self._layer != -1 else 2]
+        reverse_layer_map = ("background", "bottom", "top", "overlay")
+        return reverse_layer_map[self._layer if self._layer != -1 else 2]
 
     @layer.setter
     def layer(self, value: Union[str, int]):
-        new = value if isinstance(value, int) else _LAYER_MAP.get(str(value).lower(), 2)
+        layer_map = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
+        new = value if isinstance(value, int) else layer_map.get(str(value).lower(), 2)
         if self._layer != new:
             self._layer = new
             GtkLayerShell.set_layer(self, new)
@@ -145,11 +137,13 @@ class WaylandWindow(Window):
 
     @property
     def exclusivity(self) -> str:
-        return _REVERSE_EXCLUSIVITY_MAP[self._exclusivity if self._exclusivity != -1 else 1]
+        reverse_exclusivity_map = ("", "none", "normal", "auto")
+        return reverse_exclusivity_map[self._exclusivity if self._exclusivity != -1 else 1]
 
     @exclusivity.setter
     def exclusivity(self, value: Union[str, int]):
-        new = value if isinstance(value, int) else _EXCLUSIVITY_MAP.get(str(value).lower(), 1)
+        exclusivity_map = {"none": 1, "normal": 2, "auto": 3}
+        new = value if isinstance(value, int) else exclusivity_map.get(str(value).lower(), 1)
         if self._exclusivity == new:
             return
         self._exclusivity = new
@@ -159,11 +153,13 @@ class WaylandWindow(Window):
 
     @property
     def keyboard_mode(self) -> str:
-        return _REVERSE_KEYBOARD_MAP[self._keyboard_mode if self._keyboard_mode != -1 else 0]
+        reverse_keyboard_map = ("none", "exclusive", "on_demand")
+        return reverse_keyboard_map[self._keyboard_mode if self._keyboard_mode != -1 else 0]
 
     @keyboard_mode.setter
     def keyboard_mode(self, value: Union[str, int]):
-        new = value if isinstance(value, int) else _KEYBOARD_MAP.get(str(value).lower(), 0)
+        keyboard_map = {"none": 0, "exclusive": 1, "on_demand": 2}
+        new = value if isinstance(value, int) else keyboard_map.get(str(value).lower(), 0)
         if self._keyboard_mode != new:
             self._keyboard_mode = new
             GtkLayerShell.set_keyboard_mode(self, new)
@@ -198,24 +194,26 @@ class WaylandWindow(Window):
 
     @property
     def anchor(self) -> str:
-        return " ".join(_REVERSE_EDGE_MAP[e] for e in (2, 1, 3, 0) if e in self._anchor_cache)
+        reverse_edge_map = ("left", "right", "top", "bottom")
+        return " ".join(reverse_edge_map[e] for e in (2, 1, 3, 0) if e in self._anchor_cache)
 
     @anchor.setter
     def anchor(self, value):
         self._set_anchor_fast(value)
 
     def _set_anchor_fast(self, value):
+        edge_map = {"left": 0, "right": 1, "top": 2, "bottom": 3}
         new: Set[int] = set()
         if isinstance(value, str) and value:
             for part in value.lower().split():
-                edge = _EDGE_MAP.get(part)
+                edge = edge_map.get(part)
                 if edge is not None: new.add(edge)
         elif isinstance(value, (tuple, list, set)):
             for v in value:
                 if isinstance(v, int) and 0 <= v <= 3:
                     new.add(v)
                 elif isinstance(v, str):
-                    edge = _EDGE_MAP.get(v.lower())
+                    edge = edge_map.get(v.lower())
                     if edge is not None: new.add(edge)
 
         if new == self._anchor_cache:

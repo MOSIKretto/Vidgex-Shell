@@ -131,14 +131,16 @@ class MprisPlayer(Service):
 
     @Property(str or None, "readable")
     def arturl(self) -> str | None:
-        if "mpris:artUrl" in self.metadata.keys():
-            return self.metadata["mpris:artUrl"]
+        metadata = self.metadata
+        if metadata and "mpris:artUrl" in metadata.keys():
+            return metadata["mpris:artUrl"]
         return None
 
     @Property(str or None, "readable")
     def length(self) -> str | None:
-        if "mpris:length" in self.metadata.keys():
-            return self.metadata["mpris:length"]
+        metadata = self.metadata
+        if metadata and "mpris:length" in metadata.keys():
+            return metadata["mpris:length"]
         return None
 
     @Property(str, "readable")
@@ -146,11 +148,12 @@ class MprisPlayer(Service):
         artist = self._player.get_artist()
         if isinstance(artist, (list, tuple)):
             return ", ".join(artist)
-        return artist
+        return artist if artist else ""
 
     @Property(str, "readable")
     def album(self) -> str:
-        return self._player.get_album()
+        album = self._player.get_album()
+        return album if album else ""
 
     @Property(str, "readable")
     def title(self) -> str:
@@ -170,28 +173,32 @@ class MprisPlayer(Service):
 
     @Property(str, "readable")
     def playback_status(self) -> str:
-        return {
+        status_map = {
             Playerctl.PlaybackStatus.PAUSED: "paused",
             Playerctl.PlaybackStatus.PLAYING: "playing",
             Playerctl.PlaybackStatus.STOPPED: "stopped",
-        }.get(self._player.get_property("playback_status"), "unknown")
+        }
+        return status_map.get(self._player.get_property("playback_status"), "unknown")
 
     @Property(str, "read-write")
     def loop_status(self) -> str:
-        return {
+        status_map = {
             Playerctl.LoopStatus.NONE: "none",
             Playerctl.LoopStatus.TRACK: "track",
             Playerctl.LoopStatus.PLAYLIST: "playlist",
-        }.get(self._player.get_property("loop_status"), "unknown")
+        }
+        return status_map.get(self._player.get_property("loop_status"), "unknown")
 
     @loop_status.setter
     def loop_status(self, status: str):
-        loop_status = {
+        loop_status_map = {
             "none": Playerctl.LoopStatus.NONE,
             "track": Playerctl.LoopStatus.TRACK,
             "playlist": Playerctl.LoopStatus.PLAYLIST,
-        }.get(status)
-        self._player.set_loop_status(loop_status) if loop_status else None
+        }
+        loop_status = loop_status_map.get(status)
+        if loop_status:
+            self._player.set_loop_status(loop_status)
 
     @Property(bool, "readable", default_value=False)
     def can_go_next(self) -> bool:
@@ -220,7 +227,7 @@ class MprisPlayer(Service):
     @Property(bool, "readable", default_value=False)
     def can_loop(self) -> bool:
         try:
-            self._player.set_shuffle(self._player.get_property("shuffle"))
+            self._player.set_loop_status(self._player.get_property("loop_status"))
             return True
         except Exception:
             return False
@@ -241,14 +248,14 @@ class MprisPlayerManager(Service):
         bulk_connect(
             self._manager,
             {
-                "name-appeared": self.on_name_appeard,
+                "name-appeared": self.on_name_appeared,
                 "name-vanished": self.on_name_vanished,
             },
         )
         self.add_players()
         super().__init__(**kwargs)
 
-    def on_name_appeard(self, manager, player_name: Playerctl.PlayerName):
+    def on_name_appeared(self, manager, player_name: Playerctl.PlayerName):
         new_player = Playerctl.Player.new_from_name(player_name)
         manager.manage_player(new_player)
         self.emit("player-appeared", new_player)
@@ -267,6 +274,6 @@ class MprisPlayerManager(Service):
     def destroy(self):
         """Cleanup resources"""
         if hasattr(self, '_manager') and self._manager:
-            self._manager.disconnect_by_func(self.on_name_appeard)
+            self._manager.disconnect_by_func(self.on_name_appeared)
             self._manager.disconnect_by_func(self.on_name_vanished)
             self._manager = None

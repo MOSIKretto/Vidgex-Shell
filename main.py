@@ -3,10 +3,6 @@ import signal
 import atexit
 import setproctitle
 from typing import Dict, List, Optional, Tuple, Callable, Any
-from functools import lru_cache
-
-import gi
-gi.require_version("GLib", "2.0")
 
 from fabric import Application
 from fabric.utils import get_relative_path
@@ -16,10 +12,6 @@ from modules.Panel.notch import Notch
 from modules.Panel.Dashboard_Bar.bar import Bar
 from widgets.corners import Corners
 from modules.Dock.dock import Dock
-
-
-APP_NAME = "vidgex-shell"
-CSS_PATH = get_relative_path("main.css")
 
 class ShellManager:
     __slots__ = ('app', 'components', 'cleanup_handlers', '_cleaned_up')
@@ -123,7 +115,7 @@ class ShellManager:
         return instances
 
     def run(self) -> int:
-        setproctitle.setproctitle(APP_NAME)
+        setproctitle.setproctitle("vidgex-shell")
         
         monitor_manager, multi_monitor, monitors = self.setup_monitors()
         app_widgets = []
@@ -134,9 +126,10 @@ class ShellManager:
                 m_id, multi_monitor, app_widgets, monitor_manager
             )
 
-        self.app = Application(APP_NAME, *app_widgets)
-        self.app.set_stylesheet_from_file(CSS_PATH)
-        self.app.set_css = lambda: self.app.set_stylesheet_from_file(CSS_PATH)
+        self.app = Application("vidgex-shell", *app_widgets)
+        css_path = get_relative_path("main.css")
+        self.app.set_stylesheet_from_file(css_path)
+        self.app.set_css = lambda: self.app.set_stylesheet_from_file(css_path)
 
         self.register_cleanup(self.cleanup)
         atexit.register(self.cleanup)

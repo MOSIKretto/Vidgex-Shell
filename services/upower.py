@@ -40,19 +40,21 @@ class UPowerManager:
         props = self._get_properties_interface(battery)
         all_props = props.GetAll(f"{self.UPOWER_NAME}.Device")
         
-        fields = [
-            ('HasHistory', False), ('HasStatistics', False), ('IsPresent', False),
-            ('IsRechargeable', False), ('Online', False), ('PowerSupply', False),
-            ('Capacity', 0.0), ('Energy', 0.0), ('EnergyEmpty', 0.0), ('EnergyFull', 0.0),
-            ('EnergyFullDesign', 0.0), ('EnergyRate', 0.0), ('Luminosity', 0.0),
-            ('Percentage', 0.0), ('Temperature', 0.0), ('Voltage', 0.0),
-            ('TimeToEmpty', 0), ('TimeToFull', 0), ('IconName', ''),
-            ('Model', ''), ('NativePath', ''), ('Serial', ''), ('Vendor', ''),
-            ('State', 0), ('Technology', 0), ('Type', 0), ('WarningLevel', 0),
-            ('UpdateTime', 0)
-        ]
+        # Predefined defaults dictionary for better performance
+        defaults = {
+            'HasHistory': False, 'HasStatistics': False, 'IsPresent': False,
+            'IsRechargeable': False, 'Online': False, 'PowerSupply': False,
+            'Capacity': 0.0, 'Energy': 0.0, 'EnergyEmpty': 0.0, 'EnergyFull': 0.0,
+            'EnergyFullDesign': 0.0, 'EnergyRate': 0.0, 'Luminosity': 0.0,
+            'Percentage': 0.0, 'Temperature': 0.0, 'Voltage': 0.0,
+            'TimeToEmpty': 0, 'TimeToFull': 0, 'IconName': '',
+            'Model': '', 'NativePath': '', 'Serial': '', 'Vendor': '',
+            'State': 0, 'Technology': 0, 'Type': 0, 'WarningLevel': 0,
+            'UpdateTime': 0
+        }
         
-        return {field: all_props.get(field, default) for field, default in fields}
+        # Create result dictionary using comprehension
+        return {key: all_props.get(key, default) for key, default in defaults.items()}
     
     def is_lid_present(self):
         return bool(self._get_upower_properties().Get(self.UPOWER_NAME, 'LidIsPresent'))
@@ -87,17 +89,20 @@ class UPowerManager:
         props = self._get_properties_interface(battery)
         state = int(props.Get(f"{self.UPOWER_NAME}.Device", "State"))
         
-        states = {
-            0: "Unknown",
-            1: "Loading",
-            2: "Discharging",
-            3: "Empty",
-            4: "Fully charged",
-            5: "Pending charge",
-            6: "Pending discharge"
-        }
+        # Using tuple instead of dictionary for faster lookup
+        states = (
+            "Unknown",      # 0
+            "Loading",      # 1
+            "Discharging",  # 2
+            "Empty",        # 3
+            "Fully charged",# 4
+            "Pending charge",# 5
+            "Pending discharge"# 6
+        )
         
-        return states.get(state, "Unknown")
+        if 0 <= state < len(states):
+            return states[state]
+        return "Unknown"
     
     def destroy(self):
         if hasattr(self, 'bus') and self.bus:

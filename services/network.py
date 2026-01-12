@@ -3,7 +3,6 @@ from fabric.utils import exec_shell_command_async, bulk_connect
 import gi
 from gi.repository import NM, GLib
 
-gi.require_version('Gtk', '3.0')
 gi.require_version('NM', '1.0')
 
 
@@ -37,7 +36,7 @@ class Wifi(Service):
 
     def ap_update(self):
         self._notify("changed")
-        # Прямое уведомление без создания промежуточного списка строк
+        # Direct notifications without creating intermediate lists
         self.notify("enabled")
         self.notify("internet")
         self.notify("strength")
@@ -108,16 +107,25 @@ class Wifi(Service):
 
     @Property(list, "readable")
     def access_points(self) -> list:
-        # Оптимизированный генератор для экономии памяти
-        return [{
-            "bssid": ap.get_bssid(),
-            "last_seen": ap.get_last_seen(),
-            "ssid": NM.utils_ssid_to_utf8(ap.get_ssid().get_data()) if ap.get_ssid() else "Unknown",
-            "active-ap": self._ap,
-            "strength": (s := ap.get_strength()),
-            "frequency": ap.get_frequency(),
-            "icon-name": "network-wireless-signal-excellent-symbolic" if s >= 80 else "network-wireless-signal-good-symbolic" if s >= 60 else "network-wireless-signal-ok-symbolic" if s >= 40 else "network-wireless-signal-weak-symbolic" if s >= 20 else "network-wireless-signal-none-symbolic"
-        } for ap in (self._device.get_access_points() if self._device else [])]
+        # Optimized generator for memory savings
+        device_aps = self._device.get_access_points() if self._device else []
+        result = []
+        for ap in device_aps:
+            s = ap.get_strength()
+            result.append({
+                "bssid": ap.get_bssid(),
+                "last_seen": ap.get_last_seen(),
+                "ssid": NM.utils_ssid_to_utf8(ap.get_ssid().get_data()) if ap.get_ssid() else "Unknown",
+                "active-ap": self._ap,
+                "strength": s,
+                "frequency": ap.get_frequency(),
+                "icon-name": ("network-wireless-signal-excellent-symbolic" if s >= 80 else 
+                             "network-wireless-signal-good-symbolic" if s >= 60 else 
+                             "network-wireless-signal-ok-symbolic" if s >= 40 else 
+                             "network-wireless-signal-weak-symbolic" if s >= 20 else 
+                             "network-wireless-signal-none-symbolic")
+            })
+        return result
 
     @Property(str, "readable")
     def state(self) -> str:
@@ -159,18 +167,18 @@ class NetworkClient(Service):
         self.wifi_device = None
         self.ethernet_device = None
         super().__init__(**kwargs)
-        # Инициализация напрямую через поток для отзывчивости
-        GLib.Thread.new(None, self._init_worker, None)
+        # Direct initialization via thread for responsiveness
+        GLib.idle_add(self._init_worker)
 
-    def _init_worker(self, _):
+    def _init_worker(self, _=None):
         try:
             self._client = NM.Client.new(None)
-            GLib.idle_add(self._setup)
+            self._setup()
         except:
-            GLib.idle_add(self._setup_fallback)
+            self._setup_fallback()
 
     def _setup(self):
-        # Поиск устройств без лишних абстракций
+        # Device search without extra abstractions
         devs = self._client.get_devices() or []
         for d in devs:
             t = d.get_device_type()
@@ -182,7 +190,7 @@ class NetworkClient(Service):
         self.emit("device-ready")
 
     def _setup_fallback(self):
-        # Легковесный объект вместо целого класса
+        # Lightweight object instead of full class
         self.wifi_device = type('FB', (), {'enabled': False, 'strength': 0, 'ssid': 'Disconnected', 'access_points': [], 'scan': lambda: None})()
         self.emit("device-ready")
 

@@ -8,7 +8,6 @@ from gi.repository import GLib, Gdk, GdkPixbuf, Gtk
 import math
 import cairo
 import threading
-from functools import lru_cache
 from typing import Optional, Tuple
 
 
@@ -111,9 +110,8 @@ class CircleImage(Gtk.DrawingArea, Widget):
         
         return pixbuf
     
-    @lru_cache(maxsize=4)
     def _create_clip_path(self, size: int, dpi: float = 1.0) -> cairo.Path:
-        """Создание пути клипа с кэшированием"""
+        """Создание пути клипа без кэширования - для упрощения"""
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
         ctx = cairo.Context(surface)
         ctx.scale(dpi, dpi)
@@ -293,4 +291,3 @@ class CircleImage(Gtk.DrawingArea, Widget):
             self._orig_image = None
             self._processed_image = None
             self._cached_surface = None
-            self._create_clip_path.cache_clear()

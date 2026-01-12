@@ -48,7 +48,8 @@ class Brightness(Service):
     def screen_brightness(self, value: int):
         value = max(0, min(value, self.max_screen))
         exec_shell_command_async(f"brightnessctl --device '{self.device}' set {value}", None)
-        self.emit("screen", int((value / self.max_screen) * 100))
+        if self.max_screen > 0:
+            self.emit("screen", int((value / self.max_screen) * 100))
 
     def destroy(self):
         if hasattr(self, 'monitor') and self.monitor:
