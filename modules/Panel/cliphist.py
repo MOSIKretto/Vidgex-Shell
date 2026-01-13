@@ -179,5 +179,24 @@ class ClipHistory(Box):
         self.notch.close_notch()
 
     def _show_empty(self):
-        self.viewport.add(Box(name="no-clip-container", children=[Label(name="no-clip", markup=icons.clipboard)]))
+        self.viewport.children = [] 
+        
+        empty_box = Box(
+            name="no-clip-container",
+            v_expand=True,
+            h_expand=True,
+            orientation="v"
+        )
+        
+        empty_label = Label(
+            name="no-clip", 
+            markup=icons.clipboard,
+            v_align="center",
+            h_align="center",
+            v_expand=True,
+            h_expand=True
+        )
+        
+        empty_box.add(empty_label)
+        self.viewport.add(empty_box)
         self.show_all()

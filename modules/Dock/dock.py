@@ -1,3 +1,4 @@
+from typing import Any, Dict, List, Optional, Union
 from fabric.hyprland.widgets import get_hyprland_connection
 from fabric.utils import exec_shell_command, exec_shell_command_async
 from fabric.utils.helpers import get_desktop_applications
@@ -28,10 +29,11 @@ def createSurfaceFromWidget(widget):
     widget.draw(cr)
     return surface
 
-class Dock(Window):
-    _instances = []
 
-    def __init__(self, monitor_id=0, integrated_mode=False, **kwargs):
+class Dock(Window):
+    _instances: List['Dock'] = []
+
+    def __init__(self, monitor_id: int = 0, integrated_mode: bool = False, **kwargs):
         self.monitor_id = monitor_id
         self.integrated_mode = integrated_mode
         self.always_show = False
@@ -69,15 +71,15 @@ class Dock(Window):
         
         self._drag_in_progress = False
         self.is_mouse_over_dock_area = False
-        self._current_active_window_class = None
+        self._current_active_window_class: Optional[str] = None
         self._forced_occlusion = False
         self._destroyed = False
         
         self._update_pending = False
         self._occlusion_pending = False
 
-        self.dock_geometry = None
-        self.monitor_info = None
+        self.dock_geometry: Optional[Dict[str, int]] = None
+        self.monitor_info: Optional[Dict[str, Any]] = None
 
         self._setup_ui()
         self._setup_event_handlers()
@@ -208,13 +210,13 @@ class Dock(Window):
         self._perform_occlusion_logic(clients)
         return False
 
-    def _get_hyprland_json(self, command):
+    def _get_hyprland_json(self, command: str) -> List[Dict[str, Any]]:
         try:
             return json.loads(self.conn.send_command(command).reply.decode())
         except Exception:
             return []
 
-    def _update_monitor_info_once(self, *args):
+    def _update_monitor_info_once(self, *args) -> None:
         try:
             monitors = self._get_hyprland_json("j/monitors")
             for monitor in monitors:
@@ -233,7 +235,7 @@ class Dock(Window):
         except Exception:
             pass
 
-    def _ensure_geometry(self):
+    def _ensure_geometry(self) -> None:
         if self.dock_geometry: return
         if not self.monitor_info: 
             self._update_monitor_info_once()
@@ -262,7 +264,7 @@ class Dock(Window):
             'h': estimated_dock_height
         }
 
-    def _perform_occlusion_logic(self, clients):
+    def _perform_occlusion_logic(self, clients: List[Dict[str, Any]]) -> None:
         if self.integrated_mode: return
 
         self._ensure_geometry()
@@ -309,7 +311,7 @@ class Dock(Window):
         else:
             if not is_revealed: self.dock_revealer.set_reveal_child(True)
 
-    def _build_app_identifiers_map(self):
+    def _build_app_identifiers_map(self) -> Dict[str, Any]:
         identifiers = {}
         for app in self._all_apps:
             keys = [app.name, app.display_name, app.window_class]
@@ -319,15 +321,15 @@ class Dock(Window):
                 if k: identifiers[str(k).lower()] = app
         return identifiers
 
-    def _normalize_class(self, name):
+    def _normalize_class(self, name: str) -> str:
         if not name: return ""
         n = name.lower()
         for s in (".bin", ".exe", ".so", "-bin", "-gtk"):
             if n.endswith(s): return n[:-len(s)]
         return n
 
-    def _rebuild_dock_icons(self, clients):
-        running_windows = {}
+    def _rebuild_dock_icons(self, clients: List[Dict[str, Any]]) -> None:
+        running_windows: Dict[str, List[Dict[str, Any]]] = {}
         for c in clients:
             raw_id = c.get("initialClass") or c.get("class") or c.get("title", "")
             if not raw_id: continue
@@ -373,7 +375,7 @@ class Dock(Window):
             
         self._update_active_window_state()
 
-    def create_button(self, app_identifier, instances, window_class):
+    def create_button(self, app_identifier: Union[Dict[str, Any], str], instances: List[Dict[str, Any]], window_class: str):
         desktop_app = None
         if isinstance(app_identifier, dict) and "name" in app_identifier:
              desktop_app = self.app_identifiers.get(str(app_identifier["name"]).lower())
@@ -424,7 +426,6 @@ class Dock(Window):
         
         return btn
 
-    # ... (Остальные методы handle_app, dnd, hover без изменений) ...
     def _setup_btn_dnd(self, btn):
         target = Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)
         btn.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [target], Gdk.DragAction.MOVE)
@@ -435,7 +436,7 @@ class Dock(Window):
         btn.connect("drag-data-received", self.on_drag_data_received)
         btn.connect("enter-notify-event", self._on_child_enter)
 
-    def handle_app(self, app_identifier, instances, desktop_app):
+    def handle_app(self, app_identifier: Union[Dict[str, Any], str], instances: List[Dict[str, Any]], desktop_app):
         if not instances:
             if desktop_app:
                 if not desktop_app.launch():
@@ -461,7 +462,7 @@ class Dock(Window):
             next_inst = instances[(idx + 1) % len(instances)]
             exec_shell_command(f"hyprctl dispatch focuswindow address:{next_inst['address']}")
 
-    def _update_active_window_state(self):
+    def _update_active_window_state(self) -> None:
         try:
             aw = json.loads(self.conn.send_command("j/activewindow").reply.decode())
             cls = aw.get("initialClass") or aw.get("class")
@@ -478,39 +479,39 @@ class Dock(Window):
             if is_active: btn.add_style_class("active")
             else: btn.remove_style_class("active")
 
-    def _on_hover_enter(self, *a):
+    def _on_hover_enter(self, *a) -> None:
         if self.integrated_mode: return
         self.is_mouse_over_dock_area = True
         self.dock_revealer.set_reveal_child(True)
 
-    def _on_hover_leave(self, *a):
+    def _on_hover_leave(self, *a) -> None:
         if self.integrated_mode: return
         self.is_mouse_over_dock_area = False
         self._schedule_occlusion_check()
 
-    def _on_dock_enter(self, w, e):
+    def _on_dock_enter(self, w, e) -> bool:
         if self.integrated_mode: return True
         self.is_mouse_over_dock_area = True
         self.dock_revealer.set_reveal_child(True)
         return True
 
-    def _on_dock_leave(self, w, e):
+    def _on_dock_leave(self, w, e) -> bool:
         if self.integrated_mode: return True
         if e.detail == Gdk.NotifyType.INFERIOR: return False
         self.is_mouse_over_dock_area = False
         self._schedule_occlusion_check()
         return True
     
-    def _on_child_enter(self, w, e):
+    def _on_child_enter(self, w, e) -> bool:
         if not self.integrated_mode:
             self.is_mouse_over_dock_area = True
         return False
 
-    def on_drag_begin(self, widget, context):
+    def on_drag_begin(self, widget, context) -> None:
         self._drag_in_progress = True
         Gtk.drag_set_icon_surface(context, createSurfaceFromWidget(widget))
 
-    def on_drag_end(self, widget, context):
+    def on_drag_end(self, widget, context) -> None:
         if not self._drag_in_progress: return
         def finalize_drag():
             self._drag_in_progress = False
@@ -519,7 +520,7 @@ class Dock(Window):
             return False
         GLib.idle_add(finalize_drag)
 
-    def on_drag_data_get(self, widget, context, data, info, time):
+    def on_drag_data_get(self, widget, context, data, info, time) -> None:
         parent = widget.get_parent()
         while widget and not isinstance(widget, Button):
             widget = widget.get_parent()
@@ -527,7 +528,7 @@ class Dock(Window):
             idx = self.view.get_children().index(widget)
             data.set_text(str(idx), -1)
 
-    def on_drag_data_received(self, widget, context, x, y, data, info, time):
+    def on_drag_data_received(self, widget, context, x, y, data, info, time) -> None:
         try:
             src_idx = int(data.get_text())
         except: return
@@ -545,6 +546,6 @@ class Dock(Window):
                 self.view.add(child)
             self.view.show_all()
 
-    def destroy(self):
+    def destroy(self) -> None:
         self._destroyed = True
         super().destroy()

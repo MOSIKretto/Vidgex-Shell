@@ -5,11 +5,6 @@ import json, threading, pickle, lzma
 from pathlib import Path
 from collections import OrderedDict
 
-# Настройки
-CACHE_DIR = Path(GLib.get_user_cache_dir()) / "vidgex-shell"
-ICON_CACHE_FILE = CACHE_DIR / "icons.json"
-DESKTOP_CACHE_FILE = CACHE_DIR / "desktop_cache.lzma"
-
 class IconResolver(GObject.GObject):
     def __init__(self, default_icon="application-x-executable-symbolic"):
         super().__init__()
@@ -23,17 +18,21 @@ class IconResolver(GObject.GObject):
         self._theme = Gtk.IconTheme.get_default()
         self._theme.connect('changed', self.clear_caches)
         
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_dir = Path(GLib.get_user_cache_dir()) / "vidgex-shell"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self._icon_cache_file = cache_dir / "icons.json"
+        self._desktop_cache_file = cache_dir / "desktop_cache.lzma"
+        
         threading.Thread(target=self._load_all, daemon=True).start()
         GLib.timeout_add_seconds(300, self._build_index)
 
     def _load_all(self):
         """Загрузка всех кэшей в одном потоке"""
         try:
-            if ICON_CACHE_FILE.exists():
-                self._icon_cache.update(json.loads(ICON_CACHE_FILE.read_text()))
-            if DESKTOP_CACHE_FILE.exists():
-                with lzma.open(DESKTOP_CACHE_FILE, 'rb') as f:
+            if self._icon_cache_file.exists():
+                self._icon_cache.update(json.loads(self._icon_cache_file.read_text()))
+            if self._desktop_cache_file.exists():
+                with lzma.open(self._desktop_cache_file, 'rb') as f:
                     self._desktop_cache.update(pickle.load(f))
         except: pass
         self._build_index()
@@ -105,8 +104,8 @@ class IconResolver(GObject.GObject):
     def _save_caches(self):
         """Сохранение данных (вызывать через idle_add или отдельный поток)"""
         try:
-            ICON_CACHE_FILE.write_text(json.dumps(dict(self._icon_cache)))
-            with lzma.open(DESKTOP_CACHE_FILE, 'wb') as f:
+            self._icon_cache_file.write_text(json.dumps(dict(self._icon_cache)))
+            with lzma.open(self._desktop_cache_file, 'wb') as f:
                 pickle.dump(self._desktop_cache, f)
         except: pass
 
