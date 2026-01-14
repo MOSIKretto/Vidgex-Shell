@@ -216,7 +216,6 @@ class Notch(Window):
         self.compact_stack = Stack(
             name="notch-compact-stack",
             transition_type="slide-up-down", 
-            transition_duration=100,
         )
         self.compact_stack.add_named(self.active_window_box, "window")
 
