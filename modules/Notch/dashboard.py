@@ -1,15 +1,16 @@
 from fabric.widgets.box import Box
 from fabric.widgets.stack import Stack
+
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-from modules.Panel.Dashboard_Bar.Mixer.mixer import Mixer
-from modules.Panel.Dashboard_Bar.Wallpaper.wallpapers import WallpaperSelector
-from modules.Panel.Dashboard_Bar.Widgets.widgets import Widgets
+from modules.Notch.Mixer.mixer import Mixer
+from modules.Notch.Wallpaper.wallpapers import WallpaperSelector
+from modules.Notch.Widgets.widgets import Widgets
+
 
 class Dashboard(Box):
-    # __slots__ минимизирует использование ОЗУ, фиксируя структуру объекта
     __slots__ = (
         "notch", "widgets", "wallpapers", "mixer", 
         "stack", "switcher", "_children_cache"

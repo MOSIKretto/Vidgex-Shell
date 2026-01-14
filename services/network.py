@@ -1,8 +1,8 @@
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, bulk_connect
+
 import gi
 from gi.repository import NM, GLib
-
 gi.require_version('NM', '1.0')
 
 

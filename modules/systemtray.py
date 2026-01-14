@@ -1,4 +1,5 @@
 from fabric.widgets.box import Box
+
 import gi
 gi.require_version("Gray", "0.1")
 from gi.repository import Gdk, GdkPixbuf, Gray, Gtk

@@ -1,10 +1,11 @@
+from fabric.widgets.window import Window
+
 from gi.repository import Gdk, Gtk, GtkLayerShell
+
 import cairo
 import weakref
 from typing import Optional, Tuple, Set, Union, List
 from functools import lru_cache
-
-from fabric.widgets.window import Window
 
 
 class WaylandWindow(Window):

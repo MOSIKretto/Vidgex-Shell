@@ -4,14 +4,14 @@ from fabric.widgets.stack import Stack
 import gi
 gi.require_version("Gtk", "3.0")
 
-from modules.Panel.Dashboard_Bar.Widgets.bluetooth import BluetoothConnections
-from modules.Panel.Dashboard_Bar.Widgets.buttons import Buttons
-from modules.Panel.Dashboard_Bar.Widgets.calendar import Calendar
-from modules.Panel.Dashboard_Bar.Widgets.controls import ControlSliders
-from modules.Panel.Dashboard_Bar.Widgets.metrics import Metrics
-from modules.Panel.Dashboard_Bar.Widgets.Network.network import NetworkConnections
-from modules.Panel.Dashboard_Bar.Widgets.player import Player
-from modules.Panel.Dashboard_Bar.Widgets.Notifications.history import NotificationHistory
+from modules.Notch.Widgets.bluetooth import BluetoothConnections
+from modules.Notch.Widgets.buttons import Buttons
+from modules.Notch.Widgets.calendar import Calendar
+from modules.controls import ControlSliders
+from modules.metrics import Metrics
+from modules.Notch.Widgets.Network.network import NetworkConnections
+from modules.Notch.Widgets.player import Player
+from modules.Notch.Widgets.Notifications.history import NotificationHistory
 
 
 class Widgets(Box):

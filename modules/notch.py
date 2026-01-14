@@ -14,14 +14,16 @@ from typing import Optional, List, Set, Tuple
 import gc
 
 
-from modules.Panel.Dashboard_Bar.dashboard import Dashboard
-from modules.Panel.cliphist import ClipHistory
-from widgets.corners import MyCorner
-from modules.Panel.launcher import AppLauncher
-from modules.Panel.overview import Overview
-from modules.Panel.power import PowerMenu
-from modules.Panel.tools import Toolbox
+from modules.Notch.dashboard import Dashboard
+from modules.Notch.cliphist import ClipHistory
+from modules.Notch.launcher import AppLauncher
+from modules.Notch.overview import Overview
+from modules.Notch.power import PowerMenu
+from modules.Notch.tools import Toolbox
+
 from utils.icon_resolver import IconResolver
+
+from widgets.corners import MyCorner
 from widgets.wayland import WaylandWindow as Window
 
 
@@ -36,19 +38,18 @@ def debounce(delay: int):
                 timer_id = getattr(self, timer_attr)
                 if timer_id and timer_id in self._timers:
                     GLib.source_remove(timer_id)
-                    self._timers.remove(timer_id)
+                    self._timers.discard(timer_id)
             
             def call_func():
                 try:
-                    if timer_attr in self.__dict__:
-                        t_id = getattr(self, timer_attr)
-                        if t_id in self._timers:
-                            self._timers.remove(t_id)
+                    timer_id = getattr(self, timer_attr, None)
+                    if timer_id in self._timers:
+                        self._timers.discard(timer_id)
                     return func(self, *args, **kwargs)
                 except Exception:
                     return False
                 finally:
-                    if timer_attr in self.__dict__:
+                    if hasattr(self, timer_attr):
                         delattr(self, timer_attr)
             
             timer_id = GLib.timeout_add(delay, call_func)
@@ -62,6 +63,16 @@ def debounce(delay: int):
 
 class Notch(Window):
     """Виджет уведомлений и быстрого доступа."""
+    
+    # Ленивая инициализация компонентов
+    _LAZY_WIDGETS = {
+        'dashboard': lambda self: Dashboard(notch=self),
+        'launcher': lambda self: AppLauncher(notch=self),
+        'overview': lambda self: Overview(monitor_id=self.monitor_id),
+        'power': lambda self: PowerMenu(notch=self),
+        'cliphist': lambda self: ClipHistory(notch=self),
+        'tools': lambda self: Toolbox(notch=self),
+    }
     
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
@@ -98,7 +109,48 @@ class Notch(Window):
         self._signal_handlers: List[tuple] = []
         self._keybindings: List[int] = []
         
+        # Lazy-loaded widgets будут храниться здесь
+        self._widgets_cache = {}
+
         self._initialize()
+    
+    # --- Getters для lazy widgets ---
+    @property
+    def dashboard(self):
+        if 'dashboard' not in self._widgets_cache:
+            self._widgets_cache['dashboard'] = self._LAZY_WIDGETS['dashboard'](self)
+        return self._widgets_cache['dashboard']
+
+    @property
+    def launcher(self):
+        if 'launcher' not in self._widgets_cache:
+            self._widgets_cache['launcher'] = self._LAZY_WIDGETS['launcher'](self)
+        return self._widgets_cache['launcher']
+
+    @property
+    def overview(self):
+        if 'overview' not in self._widgets_cache:
+            self._widgets_cache['overview'] = self._LAZY_WIDGETS['overview'](self)
+        return self._widgets_cache['overview']
+
+    @property
+    def power(self):
+        if 'power' not in self._widgets_cache:
+            self._widgets_cache['power'] = self._LAZY_WIDGETS['power'](self)
+        return self._widgets_cache['power']
+
+    @property
+    def cliphist(self):
+        if 'cliphist' not in self._widgets_cache:
+            self._widgets_cache['cliphist'] = self._LAZY_WIDGETS['cliphist'](self)
+        return self._widgets_cache['cliphist']
+
+    @property
+    def tools(self):
+        if 'tools' not in self._widgets_cache:
+            self._widgets_cache['tools'] = self._LAZY_WIDGETS['tools'](self)
+        return self._widgets_cache['tools']
+    # --- Конец Getters ---
     
     @property
     def bar(self):
@@ -124,14 +176,7 @@ class Notch(Window):
 
     def _setup_widgets(self):
         """Инициализация всех виджетов."""
-        # Основные виджеты
-        self.dashboard = Dashboard(notch=self)
-        self.launcher = AppLauncher(notch=self)
-        self.overview = Overview(monitor_id=self.monitor_id)
-        self.power = PowerMenu(notch=self)
-        self.cliphist = ClipHistory(notch=self)
-        self.tools = Toolbox(notch=self)
-
+        # Основные виджеты теперь создаются лениво через property
         self._setup_active_window()
         self._setup_main_stack()
         self._setup_layout()
@@ -200,12 +245,12 @@ class Notch(Window):
         # Добавляем все виджеты
         widgets_to_add = [
             ("compact", self.compact),
-            ("launcher", self.launcher),
-            ("dashboard", self.dashboard),
-            ("overview", self.overview),
-            ("power", self.power),
-            ("tools", self.tools),
-            ("cliphist", self.cliphist)
+            ("launcher", self.launcher), # Используем property
+            ("dashboard", self.dashboard), # Используем property
+            ("overview", self.overview), # Используем property
+            ("power", self.power), # Используем property
+            ("tools", self.tools), # Используем property
+            ("cliphist", self.cliphist) # Используем property
         ]
         
         for name, widget in widgets_to_add:
@@ -325,7 +370,7 @@ class Notch(Window):
         """Останавливает обновление информации об окне."""
         if self._window_update_timer and self._window_update_timer in self._timers:
             GLib.source_remove(self._window_update_timer)
-            self._timers.remove(self._window_update_timer)
+            self._timers.discard(self._window_update_timer)
         self._window_update_timer = None
 
     @debounce(150)
@@ -420,7 +465,7 @@ class Notch(Window):
 
     def _show_dashboard_widget(self, widget_name: str):
         """Показывает виджет из дашборда."""
-        if not self._alive or not self.dashboard:
+        if not self._alive or not self.dashboard: # Теперь использует property
             return
             
         self.stack.set_visible_child(self.dashboard)
@@ -445,7 +490,7 @@ class Notch(Window):
         """Показывает раздел дашборда."""
         if not self._alive:
             return
-        self.stack.set_visible_child(self.dashboard)
+        self.stack.set_visible_child(self.dashboard) # Теперь использует property
         self.dashboard.go_to_section(board)
 
     def _show_simple_widget(self, widget_name: str):
@@ -461,7 +506,7 @@ class Notch(Window):
         if not self._alive:
             return
             
-        self.stack.set_visible_child(self.cliphist)
+        self.stack.set_visible_child(self.cliphist) # Теперь использует property
         if hasattr(self.cliphist, 'open'):
             GLib.idle_add(self.cliphist.open)
 
@@ -470,7 +515,7 @@ class Notch(Window):
         if not self._alive:
             return
             
-        self.stack.set_visible_child(self.launcher)
+        self.stack.set_visible_child(self.launcher) # Теперь использует property
         self.launcher.open_launcher()
         
         entry = getattr(self.launcher, 'search_entry', None)
@@ -498,7 +543,7 @@ class Notch(Window):
                     revealer.set_reveal_child(True)
         
         # Восстанавливаем состояние дашборда
-        if self.dashboard:
+        if self.dashboard: # Теперь использует property
             widgets = getattr(self.dashboard, 'widgets', None)
             nhistory = getattr(widgets, 'notification_history', None) if widgets else None
             applet_stack = getattr(widgets, 'applet_stack', None) if widgets else None
@@ -800,26 +845,20 @@ class Notch(Window):
                 pass
         self._keybindings.clear()
 
-        # Уничтожаем виджеты
-        widgets_to_destroy = [
-            'dashboard', 'launcher', 'overview', 'power', 
-            'cliphist', 'tools', 'stack', 'compact_stack'
-        ]
-        
-        for name in widgets_to_destroy:
-            widget = getattr(self, name, None)
+        # Уничтожаем лениво загруженные виджеты
+        for name, widget in self._widgets_cache.items():
             if widget:
                 # Разрываем связи
                 if hasattr(widget, 'notch'):
                     widget.notch = None
-                
                 # Уничтожаем
                 try:
                     widget.destroy()
                 except:
                     pass
-                
-                setattr(self, name, None)
+
+        # Очищаем кэш
+        self._widgets_cache.clear()
 
         # Очищаем ссылки
         self._bar_ref = None

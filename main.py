@@ -7,11 +7,12 @@ from typing import Dict, List, Optional, Tuple, Callable, Any
 from fabric import Application
 from fabric.utils import get_relative_path
 
-from modules.Panel.Dashboard_Bar.Widgets.Notifications.popup import NotificationPopup
-from modules.Panel.notch import Notch
-from modules.Panel.Dashboard_Bar.bar import Bar
+from modules.Notch.Widgets.Notifications.popup import NotificationPopup
+from modules.notch import Notch
+from modules.bar import Bar
 from widgets.corners import Corners
-from modules.Dock.dock import Dock
+from modules.dock import Dock
+
 
 class ShellManager:
     __slots__ = ('app', 'components', 'cleanup_handlers', '_cleaned_up')

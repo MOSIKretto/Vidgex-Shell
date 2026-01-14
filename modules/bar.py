@@ -12,10 +12,13 @@ from fabric.widgets.centerbox import CenterBox
 from gi.repository import Gdk
 import weakref
 
-from modules.Panel.Dashboard_Bar.Widgets.metrics import Battery, MetricsSmall, NetworkApplet
-from modules.Panel.Dashboard_Bar.Widgets.systemtray import SystemTray
-from modules.Panel.Dashboard_Bar.Widgets.controls import ControlSmall
+
+from modules.metrics import Battery, MetricsSmall, NetworkApplet
+from modules.systemtray import SystemTray
+from modules.controls import ControlSmall
+
 from widgets.wayland import WaylandWindow as Window
+
 import modules.icons as icons
 
 

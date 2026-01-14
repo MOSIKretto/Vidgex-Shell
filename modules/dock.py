@@ -11,9 +11,12 @@ from gi.repository import Gdk, GLib, Gtk
 import json
 import cairo
 
-from widgets.corners import MyCorner
+
 from utils.icon_resolver import IconResolver
+
+from widgets.corners import MyCorner
 from widgets.wayland import WaylandWindow as Window
+
 
 def createSurfaceFromWidget(widget):
     alloc = widget.get_allocation()

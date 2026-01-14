@@ -1,6 +1,7 @@
+from gi.repository import GLib, GObject
+
 import json, subprocess, threading, time, weakref
 from typing import Dict, List, Tuple
-from gi.repository import GLib, GObject
 
 
 class MonitorManager(GObject.GObject):

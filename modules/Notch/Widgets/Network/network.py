@@ -16,6 +16,7 @@ import psutil
 import modules.icons as icons
 from services.network import NetworkClient
 
+
 class WifiNetworkSlot(CenterBox):
     active_pw_block = None
     active_slot = None

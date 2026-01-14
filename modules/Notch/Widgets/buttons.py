@@ -13,7 +13,7 @@ from typing import Optional, List, Callable
 from dataclasses import dataclass
 
 import modules.icons as icons
-from modules.Panel.Dashboard_Bar.Widgets.Network.network import NetworkClient
+from modules.Notch.Widgets.Network.network import NetworkClient
 
 
 @dataclass(frozen=True)

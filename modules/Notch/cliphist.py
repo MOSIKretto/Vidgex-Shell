@@ -5,8 +5,10 @@ from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import Gdk, GdkPixbuf, GLib
+
 import subprocess
 import modules.icons as icons
+
 
 class ClipHistory(Box):
     def __init__(self, notch, **kwargs):

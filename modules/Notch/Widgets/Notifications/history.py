@@ -14,12 +14,12 @@ import os
 import weakref
 from datetime import datetime, timedelta
 
-import modules.icons as icons
-from widgets.image import CustomImage
 from .notification_box import (
     NotificationBox, cache_notification_pixbuf, load_scaled_pixbuf, 
     get_history_ignored_apps, PERSISTENT_HISTORY_FILE, MAX_NOTIFICATION_HISTORY, 
     MAX_POPUP_NOTIFICATIONS, PERSISTENT_DIR, MAX_CACHED_IMAGES, HistoricalNotification)
+import modules.icons as icons
+from widgets.image import CustomImage
 
 
 class NotificationHistory(Box):
@@ -766,7 +766,6 @@ class NotificationContainer(Box):
             self.current_index = 0
         finally:
             self._is_destroying = False
-            return False
 
     def pause_and_reset_all_timeouts(self):
         if self._is_destroying:

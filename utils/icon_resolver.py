@@ -1,9 +1,11 @@
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, GObject
+
 import json, threading, pickle, lzma
 from pathlib import Path
 from collections import OrderedDict
+
 
 class IconResolver(GObject.GObject):
     def __init__(self, default_icon="application-x-executable-symbolic"):

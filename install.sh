@@ -6,10 +6,12 @@ set -o pipefail # Prevent errors in a pipeline from being masked
 
 INSTALL_DIR="$HOME/.config/Vidgex-Shell"
 PACKAGES=(
+  fabric-cli-git
+  python-fabric-git
   awww-git
   brightnessctl
   cliphist
-  fabric-cli-git
+  ddcutil
   gnome-bluetooth-3.0
   gobject-introspection
   gpu-screen-recorder
@@ -27,7 +29,6 @@ PACKAGES=(
   nvtop
   playerctl
   power-profiles-daemon
-  python-fabric-git
   python-gobject
   python-ijson
   python-numpy
@@ -41,10 +42,11 @@ PACKAGES=(
   swappy
   tesseract
   tesseract-data-eng
-  tesseract-data-spa
+  tesseract-data-rus
   ttf-nerd-fonts-symbols-mono
   unzip
   upower
+  uwsm
   vte3
   webp-pixbuf-loader
   wl-clipboard
@@ -67,15 +69,6 @@ elif ! command -v yay &>/dev/null; then
   git clone --depth=1 https://aur.archlinux.org/yay-bin.git "$tmpdir/yay-bin"
   (cd "$tmpdir/yay-bin" && makepkg -si --noconfirm)
   rm -rf "$tmpdir"
-fi
-
-# Clone or update the repository
-if [ -d "$INSTALL_DIR" ]; then
-  echo "Updating Ax-Shell..."
-  git -C "$INSTALL_DIR" pull
-else
-  echo "Cloning Ax-Shell..."
-  git clone --depth=1 "$REPO_URL" "$INSTALL_DIR"
 fi
 
 # Install required packages using the detected AUR helper (only if missing)
@@ -142,8 +135,8 @@ else
   echo "Local fonts are already installed. Skipping copy."
 fi
 
-echo "Starting Ax-Shell..."
-killall ax-shell 2>/dev/null || true
+echo "Starting Vidgex-Shell..."
+killall Vidgex-shell 2>/dev/null || true
 uwsm app -- python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
 disown
 

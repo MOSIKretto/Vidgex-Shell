@@ -3,9 +3,10 @@ from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 from fabric.widgets.scale import Scale
 from fabric.widgets.scrolledwindow import ScrolledWindow
+
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+
 
 class MixerSlider(Scale):
     def __init__(self, stream, label_ref, **kwargs):

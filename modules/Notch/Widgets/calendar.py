@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 import modules.icons as icons
 
+
 class Calendar(Gtk.Box):
     def __init__(self, view_mode="month"):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8, name="calendar")

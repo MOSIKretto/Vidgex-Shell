@@ -9,8 +9,8 @@ from fabric.widgets.scale import Scale
 
 from gi.repository import GLib
 
+from services.brightness import Brightness 
 import modules.icons as icons
-from services.brightness import Brightness #
 
 
 class AudioDeviceWidget:

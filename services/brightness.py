@@ -1,6 +1,7 @@
-import os
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, monitor_file
+
+import os
 
 
 class Brightness(Service):

@@ -1,5 +1,6 @@
 from typing import Dict, Final
 
+
 FONT_CONFIG: Final[Dict[str, str]] = {
     'family': 'tabler-icons',
     'weight': 'normal'

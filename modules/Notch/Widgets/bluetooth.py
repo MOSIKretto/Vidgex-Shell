@@ -5,7 +5,9 @@ from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
+
 import modules.icons as icons
+
 
 class BluetoothDeviceSlot(CenterBox):
     def __init__(self, device: BluetoothDevice, **kwargs):

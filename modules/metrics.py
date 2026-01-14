@@ -14,9 +14,9 @@ import psutil
 import threading
 import json
 
+from services.network import NetworkClient
 from services.upower import UPowerManager
 import modules.icons as icons
-from services.network import NetworkClient
 
 
 class MetricsProvider:
