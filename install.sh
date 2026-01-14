@@ -136,7 +136,7 @@ else
 fi
 
 echo "Starting Vidgex-Shell..."
-killall Vidgex-shell 2>/dev/null || true
+killall vidgex-shell 2>/dev/null || true
 uwsm app -- python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
 disown
 
