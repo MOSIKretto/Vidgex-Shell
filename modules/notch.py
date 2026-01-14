@@ -1,4 +1,4 @@
-from fabric.hyprland.widgets import get_hyprland_connection
+from utils.hyprland_widgets import get_hyprland_connection
 from fabric.widgets.box import Box
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image

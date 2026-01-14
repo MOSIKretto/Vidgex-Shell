@@ -1,4 +1,4 @@
-from fabric.hyprland.widgets import (
+from utils.hyprland_widgets import (
     HyprlandLanguage as Language,
     HyprlandWorkspaces as Workspaces,
     get_hyprland_connection

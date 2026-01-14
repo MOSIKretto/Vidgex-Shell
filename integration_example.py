@@ -6,12 +6,12 @@ This script demonstrates how to integrate the optimized modules
 into the existing application structure.
 """
 
-# Import the optimized modules
-from modules.metrics_optimized import Metrics, MetricsSmall, Battery, NetworkApplet
-from modules.dock_optimized import Dock
-from modules.controls_optimized import ControlSliders, ControlSmall
-from modules.bar_optimized import Bar
-from utils.monitor_manager_optimized import get_monitor_manager
+# Import the optimized modules (now standard)
+from modules.metrics import Metrics, MetricsSmall, Battery, NetworkApplet
+from modules.dock import Dock
+from modules.controls import ControlSliders, ControlSmall
+from modules.bar import Bar
+from utils.monitor_manager import get_monitor_manager
 
 # Import original modules for comparison (these would normally be replaced)
 # from modules.metrics import Metrics, MetricsSmall, Battery, NetworkApplet

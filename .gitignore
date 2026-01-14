@@ -1,4 +1,4 @@
-```gitignore
+```
 # Compiled Python files
 *.pyc
 __pycache__/
@@ -6,26 +6,23 @@ __pycache__/
 # Dependencies
 .venv/
 venv/
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Environment files
 .env
 .env.local
 *.env.*
 
-# Build/dist directories
-dist/
-build/
-target/
-
-# Logs
-*.log
-
-# Editor/IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Coverage
+# Coverage reports
 .coverage
 coverage/
 htmlcov/

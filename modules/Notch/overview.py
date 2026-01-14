@@ -1,4 +1,4 @@
-from fabric.hyprland.service import Hyprland
+from utils.hyprland_service import Hyprland
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
