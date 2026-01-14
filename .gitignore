@@ -6,21 +6,17 @@ __pycache__/
 # Dependencies
 .venv/
 venv/
-node_modules/
+.env
+.env.local
+*.env.*
 
-# Logs and temp files
+# Logs and temporary files
 *.log
 *.tmp
-*.swp
 
 # Editors
 .vscode/
 .idea/
-
-# Environment files
-.env
-.env.local
-*.env.*
 
 # Coverage reports
 .coverage

@@ -12,22 +12,21 @@ class Hyprland(GObject.GObject):
     """Replacement for fabric.hyprland.service.Hyprland"""
 
     __gsignals__ = {
-        'event::ready': (GObject.SignalFlags.RUN_FIRST, None, ()),
-        'event::openwindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::closewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::movewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::resizewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::workspace': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::activewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::activelayout': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::monitoradded': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        'event::monitorremoved': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'ready': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'openwindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'closewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'movewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'resizewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'workspace': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'activewindow': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'activelayout': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'monitoradded': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        'monitorremoved': (GObject.SignalFlags.RUN_FIRST, None, (object,)),
     }
 
     def __init__(self):
         super().__init__()
         self.comm = get_hyprland_communicator()
-        self.ready = True  # We consider it ready immediately for our purposes
         self._event_handlers = {}
         
         # Connect to Hyprland events
@@ -35,6 +34,13 @@ class Hyprland(GObject.GObject):
             'openwindow', 'closewindow', 'movewindow', 'resizewindow',
             'workspace', 'activewindow', 'activelayout', 'monitoradded', 'monitorremoved'
         ], self._handle_generic_event)
+        
+        # Emit ready signal immediately
+        from gi.repository import GLib
+        GLib.idle_add(self._emit_ready)
+    
+    def _emit_ready(self):
+        self.emit('ready')
 
     def _handle_generic_event(self, event_data: str):
         """Handle generic Hyprland events"""
@@ -50,7 +56,7 @@ class Hyprland(GObject.GObject):
                     'openwindow', 'closewindow', 'movewindow', 'resizewindow',
                     'workspace', 'activewindow', 'activelayout', 'monitoradded', 'monitorremoved'
                 ]:
-                    self.emit(f'event::{event_name}', event_payload)
+                    self.emit(event_name, event_payload)
                     
         except Exception as e:
             print(f"Error handling Hyprland event: {e}")

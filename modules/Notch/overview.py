@@ -88,7 +88,7 @@ class Overview(Box):
         
         # Подписка на ключевые события для обновления
         for ev in ("openwindow", "closewindow", "movewindow", "windowtitle"):
-            connection.connect(f"event::{ev}", self.schedule_update)
+            connection.connect(ev, self.schedule_update)
         self._update_ui()
 
     def schedule_update(self, *args):

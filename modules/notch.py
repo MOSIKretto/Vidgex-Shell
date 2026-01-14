@@ -347,8 +347,8 @@ class Notch(Window):
         conn = get_hyprland_connection()
         if conn:
             events = [
-                ("event::activewindow", self._on_active_changed_debounced),
-                ("event::workspace", self._on_active_changed_debounced)
+                ("activewindow", self._on_active_changed_debounced),
+                ("workspace", self._on_active_changed_debounced)
             ]
             
             for event, handler in events:

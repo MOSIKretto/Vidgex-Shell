@@ -113,7 +113,7 @@ class Bar(Window):
     def _setup_hyprland_signals(self):
         conn = get_hyprland_connection()
         if conn:
-            handler = conn.connect("event::activelayout", self._update_language)
+            handler = conn.connect("activelayout", self._update_language)
             self._signal_handlers.append((conn, handler))
         self._update_language()
     

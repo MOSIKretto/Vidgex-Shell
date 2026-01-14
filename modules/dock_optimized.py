@@ -155,23 +155,23 @@ class Dock(Window):
 
     def _setup_event_handlers(self):
         events = [
-            ("event::openwindow", self._schedule_full_update),
-            ("event::closewindow", self._schedule_full_update),
-            ("event::movewindow", self._schedule_occlusion_check),
-            ("event::resizewindow", self._schedule_occlusion_check),
-            ("event::workspace", self._schedule_occlusion_check),
-            ("event::activewindow", self._on_active_window_event),
-            ("event::monitoradded", self._update_monitor_info_once),
-            ("event::monitorremoved", self._update_monitor_info_once)
+            ("openwindow", self._schedule_full_update),
+            ("closewindow", self._schedule_full_update),
+            ("movewindow", self._schedule_occlusion_check),
+            ("resizewindow", self._schedule_occlusion_check),
+            ("workspace", self._schedule_occlusion_check),
+            ("activewindow", self._on_active_window_event),
+            ("monitoradded", self._update_monitor_info_once),
+            ("monitorremoved", self._update_monitor_info_once)
         ]
         
         for event, handler in events:
             self.conn.connect(event, handler)
 
-        if self.conn.ready:
+        if hasattr(self.conn, 'ready') and self.conn.ready:
             self._on_ready()
         else:
-            self.conn.connect("event::ready", lambda *args: self._on_ready())
+            self.conn.connect("ready", lambda *args: self._on_ready())
 
     def _on_ready(self):
         if self._destroyed: return
