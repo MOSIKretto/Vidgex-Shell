@@ -20,7 +20,20 @@ import modules.icons as icons
 
 
 class MetricsProvider:
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MetricsProvider, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        # Only initialize once
+        if self._initialized:
+            return
+        self._initialized = True
+        
         self.gpu = []
         self.cpu = 0.0
         self.mem = 0.0
@@ -38,8 +51,13 @@ class MetricsProvider:
         self._update_timer_id = None
         self._should_stop = False
         self._gpu_thread = None
+        self._lock = threading.Lock()  # Add lock for thread safety
 
         self._update_timer_id = GLib.timeout_add_seconds(2, self._update)
+    
+    def reset(self):
+        """Reset initialization to allow re-initialization"""
+        self._initialized = False
 
     def destroy(self):
         self._should_stop = True
@@ -106,12 +124,22 @@ class MetricsProvider:
         if self._should_stop:
             return
             
-        self._gpu_update_running = True
+        with self._lock:  # Use lock to ensure thread safety
+            if self._gpu_update_running or self._should_stop:
+                return  # Don't start another thread if one is already running
+            self._gpu_update_running = True
         
         def worker():
             output = None
-            result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
-            output = result
+            try:
+                result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
+                output = result
+            except subprocess.TimeoutExpired:
+                print("GPU info collection timed out")
+            except subprocess.CalledProcessError:
+                print("Failed to collect GPU info")
+            except Exception as e:
+                print(f"Error collecting GPU info: {e}")
 
             if not self._should_stop:
                 GLib.idle_add(self._process_gpu_output, output)
@@ -120,7 +148,8 @@ class MetricsProvider:
         self._gpu_thread.start()
 
     def _process_gpu_output(self, output):
-        self._gpu_update_running = False
+        with self._lock:  # Use lock to ensure thread safety
+            self._gpu_update_running = False
         
         try:
             if output:
@@ -146,7 +175,19 @@ class MetricsProvider:
         result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
         return json.loads(result)
 
-shared_provider = MetricsProvider()
+def get_metrics_provider():
+    """Get the singleton metrics provider instance"""
+    return MetricsProvider()
+
+def cleanup_metrics_provider():
+    """Clean up the metrics provider instance"""
+    if hasattr(MetricsProvider, '_instance') and MetricsProvider._instance:
+        MetricsProvider._instance.destroy()
+        MetricsProvider._instance = None
+        MetricsProvider._initialized = False
+
+# Initialize the shared provider as a singleton
+shared_provider = get_metrics_provider()
 
 class SingularMetric:
     def __init__(self, id, name, icon):

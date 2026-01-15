@@ -194,6 +194,18 @@ class NetworkClient(Service):
         self.wifi_device = type('FB', (), {'enabled': False, 'strength': 0, 'ssid': 'Disconnected', 'access_points': [], 'scan': lambda: None})()
         self.emit("device-ready")
 
+    def destroy(self):
+        """Properly cleanup network resources"""
+        if self.wifi_device and hasattr(self.wifi_device, 'destroy'):
+            self.wifi_device.destroy()
+        if self.ethernet_device and hasattr(self.ethernet_device, 'destroy'):
+            self.ethernet_device.destroy()
+        # Clear references to prevent circular references
+        self.wifi_device = None
+        self.ethernet_device = None
+        self._client = None
+        super().destroy()
+
     @Property(str, "readable")
     def primary_device(self) -> str:
         if self.ethernet_device and self.ethernet_device.internet in ("activated", "activating"):

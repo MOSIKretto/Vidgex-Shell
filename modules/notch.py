@@ -826,6 +826,9 @@ class Notch(Window):
                 t_id = getattr(self, attr)
                 if isinstance(t_id, int) and t_id in self._timers:
                     GLib.source_remove(t_id)
+                # Remove from timers set if present
+                if isinstance(t_id, int) and t_id in self._timers:
+                    self._timers.discard(t_id)
                 delattr(self, attr)
 
         # Отключаем все сигналы

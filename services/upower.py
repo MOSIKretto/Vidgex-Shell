@@ -106,5 +106,9 @@ class UPowerManager:
     
     def destroy(self):
         if hasattr(self, 'bus') and self.bus:
-            self.bus.close()
+            # Close the bus connection properly
+            try:
+                self.bus.close()
+            except:
+                pass
             self.bus = None
