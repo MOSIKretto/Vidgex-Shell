@@ -8,16 +8,12 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib, Gtk
-
 import json
 import cairo
 
-from utils.hyprland_direct import get_hyprland_client
-from utils.icon_resolver import IconResolver
-
 from widgets.corners import MyCorner
+from utils.icon_resolver import IconResolver
 from widgets.wayland import WaylandWindow as Window
-
 
 def createSurfaceFromWidget(widget):
     alloc = widget.get_allocation()
@@ -216,16 +212,7 @@ class Dock(Window):
 
     def _get_hyprland_json(self, command: str) -> List[Dict[str, Any]]:
         try:
-            client = get_hyprland_client()
-            if command == "j/clients":
-                return client.get_clients()
-            elif command == "j/workspaces":
-                return client.get_workspaces()
-            elif command == "j/monitors":
-                return client.get_monitors()
-            else:
-                # Fallback to original method for other commands
-                return []
+            return json.loads(self.conn.send_command(command).reply.decode())
         except Exception:
             return []
 
@@ -285,8 +272,7 @@ class Dock(Window):
         if not self.dock_geometry: return
 
         try:
-            client = get_hyprland_client()
-            active_ws_data = client.get_active_workspace()
+            active_ws_data = json.loads(self.conn.send_command("j/activeworkspace").reply.decode())
             current_ws_id = active_ws_data.get("id", 0)
         except:
             current_ws_id = 0
@@ -549,10 +535,10 @@ class Dock(Window):
         target = widget
         while target and not isinstance(target, Button):
             target = target.get_parent()
-        if target not in self.view.get_children(): return
-        tgt_idx = self.view.get_children().index(target)
+        children = self.view.get_children()
+        if target not in children: return
+        tgt_idx = children.index(target)
         if src_idx != tgt_idx:
-            children = self.view.get_children()
             item = children.pop(src_idx)
             children.insert(tgt_idx, item)
             for child in children:
