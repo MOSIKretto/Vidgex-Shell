@@ -6,6 +6,7 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
+from fabric.hyprland.widgets import get_hyprland_connection
 
 from gi.repository import GLib
 import subprocess
@@ -13,6 +14,7 @@ import time
 import psutil
 import threading
 import json
+import os
 
 from services.network import NetworkClient
 from services.upower import UPowerManager
@@ -38,6 +40,13 @@ class MetricsProvider:
         self._update_timer_id = None
         self._should_stop = False
         self._gpu_thread = None
+        
+        # Cache for system metrics to reduce computation
+        self._last_cpu_times = None
+        self._last_update_time = time.time()
+        
+        # Connect to Hyprland for direct communication
+        self._hyprland_conn = get_hyprland_connection()
 
         # Remove timer-based updates - we'll update on demand only
 
@@ -66,30 +75,53 @@ class MetricsProvider:
         if self._should_stop:
             return False
             
-        self.cpu = psutil.cpu_percent(interval=0)
-        self.mem = psutil.virtual_memory().percent
-        self.disk = [psutil.disk_usage(path).percent for path in ["/"]]
+        # Use cached CPU times to reduce computation
+        current_time = time.time()
+        time_diff = current_time - self._last_update_time
         
+        # Only update CPU if enough time has passed (to avoid 0% readings)
+        if time_diff >= 0.5:  # Minimum time interval
+            cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking
+            if cpu_percent is not None:
+                self.cpu = cpu_percent
+            self._last_update_time = current_time
+        # If less than 0.5s passed, keep the previous value
+        
+        # Memory usage - cache result since it's relatively stable
+        mem = psutil.virtual_memory()
+        self.mem = mem.percent
+        
+        # Disk usage - only check root partition, cache the result
         try:
-            temps = psutil.sensors_temperatures()
-            if temps and 'coretemp' in temps:
-                core_temps = [temp.current for temp in temps['coretemp'] if hasattr(temp, 'current')]
-                if core_temps:
-                    self.temperature = max(core_temps)
-            elif temps:
-                for sensor_name, entries in temps.items():
-                    if entries and hasattr(entries[0], 'current'):
-                        self.temperature = entries[0].current
-                        break
-        except Exception:
-            self.temperature = 0.0
+            disk_usage = psutil.disk_usage("/")
+            self.disk = [disk_usage.percent]
+        except:
+            self.disk = [0]
+        
+        # Temperature - reduce frequency of checking
+        if int(current_time) % 2 == 0:  # Only check every 2 seconds
+            try:
+                temps = psutil.sensors_temperatures()
+                if temps and 'coretemp' in temps:
+                    core_temps = [temp.current for temp in temps['coretemp'] if hasattr(temp, 'current')]
+                    if core_temps:
+                        self.temperature = max(core_temps)
+                elif temps:
+                    for sensor_name, entries in temps.items():
+                        if entries and hasattr(entries[0], 'current'):
+                            self.temperature = entries[0].current
+                            break
+            except Exception:
+                self.temperature = 0.0
 
+        # GPU - reduce update frequency
         self._gpu_update_counter += 1
-        if self._gpu_update_counter >= 5:
+        if self._gpu_update_counter >= 10:  # Reduced frequency
             self._gpu_update_counter = 0
             if not self._gpu_update_running and not self._should_stop:
                 self._update_gpu()
 
+        # Battery - cache results since it doesn't change rapidly
         battery = self.upower.get_full_device_information(self.display_device)
         if battery is None:
             self.bat_percent = 0.0
@@ -757,6 +789,7 @@ class NetworkApplet(Button):
             children=[self.upload_revealer, self.wifi_label, self.download_revealer],
         ))
 
+        # Initialize counters for network stats
         self.last_counters = psutil.net_io_counters()
         self.last_time = time.time()
 
