@@ -18,9 +18,12 @@ from services.network import NetworkClient
 from services.upower import UPowerManager
 import modules.icons as icons
 
+from utils.base_component import BaseComponent
 
-class MetricsProvider:
+
+class MetricsProvider(BaseComponent):
     def __init__(self):
+        super().__init__()
         self.gpu = []
         self.cpu = 0.0
         self.mem = 0.0
@@ -39,14 +42,14 @@ class MetricsProvider:
         self._should_stop = False
         self._gpu_thread = None
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self._update)
+        self._update_timer_id = self.register_timer(GLib.timeout_add_seconds(2, self._update))
 
     def destroy(self):
         self._should_stop = True
         
         if self._update_timer_id:
             GLib.source_remove(self._update_timer_id)
-
+            self.unregister_timer(self._update_timer_id)
             self._update_timer_id = None
         
         self._gpu_update_running = False
@@ -61,6 +64,9 @@ class MetricsProvider:
                 self.upower.destroy()
 
             self.upower = None
+            
+        # Call parent destroy method
+        super().destroy()
 
     def _update(self):
         if self._should_stop:
@@ -212,11 +218,12 @@ class Metrics(Box):
         for x in self.scales:
             self.add(x)
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self.update_status)
+        self._update_timer_id = self.register_timer(GLib.timeout_add_seconds(2, self.update_status))
     
     def destroy(self):
         if hasattr(self, '_update_timer_id') and self._update_timer_id:
             GLib.source_remove(self._update_timer_id)
+            self.unregister_timer(self._update_timer_id)
             self._update_timer_id = None
         super().destroy()
 
@@ -274,9 +281,10 @@ class SingularMetricSmall:
     def markup(self):
         return f"{self.icon_markup} {self.name_markup}"
     
-class MetricsSmall(Button):
+class MetricsSmall(Button, BaseComponent):
     def __init__(self, **kwargs):
         super().__init__(name="metrics-small", **kwargs)
+        BaseComponent.__init__(self)
 
         main_box = Box(
             spacing=0,
@@ -316,7 +324,7 @@ class MetricsSmall(Button):
 
         self.add(main_box)
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self.update_metrics)
+        self._update_timer_id = self.register_timer(GLib.timeout_add_seconds(2, self.update_metrics))
 
         self.hide_timer = None
         self.hover_counter = 0
