@@ -5,7 +5,7 @@ import socket
 import struct
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional
 
 
 class HyprlandSocket:

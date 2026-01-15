@@ -1,9 +1,8 @@
 from fabric.hyprland.widgets import get_hyprland_connection
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
-from fabric.widgets.eventbox import EventBox
 from fabric.widgets.label import Label
-from gi.repository import GLib
+
 from utils.hyprland_direct import get_hyprland_client
 
 

@@ -8,11 +8,11 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib, Gtk
+
+import json
 import cairo
 
 from utils.hyprland_direct import get_hyprland_client
-
-
 from utils.icon_resolver import IconResolver
 
 from widgets.corners import MyCorner
