@@ -39,27 +39,38 @@ class MetricsProvider:
         self._should_stop = False
         self._gpu_thread = None
 
+        # Use a single instance reference to avoid multiple instances
         self._update_timer_id = GLib.timeout_add_seconds(2, self._update)
+
+    def __del__(self):
+        """Ensure cleanup when object is destroyed"""
+        self.destroy()
 
     def destroy(self):
         self._should_stop = True
         
         if self._update_timer_id:
-            GLib.source_remove(self._update_timer_id)
-
+            try:
+                GLib.source_remove(self._update_timer_id)
+            except Exception:
+                pass  # Timer already removed
             self._update_timer_id = None
         
         self._gpu_update_running = False
         if hasattr(self, '_gpu_thread') and self._gpu_thread:
-            if self._gpu_thread.is_alive():
-                self._gpu_thread.join(timeout=3.0)
-
+            try:
+                if self._gpu_thread.is_alive():
+                    self._gpu_thread.join(timeout=1.0)  # Shorter timeout
+            except Exception:
+                pass  # Thread join failed
             self._gpu_thread = None
         
         if hasattr(self, 'upower') and self.upower:
-            if hasattr(self.upower, 'destroy'):
-                self.upower.destroy()
-
+            try:
+                if hasattr(self.upower, 'destroy'):
+                    self.upower.destroy()
+            except Exception:
+                pass  # Cleanup failed
             self.upower = None
 
     def _update(self):
@@ -109,12 +120,20 @@ class MetricsProvider:
         self._gpu_update_running = True
         
         def worker():
-            output = None
-            result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
-            output = result
-
-            if not self._should_stop:
-                GLib.idle_add(self._process_gpu_output, output)
+            try:
+                result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)  # Reduced timeout
+                output = result
+                
+                if not self._should_stop:
+                    GLib.idle_add(self._process_gpu_output, output)
+            except subprocess.TimeoutExpired:
+                # Handle timeout gracefully
+                if not self._should_stop:
+                    GLib.idle_add(self._process_gpu_output, None)
+            except Exception:
+                # Handle other exceptions gracefully
+                if not self._should_stop:
+                    GLib.idle_add(self._process_gpu_output, None)
         
         self._gpu_thread = threading.Thread(target=worker, daemon=True)
         self._gpu_thread.start()
@@ -130,7 +149,7 @@ class MetricsProvider:
                     for v in info
                 ]
             else:
-                self.gpu = []
+                self.gpu = []  # Reset to empty list on error
         except Exception:
             self.gpu = []
 
@@ -146,7 +165,15 @@ class MetricsProvider:
         result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
         return json.loads(result)
 
+# Global shared provider instance
 shared_provider = MetricsProvider()
+
+def cleanup_shared_provider():
+    """Cleanup function to be called when the application exits"""
+    global shared_provider
+    if shared_provider:
+        shared_provider.destroy()
+        shared_provider = None
 
 class SingularMetric:
     def __init__(self, id, name, icon):

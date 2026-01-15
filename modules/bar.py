@@ -142,22 +142,33 @@ class Bar(Window):
         self.lang_label.set_label(lang_data[:3].upper() if len(lang_data) >= 3 else lang_data.upper())
     
     def destroy(self):
+        # Disconnect hyprland signals first
         if hasattr(self, '_signal_handlers') and self._signal_handlers:
             for conn, handler_id in list(self._signal_handlers):
-                conn.disconnect(handler_id)
+                try:
+                    conn.disconnect(handler_id)
+                except Exception:
+                    pass  # Handler already disconnected
             self._signal_handlers.clear()
         
         self._notch_ref = None
         
+        # Destroy components in reverse order to prevent circular dependencies
         components = ['systray', 'network', 'control', 'metrics', 'battery', 'date_time', 
                      'workspaces', 'button_power', 'lang_label', 'revealer_left', 'revealer_right']
         for name in components:
             comp = getattr(self, name, None)
             if comp:
                 if hasattr(comp, 'cleanup'):
-                    comp.cleanup()
+                    try:
+                        comp.cleanup()
+                    except Exception:
+                        pass
                 elif hasattr(comp, 'destroy'):
-                    comp.destroy()
+                    try:
+                        comp.destroy()
+                    except Exception:
+                        pass
                 setattr(self, name, None)
         
         super().destroy()

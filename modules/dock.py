@@ -548,4 +548,12 @@ class Dock(Window):
 
     def destroy(self) -> None:
         self._destroyed = True
+        
+        # Cancel pending updates
+        self._update_pending = False
+        self._occlusion_pending = False
+        
+        # Remove any pending timers
+        # Note: We don't have direct access to timers here, but we prevent future updates
+        
         super().destroy()

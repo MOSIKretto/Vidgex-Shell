@@ -13,6 +13,8 @@ import functools
 from typing import Optional, List, Set, Tuple
 import gc
 
+from utils.common import Debouncer
+
 
 from modules.Notch.dashboard import Dashboard
 from modules.Notch.cliphist import ClipHistory
@@ -27,36 +29,17 @@ from widgets.corners import MyCorner
 from widgets.wayland import WaylandWindow as Window
 
 
+# Initialize global debouncer for the entire module
+_global_debouncer = Debouncer(delay_ms=150)
+
+
 def debounce(delay: int):
-    """Декоратор для устранения дребезга вызовов функций."""
+    """Decorator for debouncing function calls."""
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            timer_attr = f'_debounce_{func.__name__}'
-            
-            if hasattr(self, timer_attr):
-                timer_id = getattr(self, timer_attr)
-                if timer_id and timer_id in self._timers:
-                    GLib.source_remove(timer_id)
-                    self._timers.discard(timer_id)
-            
-            def call_func():
-                try:
-                    timer_id = getattr(self, timer_attr, None)
-                    if timer_id in self._timers:
-                        self._timers.discard(timer_id)
-                    return func(self, *args, **kwargs)
-                except Exception:
-                    return False
-                finally:
-                    if hasattr(self, timer_attr):
-                        delattr(self, timer_attr)
-            
-            timer_id = GLib.timeout_add(delay, call_func)
-            setattr(self, timer_attr, timer_id)
-            self._timers.add(timer_id)
-            
-            return False
+            # Use the global debouncer instance
+            return _global_debouncer.debounce(func)(self, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -815,18 +798,16 @@ class Notch(Window):
         # Останавливаем все таймеры
         for timer_id in list(self._timers):
             if timer_id:
-                GLib.source_remove(timer_id)
+                try:
+                    GLib.source_remove(timer_id)
+                except Exception:
+                    pass  # Timer already removed
         self._timers.clear()
         
         self._stop_window_updates()
 
-        # Очищаем debounce таймеры
-        for attr in list(self.__dict__.keys()):
-            if attr.startswith('_debounce_'):
-                t_id = getattr(self, attr)
-                if isinstance(t_id, int) and t_id in self._timers:
-                    GLib.source_remove(t_id)
-                delattr(self, attr)
+        # Очищаем debounce таймеры - now using global debouncer
+        # The global debouncer handles this internally
 
         # Отключаем все сигналы
         for conn, handler_id in self._signal_handlers:

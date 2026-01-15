@@ -13,6 +13,10 @@ from modules.bar import Bar
 from widgets.corners import Corners
 from modules.dock import Dock
 
+# Import cleanup functions
+from modules.metrics import cleanup_shared_provider
+from utils.common import global_cleanup
+
 
 class ShellManager:
     __slots__ = ('app', 'components', 'cleanup_handlers', '_cleaned_up')
@@ -68,6 +72,18 @@ class ShellManager:
             except Exception:
                 pass
             self.app = None
+
+        # Clean up shared resources
+        try:
+            cleanup_shared_provider()
+        except Exception:
+            pass
+        
+        # Run global cleanup
+        try:
+            global_cleanup()
+        except Exception:
+            pass
 
     def setup_monitors(self) -> Tuple[Optional[Any], bool, List[Dict[str, Any]]]:
         try:
