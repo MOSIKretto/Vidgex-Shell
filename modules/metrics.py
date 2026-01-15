@@ -13,7 +13,6 @@ import subprocess
 import time
 import psutil
 import threading
-import json
 import os
 
 from services.network import NetworkClient
@@ -42,6 +41,7 @@ class MetricsProvider:
         self._gpu_thread = None
         
         # Cache for system metrics to reduce computation
+        self._last_cpu_percent = 0.0
         self._last_cpu_times = None
         self._last_update_time = time.time()
         
@@ -75,13 +75,14 @@ class MetricsProvider:
         if self._should_stop:
             return False
             
-        # Use cached CPU times to reduce computation
+        # Use cached values to reduce computation
         current_time = time.time()
         time_diff = current_time - self._last_update_time
         
         # Only update CPU if enough time has passed (to avoid 0% readings)
         if time_diff >= 0.5:  # Minimum time interval
-            cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking
+            # Use psutil.cpu_percent with interval=None to avoid blocking
+            cpu_percent = psutil.cpu_percent(interval=None)
             if cpu_percent is not None:
                 self.cpu = cpu_percent
             self._last_update_time = current_time
@@ -99,7 +100,7 @@ class MetricsProvider:
             self.disk = [0]
         
         # Temperature - reduce frequency of checking
-        if int(current_time) % 2 == 0:  # Only check every 2 seconds
+        if int(current_time) % 3 == 0:  # Only check every 3 seconds to reduce CPU load
             try:
                 temps = psutil.sensors_temperatures()
                 if temps and 'coretemp' in temps:
@@ -114,9 +115,9 @@ class MetricsProvider:
             except Exception:
                 self.temperature = 0.0
 
-        # GPU - reduce update frequency
+        # GPU - reduce update frequency even more to minimize computational load
         self._gpu_update_counter += 1
-        if self._gpu_update_counter >= 10:  # Reduced frequency
+        if self._gpu_update_counter >= 20:  # Reduced frequency from 10 to 20 to reduce CPU load
             self._gpu_update_counter = 0
             if not self._gpu_update_running and not self._should_stop:
                 self._update_gpu()
@@ -143,10 +144,14 @@ class MetricsProvider:
         def worker():
             output = None
             try:
-                result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
+                # Add timeout to prevent hanging
+                result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=8)
                 output = result
             except subprocess.TimeoutExpired:
                 # Handle timeout gracefully
+                pass
+            except FileNotFoundError:
+                # nvtop not found, handle gracefully
                 pass
 
             if not self._should_stop:
@@ -160,6 +165,8 @@ class MetricsProvider:
         
         try:
             if output:
+                # Import json only when needed to reduce initial load
+                import json
                 info = json.loads(output)
                 self.gpu = [
                     int(v["gpu_util"].strip("%")) if v["gpu_util"] else 0
@@ -183,6 +190,7 @@ class MetricsProvider:
     def get_gpu_info(self):
         try:
             result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
+            import json
             return json.loads(result)
         except:
             return []

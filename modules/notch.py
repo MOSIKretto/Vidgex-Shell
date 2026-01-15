@@ -6,12 +6,13 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 from gi.repository import Gdk, GLib, Gtk
-import json
 import subprocess
 import weakref
 import functools
 from typing import Optional, List, Set, Tuple
 import gc
+
+from utils.hyprland_direct import get_hyprland_client
 
 
 from modules.Notch.dashboard import Dashboard
@@ -580,19 +581,12 @@ class Notch(Window):
             return None
 
         try:
-            result = subprocess.run(
-                ["hyprctl", "monitors", "-j"],
-                capture_output=True,
-                text=True,
-                timeout=0.2
-            )
-            
-            if result.returncode == 0:
-                monitors = json.loads(result.stdout)
-                for i, monitor in enumerate(monitors):
-                    if monitor.get('focused', False):
-                        return i
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+            client = get_hyprland_client()
+            monitors = client.get_monitors()
+            for i, monitor in enumerate(monitors):
+                if monitor.get('focused', False):
+                    return i
+        except Exception:
             pass
 
         return None
@@ -720,33 +714,28 @@ class Notch(Window):
         window_title = ""
         window_class = ""
 
-        if conn:
-            try:
-                # Получаем активное окно
-                reply = conn.send_command("j/activewindow").reply
-                if reply:
-                    window_data = json.loads(reply.decode())
-                    window_title = window_data.get("title", "")
-                    window_class = (window_data.get("initialClass") or 
-                                   window_data.get("class", ""))
-                    
-                    # Получаем рабочее пространство из окна или отдельно
-                    ws_info = window_data.get("workspace", {})
-                    if isinstance(ws_info, dict) and "id" in ws_info:
-                        workspace_id = ws_info["id"]
-                    else:
-                        ws_reply = conn.send_command("j/activeworkspace").reply
-                        ws_data = json.loads(ws_reply.decode())
-                        workspace_id = ws_data.get("id", 1)
+        try:
+            client = get_hyprland_client()
+            window_data = client.get_active_window()
+            if window_data:
+                window_title = window_data.get("title", "")
+                window_class = (window_data.get("initialClass") or 
+                               window_data.get("class", ""))
+                
+                # Получаем рабочее пространство из окна или отдельно
+                ws_info = window_data.get("workspace", {})
+                if isinstance(ws_info, dict) and "id" in ws_info:
+                    workspace_id = ws_info["id"]
                 else:
-                    # Если нет активного окна, получаем рабочее пространство
-                    ws_reply = conn.send_command("j/activeworkspace").reply
-                    ws_data = json.loads(ws_reply.decode())
+                    ws_data = client.get_active_workspace()
                     workspace_id = ws_data.get("id", 1)
+            else:
+                # Если нет активного окна, получаем рабочее пространство
+                ws_data = client.get_active_workspace()
+                workspace_id = ws_data.get("id", 1)
 
-            except (json.JSONDecodeError, AttributeError, KeyError, 
-                    UnicodeDecodeError):
-                pass
+        except Exception:
+            pass
         
         return workspace_id, window_title, window_class
 

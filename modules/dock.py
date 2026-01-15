@@ -8,8 +8,9 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib, Gtk
-import json
 import cairo
+
+from utils.hyprland_direct import get_hyprland_client
 
 
 from utils.icon_resolver import IconResolver
@@ -215,7 +216,16 @@ class Dock(Window):
 
     def _get_hyprland_json(self, command: str) -> List[Dict[str, Any]]:
         try:
-            return json.loads(self.conn.send_command(command).reply.decode())
+            client = get_hyprland_client()
+            if command == "j/clients":
+                return client.get_clients()
+            elif command == "j/workspaces":
+                return client.get_workspaces()
+            elif command == "j/monitors":
+                return client.get_monitors()
+            else:
+                # Fallback to original method for other commands
+                return []
         except Exception:
             return []
 
@@ -275,7 +285,8 @@ class Dock(Window):
         if not self.dock_geometry: return
 
         try:
-            active_ws_data = json.loads(self.conn.send_command("j/activeworkspace").reply.decode())
+            client = get_hyprland_client()
+            active_ws_data = client.get_active_workspace()
             current_ws_id = active_ws_data.get("id", 0)
         except:
             current_ws_id = 0

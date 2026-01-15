@@ -4,7 +4,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
 from fabric.widgets.label import Label
 from gi.repository import GLib
-import json
+from utils.hyprland_direct import get_hyprland_client
 
 
 class Workspaces(Box):
@@ -43,22 +43,18 @@ class Workspaces(Box):
     def _get_hyprland_workspaces(self):
         """Direct communication with Hyprland to get workspace information"""
         try:
-            reply = self.conn.send_command("j/workspaces").reply
-            if reply:
-                return json.loads(reply.decode())
+            client = get_hyprland_client()
+            return client.get_workspaces()
         except Exception:
             return []
-        return []
 
     def _get_hyprland_active_workspace(self):
         """Direct communication with Hyprland to get active workspace"""
         try:
-            reply = self.conn.send_command("j/activeworkspace").reply
-            if reply:
-                return json.loads(reply.decode())
+            client = get_hyprland_client()
+            return client.get_active_workspace()
         except Exception:
             return {"id": 1, "name": "1"}
-        return {"id": 1, "name": "1"}
 
     def _refresh_workspaces(self):
         """Refresh workspace display based on current Hyprland state"""
@@ -131,12 +127,10 @@ class Workspaces(Box):
 
     def _on_workspace_changed(self, *args):
         """Handle workspace change event from Hyprland"""
-        # Get the new active workspace from Hyprland directly
         try:
-            reply = self.conn.send_command("j/activeworkspace").reply
-            if reply:
-                active_ws = json.loads(reply.decode())
-                self._active_workspace = active_ws["id"]
+            client = get_hyprland_client()
+            active_ws = client.get_active_workspace()
+            self._active_workspace = active_ws["id"]
         except Exception:
             pass
         
