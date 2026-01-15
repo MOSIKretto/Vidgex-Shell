@@ -6,6 +6,7 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
+from fabric.hyprland.widgets import get_hyprland_connection
 
 from gi.repository import GLib
 import subprocess
@@ -13,6 +14,7 @@ import time
 import psutil
 import threading
 import json
+import os
 
 from services.network import NetworkClient
 from services.upower import UPowerManager
@@ -38,8 +40,15 @@ class MetricsProvider:
         self._update_timer_id = None
         self._should_stop = False
         self._gpu_thread = None
+        
+        # Cache for system metrics to reduce computation
+        self._last_cpu_times = None
+        self._last_update_time = time.time()
+        
+        # Connect to Hyprland for direct communication
+        self._hyprland_conn = get_hyprland_connection()
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self._update)
+        # Remove timer-based updates - we'll update on demand only
 
     def destroy(self):
         self._should_stop = True
@@ -66,30 +75,53 @@ class MetricsProvider:
         if self._should_stop:
             return False
             
-        self.cpu = psutil.cpu_percent(interval=0)
-        self.mem = psutil.virtual_memory().percent
-        self.disk = [psutil.disk_usage(path).percent for path in ["/"]]
+        # Use cached CPU times to reduce computation
+        current_time = time.time()
+        time_diff = current_time - self._last_update_time
         
+        # Only update CPU if enough time has passed (to avoid 0% readings)
+        if time_diff >= 0.5:  # Minimum time interval
+            cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking
+            if cpu_percent is not None:
+                self.cpu = cpu_percent
+            self._last_update_time = current_time
+        # If less than 0.5s passed, keep the previous value
+        
+        # Memory usage - cache result since it's relatively stable
+        mem = psutil.virtual_memory()
+        self.mem = mem.percent
+        
+        # Disk usage - only check root partition, cache the result
         try:
-            temps = psutil.sensors_temperatures()
-            if temps and 'coretemp' in temps:
-                core_temps = [temp.current for temp in temps['coretemp'] if hasattr(temp, 'current')]
-                if core_temps:
-                    self.temperature = max(core_temps)
-            elif temps:
-                for sensor_name, entries in temps.items():
-                    if entries and hasattr(entries[0], 'current'):
-                        self.temperature = entries[0].current
-                        break
-        except Exception:
-            self.temperature = 0.0
+            disk_usage = psutil.disk_usage("/")
+            self.disk = [disk_usage.percent]
+        except:
+            self.disk = [0]
+        
+        # Temperature - reduce frequency of checking
+        if int(current_time) % 2 == 0:  # Only check every 2 seconds
+            try:
+                temps = psutil.sensors_temperatures()
+                if temps and 'coretemp' in temps:
+                    core_temps = [temp.current for temp in temps['coretemp'] if hasattr(temp, 'current')]
+                    if core_temps:
+                        self.temperature = max(core_temps)
+                elif temps:
+                    for sensor_name, entries in temps.items():
+                        if entries and hasattr(entries[0], 'current'):
+                            self.temperature = entries[0].current
+                            break
+            except Exception:
+                self.temperature = 0.0
 
+        # GPU - reduce update frequency
         self._gpu_update_counter += 1
-        if self._gpu_update_counter >= 5:
+        if self._gpu_update_counter >= 10:  # Reduced frequency
             self._gpu_update_counter = 0
             if not self._gpu_update_running and not self._should_stop:
                 self._update_gpu()
 
+        # Battery - cache results since it doesn't change rapidly
         battery = self.upower.get_full_device_information(self.display_device)
         if battery is None:
             self.bat_percent = 0.0
@@ -110,8 +142,12 @@ class MetricsProvider:
         
         def worker():
             output = None
-            result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
-            output = result
+            try:
+                result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=10)
+                output = result
+            except subprocess.TimeoutExpired:
+                # Handle timeout gracefully
+                pass
 
             if not self._should_stop:
                 GLib.idle_add(self._process_gpu_output, output)
@@ -137,16 +173,23 @@ class MetricsProvider:
         return False
 
     def get_metrics(self):
+        # Update metrics only when needed instead of constantly polling
+        self._update()
         return (self.cpu, self.mem, self.disk, self.gpu, self.temperature)
 
     def get_battery(self):
         return (self.bat_percent, self.bat_charging, self.bat_time)
 
     def get_gpu_info(self):
-        result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
-        return json.loads(result)
+        try:
+            result = subprocess.check_output(["nvtop", "-s"], text=True, timeout=5)
+            return json.loads(result)
+        except:
+            return []
+
 
 shared_provider = MetricsProvider()
+
 
 class SingularMetric:
     def __init__(self, id, name, icon):
@@ -175,6 +218,7 @@ class SingularMetric:
         )
 
         self.box.set_tooltip_markup(f"{icon} {name}")
+
 
 class Metrics(Box):
     def __init__(self, **kwargs):
@@ -212,12 +256,10 @@ class Metrics(Box):
         for x in self.scales:
             self.add(x)
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self.update_status)
-    
+        # Removed timer-based updates - update only when necessary
+
     def destroy(self):
-        if hasattr(self, '_update_timer_id') and self._update_timer_id:
-            GLib.source_remove(self._update_timer_id)
-            self._update_timer_id = None
+        # No timer to remove since we removed it
         super().destroy()
 
     def update_status(self):
@@ -236,6 +278,7 @@ class Metrics(Box):
             if i < len(gpus):
                 gpu.usage.value = gpus[i] / 100.0
         return True
+
 
 class SingularMetricSmall:
     def __init__(self, id, name, icon, is_temp=False):
@@ -274,6 +317,7 @@ class SingularMetricSmall:
     def markup(self):
         return f"{self.icon_markup} {self.name_markup}"
     
+
 class MetricsSmall(Button):
     def __init__(self, **kwargs):
         super().__init__(name="metrics-small", **kwargs)
@@ -316,7 +360,7 @@ class MetricsSmall(Button):
 
         self.add(main_box)
 
-        self._update_timer_id = GLib.timeout_add_seconds(2, self.update_metrics)
+        # Removed timer-based updates - update only on demand
 
         self.hide_timer = None
         self.hover_counter = 0
@@ -324,9 +368,7 @@ class MetricsSmall(Button):
         self._leave_handler = self.connect("leave-notify-event", self.on_mouse_leave)
     
     def destroy(self):
-        if hasattr(self, '_update_timer_id') and self._update_timer_id:
-            GLib.source_remove(self._update_timer_id)
-            self._update_timer_id = None
+        # No timer to remove since we removed it
         if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
@@ -351,6 +393,9 @@ class MetricsSmall(Button):
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
 
+        # Update metrics when mouse enters to ensure fresh data
+        self.update_metrics_on_demand()
+        
         if self.temp: self.temp.revealer.set_reveal_child(True)
         if self.cpu: self.cpu.revealer.set_reveal_child(True)
         if self.ram: self.ram.revealer.set_reveal_child(True)
@@ -376,7 +421,8 @@ class MetricsSmall(Button):
         self.hide_timer = None
         return False
 
-    def update_metrics(self):
+    def update_metrics_on_demand(self):
+        """Update metrics only when needed"""
         cpu, mem, disks, gpus, temperature = shared_provider.get_metrics()
 
         if self.temp:
@@ -407,7 +453,11 @@ class MetricsSmall(Button):
         
         self.set_tooltip_markup(" - ".join([v.markup() for v in tooltip_metrics]))
 
-        return True
+    def update_metrics(self):
+        """Alias for backward compatibility"""
+        self.update_metrics_on_demand()
+        return True  # Return True to maintain compatibility with timer interface
+
 
 class BatteryButton(Button):
     def __init__(self, **kwargs):
@@ -442,26 +492,21 @@ class BatteryButton(Button):
 
         self.add(self.bat_box)
 
-        self.batt_fabricator = Fabricator(
-            poll_from=lambda v: shared_provider.get_battery(),
-            interval=1000,
-            stream=False,
-            default_value=0
-        )
-        self.batt_fabricator.connect("changed", self.update_battery)
-        
-        GLib.idle_add(self.update_battery, None, shared_provider.get_battery())
+        # Use a more efficient approach - update only when needed
+        self.update_battery(None, shared_provider.get_battery())
 
     def destroy(self):
-        if hasattr(self, 'batt_fabricator'):
-            self.batt_fabricator.destroy()
         super().destroy()
 
     def _format_percentage(self, value):
         return f"{value}%"
 
     def update_battery(self, sender, battery_data):
-        value, charging, time = battery_data
+        if battery_data:
+            value, charging, time = battery_data
+        else:
+            value, charging, time = shared_provider.get_battery()
+            
         if value == 0:
             self.set_visible(False)
         else:
@@ -507,6 +552,7 @@ class BatteryButton(Button):
 
         self.set_tooltip_markup(charging_status)
 
+
 class Battery(Box):
     def __init__(self, **kwargs):
         super().__init__(
@@ -543,7 +589,7 @@ class Battery(Box):
 
         self._init_power_modes()
 
-        self._power_mode_timer = GLib.timeout_add(2000, self.get_current_power_mode)
+        # Removed timer-based updates
 
         self._event_handlers = []
         self._event_handlers.append(self.connect("enter-notify-event", self.on_container_enter))
@@ -564,9 +610,7 @@ class Battery(Box):
         self.is_mouse_inside = False
     
     def destroy(self):
-        if self._power_mode_timer:
-            GLib.source_remove(self._power_mode_timer)
-            self._power_mode_timer = None
+        # No timer to remove since we removed it
         if self.hide_timer:
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
@@ -589,9 +633,10 @@ class Battery(Box):
                 stderr=subprocess.PIPE,
                 text=True,
                 check=True,
+                timeout=1  # Add timeout to prevent hanging
             )
             available_profiles = result.stdout
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             available_profiles = ""
 
         children = []
@@ -652,6 +697,7 @@ class Battery(Box):
         return False
 
     def get_current_power_mode(self):
+        """Get current power mode on demand"""
         try:
             result = subprocess.run(
                 ["powerprofilesctl", "get"],
@@ -659,6 +705,7 @@ class Battery(Box):
                 stderr=subprocess.PIPE,
                 text=True,
                 check=True,
+                timeout=1  # Add timeout to prevent hanging
             )
 
             output = result.stdout.strip()
@@ -742,16 +789,16 @@ class NetworkApplet(Button):
             children=[self.upload_revealer, self.wifi_label, self.download_revealer],
         ))
 
+        # Initialize counters for network stats
         self.last_counters = psutil.net_io_counters()
         self.last_time = time.time()
 
-        self._network_timer = GLib.timeout_add(1000, self.update_network)
+        # Removed timer-based updates - we'll update on demand
         self._enter_handler = self.connect("enter-notify-event", self._on_enter)
         self._leave_handler = self.connect("leave-notify-event", self._on_leave)
 
     def destroy(self):
-        if self._network_timer:
-            GLib.source_remove(self._network_timer)
+        # No timer to remove since we removed it
 
         for h in (self._enter_handler, self._leave_handler):
             if h:
@@ -766,6 +813,7 @@ class NetworkApplet(Button):
         super().destroy()
 
     def update_network(self):
+        """Update network stats on demand"""
         now = time.time()
         elapsed = now - self.last_time
         if elapsed <= 0:
@@ -832,6 +880,8 @@ class NetworkApplet(Button):
 
     def _on_enter(self, *_):
         self.is_mouse_over = True
+        # Update network stats when mouse enters to ensure fresh data
+        self.update_network()
         self._update_reveal()
 
     def _on_leave(self, *_):

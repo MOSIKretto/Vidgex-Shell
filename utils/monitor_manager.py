@@ -30,18 +30,45 @@ class MonitorManager(GObject.GObject):
         self._lock = threading.Lock()
         self._updating = False
         
+        # Remove timer-based updates - refresh only when necessary
         self.refresh(async_mode=False)
-        GLib.timeout_add_seconds(30, self._timer_callback)
-
-    def _timer_callback(self):
-        self.refresh(async_mode=True)
-        return True
 
     def _fetch(self) -> List[Dict]:
         try:
+            # Get the HYPRLAND_INSTANCE_SIGNATURE to construct the socket path
+            instance_signature = subprocess.check_output(['echo', '$HYPRLAND_INSTANCE_SIGNATURE'], shell=True).decode().strip()
+            if not instance_signature:
+                # Fallback to getting the signature from the running Hyprland instance
+                import os
+                instance_signature = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
+                
+            if instance_signature:
+                # Attempt to connect to the Hyprland socket directly
+                import socket
+                sock_path = f'/tmp/hypr/{instance_signature}/.socket.sock'
+                if os.path.exists(sock_path):
+                    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    sock.connect(sock_path)
+                    # Send the command to get monitors info
+                    sock.send(b'j/monitors')
+                    response = b''
+                    # Receive the response
+                    while True:
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            break
+                        response += chunk
+                    sock.close()
+                    return json.loads(response.decode())
+        except Exception:
+            pass  # Fall through to subprocess method
+        
+        # Fallback to subprocess if direct socket fails
+        try:
             res = subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=2)
             if res.returncode == 0: return json.loads(res.stdout)
-        except Exception: pass
+        except Exception: 
+            pass
         return []
 
     def refresh(self, async_mode=True):
@@ -74,6 +101,7 @@ class MonitorManager(GObject.GObject):
             if old_focus != self._focused_id: self.emit('focused-monitor-changed', self._focused_id)
 
     def get_monitors(self) -> List[Dict]:
+        # Check if cache is still valid before refreshing
         if time.monotonic() - self._cache_ts > 30:
             self.refresh(async_mode=True)
         return self._monitors or [{

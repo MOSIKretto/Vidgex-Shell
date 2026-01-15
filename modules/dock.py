@@ -538,10 +538,10 @@ class Dock(Window):
         target = widget
         while target and not isinstance(target, Button):
             target = target.get_parent()
-        children = self.view.get_children()
-        if target not in children: return
-        tgt_idx = children.index(target)
+        if target not in self.view.get_children(): return
+        tgt_idx = self.view.get_children().index(target)
         if src_idx != tgt_idx:
+            children = self.view.get_children()
             item = children.pop(src_idx)
             children.insert(tgt_idx, item)
             for child in children:

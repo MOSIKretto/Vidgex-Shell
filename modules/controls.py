@@ -174,10 +174,6 @@ class BrightnessSlider(Scale, DelayedUpdateMixin):
         percentage = int((self.client.screen_brightness / self.client.max_screen) * 100)
         self.set_tooltip_text(f"{percentage}%")
 
-    def destroy(self):
-        self._cleanup_delayed_update()
-        super().destroy()
-
 
 class BrightnessSmall(Box, DelayedUpdateMixin):
     def __init__(self, **kwargs):
@@ -238,10 +234,6 @@ class BrightnessSmall(Box, DelayedUpdateMixin):
         elif brightness_percentage >= 24: self.brightness_label.set_markup(icons.brightness_medium)
         else: self.brightness_label.set_markup(icons.brightness_low)
         self.set_tooltip_text(f"Яркость: {brightness_percentage}%")
-
-    def destroy(self):
-        self._cleanup_delayed_update()
-        super().destroy()
 
 
 class VolumeSmall(Box, MutedStyleMixin):
@@ -413,10 +405,6 @@ class BrightnessIcon(Box, DelayedUpdateMixin):
         self.set_tooltip_text(f"Яркость: {brightness_percentage}%")
         self._updating_from_brightness = False
         
-    def destroy(self):
-        self._cleanup_delayed_update()
-        super().destroy()
-
 
 class VolumeIcon(Box, MutedStyleMixin):
     def __init__(self, **kwargs):
@@ -435,7 +423,7 @@ class VolumeIcon(Box, MutedStyleMixin):
     def _setup_connections(self):
         self._pending_value = None
         self._update_source_id = None
-        self._periodic_update_source_id = GLib.timeout_add_seconds(2, self._update_device_icon)
+        # Removed timer-based updates - only update when needed
 
         self.audio.connect("notify::speaker", self._on_new_speaker)
         if self.audio.speaker:
@@ -498,8 +486,6 @@ class VolumeIcon(Box, MutedStyleMixin):
     def destroy(self):
         if self._update_source_id:
             GLib.source_remove(self._update_source_id)
-        if self._periodic_update_source_id:
-            GLib.source_remove(self._periodic_update_source_id)
         super().destroy()
 
 
