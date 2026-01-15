@@ -1,10 +1,7 @@
 from fabric.core.fabricator import Fabricator
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
-from fabric.widgets.circularprogressbar import CircularProgressBar
 from fabric.widgets.label import Label
-from fabric.widgets.revealer import Revealer
-from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
 
 from gi.repository import GLib
@@ -17,6 +14,7 @@ import json
 from services.network import NetworkClient
 from services.upower import UPowerManager
 import modules.icons as icons
+from utils.dry_utils import common_factory, central_resources, event_manager
 
 
 class MetricsProvider:
@@ -40,7 +38,9 @@ class MetricsProvider:
         self._gpu_thread = None
 
         # Use a single instance reference to avoid multiple instances
-        self._update_timer_id = GLib.timeout_add_seconds(2, self._update)
+        self._update_timer_id = central_resources.register_timer(
+            GLib.timeout_add_seconds(2, self._update)
+        )
 
     def __del__(self):
         """Ensure cleanup when object is destroyed"""
@@ -51,6 +51,7 @@ class MetricsProvider:
         
         if self._update_timer_id:
             try:
+                central_resources.unregister_timer(self._update_timer_id)
                 GLib.source_remove(self._update_timer_id)
             except Exception:
                 pass  # Timer already removed
@@ -174,6 +175,9 @@ def cleanup_shared_provider():
     if shared_provider:
         shared_provider.destroy()
         shared_provider = None
+    
+    # Clean up centralized resources
+    central_resources.clear_all_timers()
 
 class SingularMetric:
     def __init__(self, id, name, icon):
@@ -269,34 +273,23 @@ class SingularMetricSmall:
         self.name_markup = name
         self.icon_markup = icon
         self.is_temp = is_temp
-
-        self.icon = Label(name="metrics-icon", markup=icon)
-        self.circle = CircularProgressBar(
-            name="metrics-circle",
-            value=0,
-            size=28,
-            line_width=2,
-            start_angle=150,
-            end_angle=390,
-            style_classes=id,
-            child=self.icon,
+        
+        # Use the factory to create the standardized circular metric
+        metric_parts = common_factory.create_circular_metric(
+            name=id,
+            icon_markup=icon,
+            style_classes=id
         )
+        
+        self.icon = metric_parts['icon']
+        self.circle = metric_parts['circle']
+        self.level = metric_parts['level']
+        self.revealer = metric_parts['revealer']
+        self.box = metric_parts['box']
 
-        self.level = Label(name="metrics-level", style_classes=id, label="0°C" if is_temp else "0%")
-        self.revealer = Revealer(
-            name=f"metrics-{id}-revealer",
-            transition_duration=250,
-            transition_type="slide-left",
-            child=self.level,
-            child_revealed=False,
-        )
-
-        self.box = Box(
-            name=f"metrics-{id}-box",
-            orientation="h",
-            spacing=0,
-            children=[self.circle, self.revealer],
-        )
+        # Update the level label for temperature
+        if is_temp:
+            self.level.set_label("0°C")
 
     def markup(self):
         return f"{self.icon_markup} {self.name_markup}"
@@ -352,9 +345,11 @@ class MetricsSmall(Button):
     
     def destroy(self):
         if hasattr(self, '_update_timer_id') and self._update_timer_id:
+            central_resources.unregister_timer(self._update_timer_id)
             GLib.source_remove(self._update_timer_id)
             self._update_timer_id = None
         if self.hide_timer:
+            central_resources.unregister_timer(self.hide_timer)
             GLib.source_remove(self.hide_timer)
             self.hide_timer = None
         if hasattr(self, '_enter_handler'):

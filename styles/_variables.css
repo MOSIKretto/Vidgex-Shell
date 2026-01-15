@@ -1,0 +1,66 @@
+/* Common CSS Variables to Reduce Duplication */
+:root {
+  /* Border radius values */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  
+  /* Padding values */
+  --padding-xs: 4px;
+  --padding-sm: 8px;
+  --padding-md: 12px;
+  --padding-lg: 16px;
+  --padding-xl: 24px;
+  
+  /* Margin values */
+  --margin-xs: 4px;
+  --margin-sm: 8px;
+  --margin-md: 12px;
+  --margin-lg: 16px;
+  --margin-xl: 24px;
+  
+  /* Common transition values */
+  --transition-fast: 0.15s;
+  --transition-normal: 0.25s;
+  --transition-slow: 0.5s;
+  --transition-easing: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  
+  /* Standard sizes */
+  --icon-size-sm: 16px;
+  --icon-size-md: 24px;
+  --icon-size-lg: 32px;
+  --icon-size-xl: 48px;
+  
+  /* Height/Width standards */
+  --button-height: 52px;
+  --item-height: 40px;
+}
+
+/* Reusable CSS classes to reduce duplication */
+.border-radius-md { border-radius: var(--radius-md); }
+.border-radius-lg { border-radius: var(--radius-lg); }
+.border-radius-xl { border-radius: var(--radius-xl); }
+
+.padding-sm { padding: var(--padding-sm); }
+.padding-md { padding: var(--padding-md); }
+.padding-lg { padding: var(--padding-lg); }
+
+.margin-sm { margin: var(--margin-sm); }
+.margin-md { margin: var(--margin-md); }
+.margin-lg { margin: var(--margin-lg); }
+
+.transition-normal { 
+  transition: all var(--transition-normal) var(--transition-easing); 
+}
+
+.button-standard {
+  min-height: var(--button-height);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-normal) var(--transition-easing);
+}
+
+.icon-standard {
+  font-size: var(--icon-size-md);
+}

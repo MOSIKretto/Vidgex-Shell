@@ -16,6 +16,7 @@ from modules.dock import Dock
 # Import cleanup functions
 from modules.metrics import cleanup_shared_provider
 from utils.common import global_cleanup
+from utils.dry_utils import central_resources
 
 
 class ShellManager:

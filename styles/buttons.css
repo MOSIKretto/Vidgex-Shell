@@ -2,9 +2,9 @@
 #bluetooth-button,
 #night-mode-button,
 #caffeine-button {
-  min-height: 52px;
-  border-radius: 16px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  min-height: var(--button-height);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-normal) var(--transition-easing);
 }
 
 #network-button,
@@ -16,13 +16,13 @@
 #night-mode-button,
 #caffeine-button {
   background-color: var(--primary);
-  padding: 0 10px;
+  padding: 0 var(--padding-sm);
 }
 
 #night-mode-button.disabled,
 #caffeine-button.disabled {
   background-color: var(--surface);
-  border-radius: 26px;
+  border-radius: calc(var(--button-height) / 2);
 }
 
 #network-status-button,
@@ -30,19 +30,19 @@
 #bluetooth-status-button,
 #bluetooth-menu-button {
   background-color: var(--primary);
-  padding: 0 8px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  padding: 0 calc(var(--padding-sm) / 2);
+  transition: all var(--transition-normal) var(--transition-easing);
 }
 
 #network-menu-button,
 #bluetooth-menu-button {
   border-left: 1px solid var(--outline);
-  min-width: 24px;
+  min-width: var(--icon-size-lg);
 }
 
 #network-menu-button:active,
 #bluetooth-menu-button:active {
-  border-radius: 0 26px 26px 0;
+  border-radius: 0 calc(var(--button-height) / 2) calc(var(--button-height) / 2) 0;
 }
 
 #network-status-button.disabled,
@@ -50,23 +50,23 @@
 #bluetooth-status-button.disabled,
 #bluetooth-menu-button.disabled {
   background-color: var(--surface);
-  border-radius: 26px 0 0 26px;
+  border-radius: calc(var(--button-height) / 2) 0 0 calc(var(--button-height) / 2);
 }
 
 #network-menu-button.disabled,
 #bluetooth-menu-button.disabled {
   border-left: 1px solid var(--surface-bright);
-  border-radius: 0 26px 26px 0;
+  border-radius: 0 calc(var(--button-height) / 2) calc(var(--button-height) / 2) 0;
 }
 
 #network-status-button,
 #bluetooth-status-button {
-  border-radius: 16px 0 0 16px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
 #network-menu-button,
 #bluetooth-menu-button {
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 #network-icon,
@@ -74,13 +74,13 @@
 #night-mode-icon,
 #caffeine-icon {
   color: var(--shadow);
-  font-size: 24px;
+  font-size: var(--icon-size-md);
 }
 
 #network-menu-label,
 #bluetooth-menu-label {
   color: var(--shadow);
-  font-size: 16px;
+  font-size: var(--icon-size-sm);
 }
 
 #network-label,

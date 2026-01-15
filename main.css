@@ -1,4 +1,5 @@
 @import url("./styles/colors.css");
+@import url("./styles/_variables.css");
 @import url("./styles/common.css");
 @import url("./styles/notch.css");
 @import url("./styles/buttons.css");
@@ -22,7 +23,7 @@
   color: var(--foreground);
   font-size: unset;
   font-family: unset;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
 }
 
 #applet-stack,

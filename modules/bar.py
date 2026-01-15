@@ -20,6 +20,7 @@ from modules.controls import ControlSmall
 from widgets.wayland import WaylandWindow as Window
 
 import modules.icons as icons
+from utils.dry_utils import CursorManager
 
 
 class Bar(Window):
@@ -118,16 +119,8 @@ class Bar(Window):
         self._update_language()
     
     def _setup_cursor_hover(self, button):
-        def on_enter(_, event):
-            button.get_window().set_cursor(
-                Gdk.Cursor.new_from_name(button.get_display(), "hand2")
-            )
-        
-        def on_leave(_, event):
-            button.get_window().set_cursor(None)
-        
-        button.connect("enter-notify-event", on_enter)
-        button.connect("leave-notify-event", on_leave)
+        # Use the centralized cursor manager instead of duplicate code
+        CursorManager.setup_cursor_on_hover(button, "hand2")
     
     def power_menu(self, *args):
         if self.notch:

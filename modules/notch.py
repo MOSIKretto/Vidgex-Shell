@@ -14,6 +14,7 @@ from typing import Optional, List, Set, Tuple
 import gc
 
 from utils.common import Debouncer
+from utils.dry_utils import common_factory, central_resources, event_manager, resource_tracker
 
 
 from modules.Notch.dashboard import Dashboard
@@ -799,6 +800,7 @@ class Notch(Window):
         for timer_id in list(self._timers):
             if timer_id:
                 try:
+                    central_resources.unregister_timer(timer_id)
                     GLib.source_remove(timer_id)
                 except Exception:
                     pass  # Timer already removed
