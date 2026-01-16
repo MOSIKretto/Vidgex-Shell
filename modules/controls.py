@@ -10,6 +10,7 @@ from fabric.widgets.scale import Scale
 from gi.repository import GLib
 
 from services.brightness import Brightness 
+from utils.common import DelayedUpdateMixin, MutedStyleMixin
 import modules.icons as icons
 
 
@@ -33,40 +34,11 @@ class AudioDeviceWidget:
         self._on_device_changed()
 
 
-class DelayedUpdateMixin:
-    def _init_delayed_update(self):
-        self._pending_value = None
-        self._update_source_id = None
-    
-    def _schedule_update(self, callback, delay=100):
-        if self._update_source_id:
-            GLib.source_remove(self._update_source_id)
-        self._update_source_id = GLib.timeout_add(delay, callback)
-    
-    def _cleanup_delayed_update(self):
-        if self._update_source_id:
-            GLib.source_remove(self._update_source_id)
-            self._update_source_id = None
-
-
-class MutedStyleMixin:
-    def _update_muted_style(self, is_muted, widgets=None):
-        if widgets is None:
-            widgets = [self]
-        
-        for widget in widgets:
-            if is_muted:
-                widget.add_style_class("muted")
-            else:
-                widget.remove_style_class("muted")
-
-
-class VolumeSlider(Scale, MutedStyleMixin):
+class VolumeSlider(Scale, DelayedUpdateMixin):
     def __init__(self, **kwargs):
         super().__init__(name="control-slider", h_expand=True, **kwargs)
         self.audio = Audio()
-        self._pending_value = None
-        self._update_source_id = None
+        self.init_delayed_update()  # Initialize the mixin
         
         self.audio.connect("notify::speaker", self._on_new_speaker)
         if self.audio.speaker:
@@ -83,23 +55,20 @@ class VolumeSlider(Scale, MutedStyleMixin):
 
     def _on_value_changed(self, _):
         if self.audio.speaker:
-            self._pending_value = self.value * 100
-            if self._update_source_id:
-                GLib.source_remove(self._update_source_id)
-            self._update_source_id = GLib.timeout_add(100, self._update_volume_callback)
+            self._pending_values['volume'] = self.value * 100
+            self.schedule_update('volume', self._update_volume_callback, 100)
 
     def _update_volume_callback(self):
-        if self._pending_value is not None and self.audio.speaker:
-            self.audio.speaker.volume = self._pending_value
-            self._pending_value = None
-        self._update_source_id = None
+        if 'volume' in self._pending_values and self.audio.speaker:
+            self.audio.speaker.volume = self._pending_values['volume']
+            del self._pending_values['volume']
         return False
 
     def _on_speaker_changed(self, *_):
         if not self.audio.speaker:
             return
         self.value = self.audio.speaker.volume / 100
-        self._update_muted_style(self.audio.speaker.muted)
+        self.update_muted_style(self.audio.speaker.muted)
 
 
 class MicSlider(Scale, MutedStyleMixin):
@@ -128,7 +97,7 @@ class MicSlider(Scale, MutedStyleMixin):
         if not self.audio.microphone:
             return
         self.value = self.audio.microphone.volume / 100
-        self._update_muted_style(self.audio.microphone.muted)
+        self.update_muted_style(self.audio.microphone.muted)
 
 
 class BrightnessSlider(Scale, DelayedUpdateMixin):
@@ -143,7 +112,7 @@ class BrightnessSlider(Scale, DelayedUpdateMixin):
         self.set_value(self.client.screen_brightness)
         self.add_style_class("brightness")
 
-        self._init_delayed_update()
+        self.init_delayed_update()  # Initialize the mixin
         self._updating_from_brightness = False
 
         self.connect("change-value", self._on_scale_move)
@@ -152,19 +121,16 @@ class BrightnessSlider(Scale, DelayedUpdateMixin):
     def _on_scale_move(self, widget, scroll, moved_pos):
         if self._updating_from_brightness:
             return False
-        self._pending_value = moved_pos
-        self._schedule_update(self._update_brightness_callback)
+        self._pending_values['brightness'] = moved_pos
+        self.schedule_update('brightness', self._update_brightness_callback)
         return False
 
     def _update_brightness_callback(self):
-        if self._pending_value is not None:
-            value_to_set = self._pending_value
-            self._pending_value = None
+        if 'brightness' in self._pending_values:
+            value_to_set = self._pending_values['brightness']
+            del self._pending_values['brightness']
             if value_to_set != self.client.screen_brightness:
                 self.client.screen_brightness = value_to_set
-            self._update_source_id = None
-            return False
-        self._update_source_id = None
         return False
 
     def _on_brightness_changed(self, client, _):
@@ -406,7 +372,7 @@ class BrightnessIcon(Box, DelayedUpdateMixin):
         self._updating_from_brightness = False
         
 
-class VolumeIcon(Box, MutedStyleMixin):
+class VolumeIcon(Box, DelayedUpdateMixin, MutedStyleMixin):
     def __init__(self, **kwargs):
         super().__init__(name="vol-icon", **kwargs)
         self.audio = Audio()
@@ -421,10 +387,8 @@ class VolumeIcon(Box, MutedStyleMixin):
         self.add(self.event_box)
 
     def _setup_connections(self):
-        self._pending_value = None
-        self._update_source_id = None
-        # Removed timer-based updates - only update when needed
-
+        self.init_delayed_update()  # Initialize the mixin
+        
         self.audio.connect("notify::speaker", self._on_new_speaker)
         if self.audio.speaker:
             self.audio.speaker.connect("changed", self._on_speaker_changed)
