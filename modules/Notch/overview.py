@@ -1,151 +1,222 @@
+import json
+import cairo
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, Gtk
+
 from fabric.hyprland.service import Hyprland
+from fabric.utils.helpers import get_desktop_applications
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 
-import gi
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, Gtk, GLib, GdkPixbuf
-
-import json
 import modules.icons as icons
-from utils.icon_resolver import IconResolver
+from services.icon_resolver import IconResolver
 
 
-# Синлгтоны для экономии ресурсов
-connection = Hyprland()
-icon_res = IconResolver()
+screen = Gdk.Screen.get_default()
+CURRENT_WIDTH = screen.get_width()
+CURRENT_HEIGHT = screen.get_height()
+
+BASE_SCALE = 0.1
 TARGET = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
 
-class HyprlandWindowButton(Button):
-    __slots__ = ("addr", "w_id", "pos") # Экономия ОЗУ: запрет на создание __dict__
+connection = Hyprland()
+icon_resolver = IconResolver()
 
-    def __init__(self, win, scale, m_x, m_y):
-        self.addr = win["address"]
-        self.w_id = win["workspace"]["id"]
+
+def create_surface_from_widget(widget: Gtk.Widget) -> cairo.ImageSurface:
+    alloc = widget.get_allocation()
+    surface = cairo.ImageSurface(cairo.Format.ARGB32, alloc.width, alloc.height)
+    cr = cairo.Context(surface)
+    cr.set_source_rgba(0, 0, 0, 0)
+    cr.paint()
+    widget.draw(cr)
+    return surface
+
+
+class HyprlandWindowButton(Button):
+    __slots__ = ("address", "app_id", "title", "size", "desktop_app")
+
+    def __init__(self, overview, title, address, app_id, size, transform=0):
+        self.address = address
+        self.app_id = app_id
+        self.title = title
+        self.size = size
+        self.desktop_app = overview.find_app(app_id)
         
-        # Расчет геометрии без лишних объектов
-        w, h = win["size"]
-        if win.get("transform", 0) in (1, 3): w, h = h, w
-        
-        sw, sh = int(w * scale), int(h * scale)
-        isize = int(min(sw, sh) * 0.5)
+        icon_size = int(min(size) * 0.5)
+        icon_pixbuf = icon_resolver.resolve_icon(app_id, icon_size, self.desktop_app)
 
         super().__init__(
             name="overview-client-box",
-            image=Image(pixbuf=self._get_px(win["initialClass"], isize)),
-            tooltip_text=win["title"][:100],
-            size=(sw, sh),
+            image=Image(pixbuf=icon_pixbuf),
+            tooltip_text=title,
+            size=size,
+            on_clicked=self._focus,
+            on_button_press_event=self._on_button_press,
+            on_drag_data_get=self._on_drag_data_get,
+            on_drag_begin=self._on_drag_begin,
         )
-        
-        self.pos = (int(abs(win["at"][0] - m_x) * scale), int(abs(win["at"][1] - m_y) * scale))
-        
-        # Drag and Drop: легкая реализация
+
         self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, TARGET, Gdk.DragAction.COPY)
-        self.connect("drag-data-get", self._on_drag_data)
-        self.connect("clicked", self._on_click)
 
-    def _get_px(self, cls, size):
-        # Быстрое получение иконки без перебора всех приложений в системе
-        px = icon_res.get_icon_pixbuf(cls, size) or icon_res.get_icon_pixbuf("image-missing", size)
-        return px.scale_simple(size, size, GdkPixbuf.InterpType.NEAREST) if px else None
+    def _focus(self, *_):
+        connection.send_command(f"/dispatch focuswindow address:{self.address}")
 
-    def _on_click(self, _):
-        connection.send_command(f"/dispatch workspace {self.w_id}")
-        connection.send_command(f"/dispatch focuswindow address:{self.addr}")
+    def _on_button_press(self, _, event):
+        if event.button == 3:
+            connection.send_command(f"/dispatch closewindow address:{self.address}")
 
-    def _on_drag_data(self, _widget, _context, data, _info, _time):
-        data.set_text(self.addr, -1)
+    def _on_drag_data_get(self, _, __, data, *___):
+        data.set_text(self.address, len(self.address))
+
+    def _on_drag_begin(self, _, context):
+        Gtk.drag_set_icon_surface(context, create_surface_from_widget(self))
+
 
 class WorkspaceEventBox(EventBox):
-    __slots__ = ("ws_id",)
-    def __init__(self, ws_id, content, ws_empty):
-        super().__init__(name="overview-workspace-bg")
-        self.ws_id = ws_id
-        self.add(content)
+    def __init__(self, workspace_id, fixed, width, height):
+        child = fixed if fixed else Label(
+            name="overview-add-label",
+            markup=icons.circle_plus,
+            h_expand=True,
+            v_expand=True,
+        )
         
+        super().__init__(
+            name="overview-workspace-bg",
+            size=(int(width * BASE_SCALE), int(height * BASE_SCALE)),
+            child=child,
+            on_drag_data_received=lambda _w, _c, _x, _y, data, *_: (
+                connection.send_command(
+                    f"/dispatch movetoworkspacesilent {workspace_id},address:{data.get_data().decode()}"
+                )
+            ),
+        )
+
         self.drag_dest_set(Gtk.DestDefaults.ALL, TARGET, Gdk.DragAction.COPY)
-        self.connect("drag-data-received", self._on_drop)
-        if not ws_empty:
-            self.connect("button-press-event", self._on_click)
 
-    def _on_click(self, _, event):
-        if event.button == 1: # Только ЛКМ для перехода
-            connection.send_command(f"/dispatch workspace {self.ws_id}")
+        if fixed:
+            fixed.show_all()
 
-    def _on_drop(self, _w, _ctx, _x, _y, data, _info, _time):
-        addr = data.get_data().decode()
-        connection.send_command(f"/dispatch movetoworkspacesilent {self.ws_id},address:{addr}")
 
 class Overview(Box):
-    __slots__ = ("mon_id", "upd_id")
     def __init__(self, monitor_id=0, **kwargs):
-        super().__init__(name="overview", orientation="v", spacing=8, **kwargs)
-        self.mon_id = monitor_id
-        self.upd_id = 0
+        super().__init__(
+            name="overview",
+            orientation="v",
+            spacing=8,
+            **kwargs,
+        )
+
+        self.monitor_id = monitor_id
+        self.workspace_start = 1
+        self.workspace_end = 9
+
+        self.clients = {}
+        self.workspace_boxes = {}
+        self._all_apps = []
+
+        connection.connect("event::openwindow", self.update)
+        connection.connect("event::closewindow", self.update)
+        connection.connect("event::movewindow", self.update)
+
+        self.update()
+
+    def _load_apps(self):
+        self._all_apps = get_desktop_applications()
+
+    def find_app(self, app_id):
+        if not app_id:
+            return None
+
+        app_id_lower = app_id.lower()
         
-        # Подписка на ключевые события для обновления
-        for ev in ("openwindow", "closewindow", "movewindow", "windowtitle"):
-            connection.connect(f"event::{ev}", self.schedule_update)
-        self._update_ui()
+        for app in self._all_apps:
+            if app.window_class and app.window_class.lower() == app_id_lower:
+                return app
+            if app.name and app.name.lower() == app_id_lower:
+                return app
+            if app.display_name and app.display_name.lower() == app_id_lower:
+                return app
+            if app.executable and app.executable.split("/")[-1].lower() == app_id_lower:
+                return app
+        return None
 
-    def schedule_update(self, *args):
-        if self.upd_id: GLib.source_remove(self.upd_id)
-        # Debounce обновления для защиты CPU от спама событий
-        self.upd_id = GLib.timeout_add(150, self._perform_update)
+    def update(self, *_):
+        self._load_apps()
 
-    def _perform_update(self):
-        self._update_ui()
-        self.upd_id = 0
-        return False
+        for btn in self.clients.values():
+            btn.destroy()
+        self.clients.clear()
 
-    def _update_ui(self):
-        # Эффективная очистка
-        for child in self.get_children(): self.remove(child)
-        
-        # Прямой парсинг данных без создания промежуточных классов-оберток
-        m_data = json.loads(connection.send_command("j/monitors").reply.decode())
-        cur_m = next((m for m in m_data if m["id"] == self.mon_id), m_data[0])
-        scale = 0.1 * cur_m.get("scale", 1.0)
-        
-        wins = json.loads(connection.send_command("j/clients").reply.decode())
-        ws_map = {}
-        for w in wins:
-            wid = w["workspace"]["id"]
-            if 1 <= wid <= 9: ws_map.setdefault(wid, []).append(w)
+        for box in self.workspace_boxes.values():
+            box.destroy()
+        self.workspace_boxes.clear()
 
-        # Создание сетки
-        for r in range(3):
-            hbox = Box(spacing=8, orientation="h")
-            self.add(hbox)
-            for c in range(3):
-                ws_id = r * 3 + c + 1
-                hbox.add(self._build_ws(ws_id, ws_map.get(ws_id, []), cur_m, scale))
-        self.show_all()
+        self.children = []
 
-    def _build_ws(self, ws_id, ws_wins, cur_m, scale):
-        fixed = Gtk.Fixed()
-        for w in ws_wins:
-            btn = HyprlandWindowButton(w, scale, cur_m["x"], cur_m["y"])
-            fixed.put(btn, *btn.pos)
+        monitors = {
+            m["id"]: (m["x"], m["y"], m["transform"])
+            for m in json.loads(connection.send_command("j/monitors").reply)
+        }
 
-        inner = Box(orientation="v", spacing=4)
-        inner.set_size_request(int(cur_m["width"] * scale), int(cur_m["height"] * scale))
-        
-        if not ws_wins:
-            lbl_empty = Label(markup=icons.circle_plus, name="overview-add-label")
-            lbl_empty.set_opacity(0.4)
-            inner.pack_start(lbl_empty, True, True, 0)
-        else:
-            inner.add(fixed)
+        clients = json.loads(connection.send_command("j/clients").reply)
 
-        ws_box = Box(name="overview-workspace-box", orientation="v", spacing=4)
-        ws_box.add(Label(label=f"Workspace {ws_id}", name="overview-workspace-label"))
-        ws_box.add(WorkspaceEventBox(ws_id, inner, not ws_wins))
-        return ws_box
+        rows = [Box(spacing=8) for _ in range(3)]
+        self.children = rows
 
-    def destroy(self):
-        if self.upd_id: GLib.source_remove(self.upd_id)
-        super().destroy()
+        for client in clients:
+            w_id = client["workspace"]["id"]
+            if not (self.workspace_start <= w_id <= self.workspace_end):
+                continue
+
+            mx, my, transform = monitors[client["monitor"]]
+
+            btn = HyprlandWindowButton(
+                self,
+                client["title"],
+                client["address"],
+                client["initialClass"],
+                (
+                    int(client["size"][0] * BASE_SCALE),
+                    int(client["size"][1] * BASE_SCALE),
+                ),
+                transform,
+            )
+
+            self.clients[client["address"]] = btn
+
+            fixed = self.workspace_boxes.setdefault(w_id, Gtk.Fixed())
+            fixed.put(
+                btn,
+                int(abs(client["at"][0] - mx) * BASE_SCALE),
+                int(abs(client["at"][1] - my) * BASE_SCALE),
+            )
+
+        for w_id in range(self.workspace_start, self.workspace_end + 1):
+            idx = w_id - self.workspace_start
+            row = rows[idx // 3]
+
+            row.add(
+                Box(
+                    name="overview-workspace-box",
+                    orientation="vertical",
+                    children=[
+                        Label(
+                            name="overview-workspace-label",
+                            label=f"Workspace {w_id}",
+                        ),
+                        WorkspaceEventBox(
+                            w_id,
+                            self.workspace_boxes.get(w_id),
+                            CURRENT_WIDTH,
+                            CURRENT_HEIGHT,
+                        ),
+                    ],
+                )
+            )

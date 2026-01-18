@@ -18,16 +18,37 @@ class Widgets(Box):
     def __init__(self, **kwargs):
         super().__init__(
             name="dash-widgets",
+            h_align="fill",
+            v_align="fill",
+            h_expand=True,
+            v_expand=True,
             visible=True,
-            all_visible= True,
-        )
+            all_visible=True,
+        )        
 
         self.calendar = Calendar(view_mode="month")
 
         self.notch = kwargs["notch"]
 
-        self.buttons = Buttons(widgets=self, notch=self.notch)
+        self.buttons = Buttons(widgets=self)
         self.bluetooth = BluetoothConnections(widgets=self)
+
+        self.box_1 = Box(
+            name="box-1",
+            h_expand=True,
+            v_expand=True,
+        )
+
+        self.box_2 = Box(
+            name="box-2",
+            h_expand=True,
+            v_expand=True,
+        )
+
+        self.box_3 = Box(
+            name="box-3",
+            v_expand=True,
+        )
 
         self.controls = ControlSliders()
         self.player = Player()
@@ -74,6 +95,7 @@ class Widgets(Box):
             name="container-1",
             h_expand=True,
             v_expand=True,
+            orientation="h",
             spacing=8,
             children=self.children_1,
         )
@@ -95,10 +117,12 @@ class Widgets(Box):
             self.player,
             self.container_2,
         ]
+
         self.container_3 = Box(
             name="container-3",
             h_expand=True,
             v_expand=True,
+            orientation="h",
             spacing=8,
             children=self.children_3,
         )
@@ -106,23 +130,10 @@ class Widgets(Box):
         self.add(self.container_3)
 
     def show_bt(self):
-        self.notch.open_notch("bluetooth")
+        self.applet_stack.set_visible_child(self.bluetooth)
 
     def show_notif(self):
         self.applet_stack.set_visible_child(self.notification_history)
 
     def show_network_applet(self):
         self.notch.open_notch("network_applet")
-
-    def destroy(self):
-        for widget_name in ['calendar', 'buttons', 'bluetooth', 'controls', 'player', 'metrics', 'notification_history', 'network_connections']:
-            widget = getattr(self, widget_name, None)
-            if widget:
-                if hasattr(widget, 'destroy'):
-                    widget.destroy()
-                elif hasattr(widget, 'cleanup'):
-                    widget.cleanup()
-                setattr(self, widget_name, None)
-        
-        self.notch = None
-        super().destroy()

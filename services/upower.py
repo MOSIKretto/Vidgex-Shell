@@ -1,110 +1,76 @@
 import dbus
 
-
 class UPowerManager:
+    # Выносим статические данные в класс для экономии памяти и ЦП (не пересоздаем каждый раз)
+    _DEFAULTS = {
+        'HasHistory': False, 'HasStatistics': False, 'IsPresent': False,
+        'IsRechargeable': False, 'Online': False, 'PowerSupply': False,
+        'Capacity': 0.0, 'Energy': 0.0, 'EnergyEmpty': 0.0, 'EnergyFull': 0.0,
+        'EnergyFullDesign': 0.0, 'EnergyRate': 0.0, 'Luminosity': 0.0,
+        'Percentage': 0.0, 'Temperature': 0.0, 'Voltage': 0.0,
+        'TimeToEmpty': 0, 'TimeToFull': 0, 'IconName': '',
+        'Model': '', 'NativePath': '', 'Serial': '', 'Vendor': '',
+        'State': 0, 'Technology': 0, 'Type': 0, 'WarningLevel': 0,
+        'UpdateTime': 0
+    }
+    
+    _STATES = (
+        "Unknown", "Loading", "Discharging", "Empty", 
+        "Fully charged", "Pending charge", "Pending discharge"
+    )
+
     def __init__(self):
-        self.UPOWER_NAME = "org.freedesktop.UPower"
-        self.UPOWER_PATH = "/org/freedesktop/UPower"
-        self.DBUS_PROPERTIES = "org.freedesktop.DBus.Properties"
         self.bus = dbus.SystemBus()
-    
-    def _get_upower_object(self):
-        return self.bus.get_object(self.UPOWER_NAME, self.UPOWER_PATH)
-    
-    def _get_upower_interface(self):
-        return dbus.Interface(self._get_upower_object(), self.UPOWER_NAME)
-    
-    def _get_properties_interface(self, path):
-        return dbus.Interface(self.bus.get_object(self.UPOWER_NAME, path), self.DBUS_PROPERTIES)
-    
-    def _get_upower_properties(self):
-        return dbus.Interface(self._get_upower_object(), self.DBUS_PROPERTIES)
-    
-    def _get_wakeups_object(self):
-        return self.bus.get_object(self.UPOWER_NAME, f"{self.UPOWER_PATH}/Wakeups")
-    
+        self.up_name = "org.freedesktop.UPower"
+        self.up_path = "/org/freedesktop/UPower"
+        self.props_iface = "org.freedesktop.DBus.Properties"
+
+    def _get_prop(self, path, iface, prop):
+        """Минималистичный помощник для получения свойств."""
+        obj = self.bus.get_object(self.up_name, path)
+        return obj.Get(iface, prop, dbus_interface=self.props_iface)
+
     def detect_devices(self):
-        return self._get_upower_interface().EnumerateDevices()
+        return self.bus.get_object(self.up_name, self.up_path).EnumerateDevices(dbus_interface=self.up_name)
     
     def get_display_device(self):
-        return self._get_upower_interface().GetDisplayDevice()
+        return self.bus.get_object(self.up_name, self.up_path).GetDisplayDevice(dbus_interface=self.up_name)
     
     def get_critical_action(self):
-        return self._get_upower_interface().GetCriticalAction()
+        return self.bus.get_object(self.up_name, self.up_path).GetCriticalAction(dbus_interface=self.up_name)
     
     def get_device_percentage(self, battery):
-        props = self._get_properties_interface(battery)
-        return props.Get(f"{self.UPOWER_NAME}.Device", "Percentage")
+        return self._get_prop(battery, f"{self.up_name}.Device", "Percentage")
     
     def get_full_device_information(self, battery):
-        props = self._get_properties_interface(battery)
-        all_props = props.GetAll(f"{self.UPOWER_NAME}.Device")
-        
-        # Predefined defaults dictionary for better performance
-        defaults = {
-            'HasHistory': False, 'HasStatistics': False, 'IsPresent': False,
-            'IsRechargeable': False, 'Online': False, 'PowerSupply': False,
-            'Capacity': 0.0, 'Energy': 0.0, 'EnergyEmpty': 0.0, 'EnergyFull': 0.0,
-            'EnergyFullDesign': 0.0, 'EnergyRate': 0.0, 'Luminosity': 0.0,
-            'Percentage': 0.0, 'Temperature': 0.0, 'Voltage': 0.0,
-            'TimeToEmpty': 0, 'TimeToFull': 0, 'IconName': '',
-            'Model': '', 'NativePath': '', 'Serial': '', 'Vendor': '',
-            'State': 0, 'Technology': 0, 'Type': 0, 'WarningLevel': 0,
-            'UpdateTime': 0
-        }
-        
-        # Create result dictionary using comprehension
-        return {key: all_props.get(key, default) for key, default in defaults.items()}
+        obj = self.bus.get_object(self.up_name, battery)
+        all_props = obj.GetAll(f"{self.up_name}.Device", dbus_interface=self.props_iface)
+        # Используем заранее созданный словарь _DEFAULTS для скорости
+        return {key: all_props.get(key, default) for key, default in self._DEFAULTS.items()}
     
     def is_lid_present(self):
-        return bool(self._get_upower_properties().Get(self.UPOWER_NAME, 'LidIsPresent'))
+        return bool(self._get_prop(self.up_path, self.up_name, 'LidIsPresent'))
     
     def is_lid_closed(self):
-        return bool(self._get_upower_properties().Get(self.UPOWER_NAME, 'LidIsClosed'))
+        return bool(self._get_prop(self.up_path, self.up_name, 'LidIsClosed'))
     
     def on_battery(self):
-        return bool(self._get_upower_properties().Get(self.UPOWER_NAME, 'OnBattery'))
+        return bool(self._get_prop(self.up_path, self.up_name, 'OnBattery'))
     
     def has_wakeup_capabilities(self):
-        wakeups_obj = self._get_wakeups_object()
-        wakeups_props = dbus.Interface(wakeups_obj, self.DBUS_PROPERTIES)
-        return bool(wakeups_props.Get(f"{self.UPOWER_NAME}.Wakeups", 'HasCapability'))
+        return bool(self._get_prop(f"{self.up_path}/Wakeups", f"{self.up_name}.Wakeups", 'HasCapability'))
     
     def get_wakeups_data(self):
-        wakeups_obj = self._get_wakeups_object()
-        wakeups_interface = dbus.Interface(wakeups_obj, f"{self.UPOWER_NAME}.Wakeups")
-        return wakeups_interface.GetData()
+        return self.bus.get_object(self.up_name, f"{self.up_path}/Wakeups").GetData(dbus_interface=f"{self.up_name}.Wakeups")
     
     def get_wakeups_total(self):
-        wakeups_obj = self._get_wakeups_object()
-        wakeups_interface = dbus.Interface(wakeups_obj, f"{self.UPOWER_NAME}.Wakeups")
-        return wakeups_interface.GetTotal()
+        return self.bus.get_object(self.up_name, f"{self.up_path}/Wakeups").GetTotal(dbus_interface=f"{self.up_name}.Wakeups")
     
     def is_loading(self, battery):
-        props = self._get_properties_interface(battery)
-        state = int(props.Get(f"{self.UPOWER_NAME}.Device", "State"))
-        return state == 1
+        return int(self._get_prop(battery, f"{self.up_name}.Device", "State")) == 1
     
     def get_state(self, battery):
-        props = self._get_properties_interface(battery)
-        state = int(props.Get(f"{self.UPOWER_NAME}.Device", "State"))
-        
-        # Using tuple instead of dictionary for faster lookup
-        states = (
-            "Unknown",      # 0
-            "Loading",      # 1
-            "Discharging",  # 2
-            "Empty",        # 3
-            "Fully charged",# 4
-            "Pending charge",# 5
-            "Pending discharge"# 6
-        )
-        
-        if 0 <= state < len(states):
-            return states[state]
+        state = int(self._get_prop(battery, f"{self.up_name}.Device", "State"))
+        if 0 <= state < len(self._STATES):
+            return self._STATES[state]
         return "Unknown"
-    
-    def destroy(self):
-        if hasattr(self, 'bus') and self.bus:
-            self.bus.close()
-            self.bus = None

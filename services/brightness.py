@@ -1,16 +1,13 @@
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, monitor_file
-
 import os
-
 
 class Brightness(Service):
     instance = None
 
     @staticmethod
     def get_initial():
-        if not Brightness.instance:
-            Brightness.instance = Brightness()
+        if not Brightness.instance: Brightness.instance = Brightness()
         return Brightness.instance
 
     @Signal
@@ -18,41 +15,39 @@ class Brightness(Service):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.device = next(iter(os.listdir("/sys/class/backlight")), None)
-        if not self.device:
+        # Безопасный поиск устройства
+        try:
+            self.device = os.listdir("/sys/class/backlight")[0]
+        except (IndexError, FileNotFoundError):
+            self.device = None
             self.max_screen = -1
             return
 
         self.base_path = f"/sys/class/backlight/{self.device}"
-        self.max_screen = self._read_int("max_brightness")
         
-        self.monitor = monitor_file(f"{self.base_path}/brightness")
-        self.handler_id = self.monitor.connect("changed", self._on_changed)
-
-    def _read_int(self, filename: str) -> int:
+        # Чтение максимальной яркости
         try:
-            with open(f"{self.base_path}/{filename}") as f:
-                return int(f.read().strip())
-        except (IOError, ValueError, AttributeError):
-            return -1
-
-    def _on_changed(self, monitor, file, *args):
-        val = self._read_int("brightness")
-        if val != -1:
-            self.emit("screen", val)
+            with open(f"{self.base_path}/max_brightness") as f:
+                self.max_screen = int(f.read().strip())
+        except:
+            self.max_screen = -1
+        
+        # Мониторинг без лишних оберток
+        self.monitor = monitor_file(f"{self.base_path}/brightness")
+        self.monitor.connect("changed", lambda *_: self.emit("screen", self.screen_brightness))
 
     @Property(int, "read-write")
     def screen_brightness(self) -> int:
-        return self._read_int("brightness")
+        if not getattr(self, 'base_path', None): return -1
+        try:
+            with open(f"{self.base_path}/brightness") as f: return int(f.read().strip())
+        except: return -1
 
     @screen_brightness.setter
     def screen_brightness(self, value: int):
+        if not getattr(self, 'device', None) or self.max_screen <= 0: return
+        
         value = max(0, min(value, self.max_screen))
         exec_shell_command_async(f"brightnessctl --device '{self.device}' set {value}", None)
-        if self.max_screen > 0:
-            self.emit("screen", int((value / self.max_screen) * 100))
-
-    def destroy(self):
-        if hasattr(self, 'monitor') and self.monitor:
-            self.monitor.disconnect(self.handler_id)
-            self.monitor.cancel()
+        
+        self.emit("screen", int((value / self.max_screen) * 100))

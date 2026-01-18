@@ -1,3 +1,10 @@
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+from fabric.utils import remove_handler
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
@@ -6,199 +13,476 @@ from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import Gdk, GdkPixbuf, GLib
 
-import subprocess
 import modules.icons as icons
 
 
 class ClipHistory(Box):
-    def __init__(self, notch, **kwargs):
-        # Полное сохранение имен для CSS
-        super().__init__(name="clip-history", visible=False, all_visible=False, **kwargs)
-        self.notch = notch
-        self.selected_index = -1
-        self._setup_ui()
-        self.show_all()
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="clip-history",
+            visible=False,
+            all_visible=False,
+            **kwargs,
+        )
 
-    def _setup_ui(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix="cliphist-")
+        self.image_cache = {}
+        
+        self.notch = kwargs["notch"]
+        self.selected_index = -1
+        self._arranger_handler = 0
+        self.clipboard_items = []
+        self._loading = False
+        self._pending_updates = False
+
         self.viewport = Box(name="viewport", spacing=4, orientation="v")
         self.search_entry = Entry(
             name="search-entry",
-            placeholder="Поиск в истории буфера...",
+            placeholder="Search Clipboard History...",
             h_expand=True,
-            notify_text=lambda entry, *_: self._render_items(entry.get_text().lower()),
-            on_activate=lambda *_: self._use_selected(),
-            on_key_press_event=self._on_search_key_press,
+            h_align="fill",
+            notify_text=self.filter_items,
+            on_activate=lambda entry, *_: self.use_selected_item(),
+            on_key_press_event=self.on_search_entry_key_press,
         )
         self.search_entry.props.xalign = 0.5
         
         self.scrolled_window = ScrolledWindow(
             name="scrolled-window",
+            spacing=10,
+            h_expand=True,
             v_expand=True,
+            h_align="fill",
+            v_align="fill",
             child=self.viewport,
+            propagate_width=False,
             propagate_height=False,
         )
 
-        # Структура 1-в-1 как в оригинале
-        self.add(Box(
+        self.header_box = Box(
+            name="header_box",
+            spacing=10,
+            orientation="h",
+            children=[
+                Button(
+                    name="clear-button",
+                    child=Label(name="clear-label", markup=icons.trash),
+                    on_clicked=lambda *_: self.clear_history(),
+                ),
+                self.search_entry,
+                Button(
+                    name="close-button",
+                    child=Label(name="close-label", markup=icons.cancel),
+                    tooltip_text="Exit",
+                    on_clicked=lambda *_: self.close()
+                ),
+            ],
+        )
+
+        self.history_box = Box(
             name="launcher-box",
             spacing=10,
             h_expand=True,
             orientation="v",
             children=[
-                Box(
-                    name="header_box",
-                    spacing=10,
-                    children=[
-                        Button(
-                            name="clear-button",
-                            child=Label(name="clear-label", markup=icons.trash),
-                            on_clicked=lambda *_: self._action("wipe"),
-                        ),
-                        self.search_entry,
-                        Button(
-                            name="close-button",
-                            child=Label(name="close-label", markup=icons.cancel),
-                            on_clicked=lambda *_: self.close()
-                        ),
-                    ],
-                ),
+                self.header_box,
                 self.scrolled_window,
             ],
-        ))
+        )
 
-    def _render_items(self, search=""):
-        """Минимальное потребление CPU: рендерим только то, что нужно."""
+        self.add(self.history_box)
+        self.show_all()
+
+    def close(self):
+        self.viewport.children = []
+        self.selected_index = -1
+        self.notch.close_notch()
+
+    def open(self):
+        if self._loading:
+            return
+        self._loading = True
+        self.search_entry.set_text("")
+        self.search_entry.grab_focus()
+
+        # Use GLib.Thread for proper async execution
+        GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
+
+    def _load_clipboard_items_thread(self, user_data):
+        try:
+            result = subprocess.run(
+                ["cliphist", "list"], 
+                capture_output=True, 
+                check=True
+            )
+            # Decode stdout with error handling
+            stdout_str = result.stdout.decode('utf-8', errors='replace')
+            lines = stdout_str.strip().split('\n')
+            new_items = []
+            for line in lines:
+                if not line or "<meta http-equiv" in line:
+                    continue
+                new_items.append(line)
+            # Update UI from main thread
+            GLib.idle_add(self._update_items, new_items)
+        except subprocess.CalledProcessError as e:
+            print(f"Error loading clipboard history: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Unexpected error: {e}", file=sys.stderr)
+        finally:
+            GLib.idle_add(self._loading_finished)
+    
+    def _loading_finished(self):
+        self._loading = False
+        if self._pending_updates:
+            self._pending_updates = False
+            GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
+        return False
+
+    def _update_items(self, new_items):
+        self.clipboard_items = new_items
+        self.display_clipboard_items()
+
+    def display_clipboard_items(self, filter_text=""):
+        remove_handler(self._arranger_handler) if self._arranger_handler else None
         self.viewport.children = []
         self.selected_index = -1
         
-        # Читаем историю напрямую
-        raw = subprocess.run(["cliphist", "list"], capture_output=True).stdout.decode(errors='ignore')
-        if not raw:
-            return self._show_empty()
 
-        for line in raw.splitlines():
-            if search and search not in line.lower():
-                continue
-            
-            # Разрезаем строку один раз для экономии ресурсов
-            parts = line.split('\t', 1)
-            idx = parts[0]
-            content = parts[1] if len(parts) > 1 else line
-            
-            self.viewport.add(self._create_item(idx, content))
-        
-        self.show_all()
+        filtered_items = []
+        for item in self.clipboard_items:
 
-    def _create_item(self, idx, content):
-        # Быстрая проверка на изображение
-        is_img = "[[ binary data" in content
+            content = item.split('\t', 1)[1] if '\t' in item else item
+            if filter_text.lower() in content.lower():
+                filtered_items.append(item)
         
-        # Виджеты создаются максимально легковесно
-        icon = Image(name="clip-icon") if is_img else Label(name="clip-icon", markup=icons.clip_text)
+
+        if not filtered_items:
+
+            container = Box(
+                name="no-clip-container",
+                orientation="v",
+                h_align="center",
+                v_align="center",
+                h_expand=True,
+                v_expand=True
+            )
+            
+
+            label = Label(
+                name="no-clip",
+                markup=icons.clipboard,
+                h_align="center",
+                v_align="center",
+            )
+            
+            container.add(label)
+            self.viewport.add(container)
+            return
+            
+
+        self._display_items_batch(filtered_items, 0, 10)
+
+    def _display_items_batch(self, items, start, batch_size):
+        end = min(start + batch_size, len(items))
         
-        btn = Button(
+        for i in range(start, end):
+            item = items[i]
+            self.viewport.add(self.create_clipboard_item(item))
+        
+
+        if end < len(items):
+            GLib.idle_add(self._display_items_batch, items, end, batch_size)
+        else:
+
+            if self.search_entry.get_text() and self.viewport.get_children():
+                self.update_selection(0)
+
+    def create_clipboard_item(self, item):
+        parts = item.split('\t', 1)
+        item_id = parts[0] if len(parts) > 1 else "0"
+        content = parts[1] if len(parts) > 1 else item
+        
+
+        display_text = content.strip()
+        if len(display_text) > 100:
+            display_text = display_text[:97] + "..."
+        
+
+        is_image = self.is_image_data(content)
+        
+        if is_image:
+
+            button = Button(
+                name="slot-button",
+                child=Box(
+                    name="slot-box",
+                    orientation="h",
+                    spacing=10,
+                    children=[
+                        Image(name="clip-icon", h_align="start"),
+                        Label(
+                            name="clip-label",
+                            label="[Image]",
+                            ellipsization="end",
+                            v_align="center",
+                            h_align="start",
+                            h_expand=True,
+                        ),
+                    ],
+                ),
+                tooltip_text="Image in clipboard",
+                on_clicked=lambda *_, id=item_id: self.paste_item(id),
+            )
+
+            self._load_image_preview_async(item_id, button)
+        else:
+
+            button = self.create_text_item_button(item_id, display_text)
+        
+
+        button.connect("key-press-event", lambda widget, event, id=item_id: self.on_item_key_press(widget, event, id))
+        
+
+        button.set_can_focus(True)
+        button.add_events(Gdk.EventMask.KEY_PRESS_MASK)
+            
+        return button
+
+    def _load_image_preview_async(self, item_id, button):
+        GLib.Thread.new("image-preview", self._load_image_preview_thread, (item_id, button))
+
+    def _load_image_preview_thread(self, data):
+        item_id, button = data
+        try:
+            if item_id in self.image_cache:
+                pixbuf = self.image_cache[item_id]
+                GLib.idle_add(self._update_image_button, button, pixbuf)
+                return
+            
+            result = subprocess.run(
+                ["cliphist", "decode", item_id],
+                capture_output=True,
+                check=True
+            )
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(result.stdout)
+            loader.close()
+            pixbuf = loader.get_pixbuf()
+            width, height = pixbuf.get_width(), pixbuf.get_height()
+            max_size = 72
+            if width > height:
+                new_width = max_size
+                new_height = int(height * (max_size / width))
+            else:
+                new_height = max_size
+                new_width = int(width * (max_size / height))
+            pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+            self.image_cache[item_id] = pixbuf
+            
+            GLib.idle_add(self._update_image_button, button, pixbuf)
+        except Exception as e:
+            print(f"Error loading image preview: {e}", file=sys.stderr)
+
+    def _update_image_button(self, button, pixbuf):
+        box = button.get_child()
+        if box and len(box.get_children()) > 0:
+            image_widget = box.get_children()[0]
+            if isinstance(image_widget, Image):
+                image_widget.set_from_pixbuf(pixbuf)
+
+    def create_text_item_button(self, item_id, display_text):
+        return Button(
             name="slot-button",
             child=Box(
                 name="slot-box",
                 orientation="h",
                 spacing=10,
                 children=[
-                    icon,
+                    Label(
+                        name="clip-icon",
+                        markup=icons.clip_text,
+                        h_align="start",
+                    ),
                     Label(
                         name="clip-label",
-                        label="[Изображение]" if is_img else content[:100].strip(),
+                        label=display_text,
                         ellipsization="end",
+                        v_align="center",
                         h_align="start",
                         h_expand=True,
                     ),
                 ],
             ),
+            tooltip_text=display_text,
+            on_clicked=lambda *_: self.paste_item(item_id),
         )
-        
-        if is_img: # Ленивая отрисовка превью
-            GLib.idle_add(lambda: self._lazy_img(icon, idx))
 
-        btn.connect("clicked", lambda *_: self._paste(idx))
-        return btn
+    def is_image_data(self, content):
+        return (
+            content.startswith("data:image/") or
+            content.startswith("\x89PNG") or
+            content.startswith("GIF8") or
+            content.startswith("\xff\xd8\xff") or
+            re.match(r'^\s*<img\s+', content) is not None or
+            "binary" in content.lower() and any(ext in content.lower() for ext in ["jpg", "jpeg", "png", "bmp", "gif"])
+        )
 
-    def _lazy_img(self, widget, idx):
-        """Декодирование картинки только в момент показа."""
-        img_data = subprocess.run(["cliphist", "decode", idx], capture_output=True).stdout
-        if not img_data: return
-        
-        loader = GdkPixbuf.PixbufLoader()
+    def paste_item(self, item_id):
+        GLib.Thread.new("paste-item", self._paste_item_thread, item_id)
+
+    def _paste_item_thread(self, item_id):
         try:
-            loader.write(img_data)
-            loader.close()
-            # NEAREST - самый быстрый метод масштабирования для процессора
-            pix = loader.get_pixbuf().scale_simple(64, 64, GdkPixbuf.InterpType.NEAREST)
-            widget.set_from_pixbuf(pix)
-        except: pass
+            result = subprocess.run(
+                ["cliphist", "decode", item_id],
+                capture_output=True,
+                check=True
+            )
+            subprocess.run(
+                ["wl-copy"],
+                input=result.stdout,
+                check=True
+            )
+            GLib.idle_add(self.close)
+        except subprocess.CalledProcessError as e:
+            print(f"Error pasting clipboard item: {e}", file=sys.stderr)
 
-    def _paste(self, idx):
-        data = subprocess.run(["cliphist", "decode", idx], capture_output=True).stdout
-        subprocess.run(["wl-copy"], input=data)
-        self.close()
+    def delete_item(self, item_id):
+        GLib.Thread.new("delete-item", self._delete_item_thread, item_id)
 
-    def _action(self, op):
-        subprocess.run(["cliphist", op])
-        self._render_items()
+    def _delete_item_thread(self, item_id):
+        try:
+            subprocess.run(
+                ["cliphist", "delete", item_id],
+                check=True
+            )
+            self._pending_updates = True
+            if not self._loading:
+                GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
+        except subprocess.CalledProcessError as e:
+            print(f"Error deleting clipboard item: {e}", file=sys.stderr)
 
-    def _on_search_key_press(self, _, event):
-        kv = event.keyval
-        if kv == Gdk.KEY_Down: self._move_sel(1)
-        elif kv == Gdk.KEY_Up: self._move_sel(-1)
-        elif kv in (Gdk.KEY_Return, Gdk.KEY_KP_Enter): self._use_selected()
-        elif kv == Gdk.KEY_Escape: self.close()
+    def clear_history(self):
+        GLib.Thread.new("clear-history", self._clear_history_thread, None)
+
+    def _clear_history_thread(self, user_data):
+        try:
+            subprocess.run(["cliphist", "wipe"], check=True)
+            self._pending_updates = True
+            if not self._loading:
+                GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
+        except subprocess.CalledProcessError as e:
+            print(f"Error clearing clipboard history: {e}", file=sys.stderr)
+
+    def filter_items(self, entry, *_):
+        self.display_clipboard_items(entry.get_text())
+
+    def on_search_entry_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_Down:
+            self.move_selection(1)
+            return True
+        elif event.keyval == Gdk.KEY_Up:
+            self.move_selection(-1)
+            return True
+        elif event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self.use_selected_item()
+            return True
+        elif event.keyval == Gdk.KEY_Delete:
+            self.delete_selected_item()
+            return True
+        elif event.keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
         return False
 
-    def _move_sel(self, step):
-        items = self.viewport.get_children()
-        if not items: return
-        self.selected_index = max(0, min(self.selected_index + step, len(items) - 1))
+    def update_selection(self, new_index):
+        children = self.viewport.get_children()
         
-        for i, child in enumerate(items):
-            if i == self.selected_index:
-                child.get_style_context().add_class("selected")
-                child.grab_focus()
-                # Скролл без таймеров
-                self.scrolled_window.get_vadjustment().set_value(child.get_allocation().y)
-            else:
-                child.get_style_context().remove_class("selected")
 
-    def _use_selected(self):
-        items = self.viewport.get_children()
-        if 0 <= self.selected_index < len(items):
-            items[self.selected_index].clicked()
+        if self.selected_index != -1 and self.selected_index < len(children):
+            current_button = children[self.selected_index]
+            current_button.get_style_context().remove_class("selected")
+            
 
-    def open(self):
-        self.search_entry.set_text("")
-        self._render_items()
-        self.search_entry.grab_focus()
+        if new_index != -1 and new_index < len(children):
+            new_button = children[new_index]
+            new_button.get_style_context().add_class("selected")
+            self.selected_index = new_index
+            self.scroll_to_selected(new_button)
+        else:
+            self.selected_index = -1
 
-    def close(self):
-        self.viewport.children = [] # Полная очистка памяти при закрытии
-        self.notch.close_notch()
+    def move_selection(self, delta):
+        children = self.viewport.get_children()
+        if not children:
+            return
+            
 
-    def _show_empty(self):
-        self.viewport.children = [] 
-        
-        empty_box = Box(
-            name="no-clip-container",
-            v_expand=True,
-            h_expand=True,
-            orientation="v"
-        )
-        
-        empty_label = Label(
-            name="no-clip", 
-            markup=icons.clipboard,
-            v_align="center",
-            h_align="center",
-            v_expand=True,
-            h_expand=True
-        )
-        
-        empty_box.add(empty_label)
-        self.viewport.add(empty_box)
-        self.show_all()
+        if self.selected_index == -1 and delta == 1:
+            new_index = 0
+        else:
+            new_index = self.selected_index + delta
+            
+        new_index = max(0, min(new_index, len(children) - 1))
+        self.update_selection(new_index)
+
+    def scroll_to_selected(self, button):
+        def scroll():
+            adj = self.scrolled_window.get_vadjustment()
+            alloc = button.get_allocation()
+            if alloc.height == 0:
+                return False
+
+            y = alloc.y
+            height = alloc.height
+            page_size = adj.get_page_size()
+            current_value = adj.get_value()
+
+            visible_top = current_value
+            visible_bottom = current_value + page_size
+
+            if y < visible_top:
+
+                adj.set_value(y)
+            elif y + height > visible_bottom:
+
+                new_value = y + height - page_size
+                adj.set_value(new_value)
+            return False
+        GLib.idle_add(scroll)
+
+    def use_selected_item(self):
+        children = self.viewport.get_children()
+        if not children or self.selected_index == -1 or self.selected_index >= len(self.clipboard_items):
+            return
+            
+
+        item_line = self.clipboard_items[self.selected_index]
+        item_id = item_line.split('\t', 1)[0]
+        self.paste_item(item_id)
+
+    def delete_selected_item(self):
+        children = self.viewport.get_children()
+        if not children or self.selected_index == -1:
+            return
+            
+
+        item_line = self.clipboard_items[self.selected_index]
+        item_id = item_line.split('\t', 1)[0]
+        self.delete_item(item_id)
+
+    def on_item_key_press(self, widget, event, item_id):
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+
+            self.paste_item(item_id)
+            return True
+        return False
+
+    def __del__(self):
+        try:
+            if hasattr(self, 'tmp_dir') and os.path.exists(self.tmp_dir):
+                import shutil
+                shutil.rmtree(self.tmp_dir)
+            self.image_cache.clear()
+        except Exception as e:
+            print(f"Error cleaning up temporary files: {e}", file=sys.stderr)

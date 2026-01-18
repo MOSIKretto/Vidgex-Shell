@@ -1,5 +1,3 @@
-# buttons.py
-
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -8,7 +6,6 @@ from fabric.widgets.label import Label
 from gi.repository import Gdk, GLib, Gtk
 
 import subprocess
-import weakref
 from typing import Optional, List, Callable
 from dataclasses import dataclass
 
@@ -42,11 +39,9 @@ def add_hover_cursor(widget: Gtk.Widget) -> None:
 
 
 class ProcessMonitor:
-    """Мониторинг процесса без кэша"""
     def __init__(self, pattern: str, timeout: float = 2.0):
         self.pattern = pattern
         self.timeout = timeout
-        self._is_running: Optional[bool] = None
     
     def check(self) -> bool:
         try:
@@ -55,14 +50,9 @@ class ProcessMonitor:
                 capture_output=True,
                 timeout=self.timeout
             )
-            self._is_running = result.returncode == 0
+            return result.returncode == 0
         except (subprocess.TimeoutExpired, Exception):
-            self._is_running = False
-        return self._is_running
-    
-    @property
-    def is_running(self) -> bool:
-        return self._is_running if self._is_running is not None else self.check()
+            return False
 
 
 def run_in_thread(func: Callable, callback: Optional[Callable] = None) -> None:
@@ -124,32 +114,21 @@ class NetworkButton(Box):
     THRESHOLDS = WifiStrengthThresholds()
     UPDATE_DEBOUNCE = 100
     
-    def __init__(self, **kwargs):
-        widgets = kwargs.pop("widgets", None)
-        self._widgets_ref = weakref.ref(widgets) if widgets else None
-        notch = kwargs.pop("notch", None)
-        self._notch_ref = weakref.ref(notch) if notch else None
-        
+    def __init__(self, widgets=None, notch=None):
         super().__init__()
+        
+        self._widgets = widgets
+        self._notch = notch
         
         self._network_client = NetworkClient()
         self._animation_timeout_id: Optional[int] = None
         self._update_timeout_id: Optional[int] = None
         self._animation_step = 0
         self._style_manager: Optional[StyleManager] = None
-        self._signal_handlers = []
         
         self._create_ui()
         self._connect_signals()
         self._schedule_update()
-    
-    @property
-    def _widgets_instance(self):
-        return self._widgets_ref() if self._widgets_ref else None
-    
-    @property
-    def _notch_instance(self):
-        return self._notch_ref() if self._notch_ref else None
     
     def _schedule_update(self):
         if self._update_timeout_id:
@@ -195,8 +174,7 @@ class NetworkButton(Box):
         ])
 
     def _connect_signals(self):
-        handler = self._network_client.connect('device-ready', self._on_wifi_ready)
-        self._signal_handlers.append((self._network_client, handler))
+        self._network_client.connect('device-ready', self._on_wifi_ready)
 
     def _on_status_clicked(self, *args):
         wifi = self._network_client.wifi_device
@@ -204,20 +182,16 @@ class NetworkButton(Box):
             wifi.toggle_wifi()
 
     def _on_menu_clicked(self, *args):
-        notch = self._notch_instance
-        if notch:
-            notch.open_notch("network_applet")
-        else:
-            widgets = self._widgets_instance
-            if widgets and hasattr(widgets, 'show_network_applet'):
-                widgets.show_network_applet()
+        if self._notch:
+            self._notch.open_notch("network_applet")
+        elif self._widgets and hasattr(self._widgets, 'show_network_applet'):
+            self._widgets.show_network_applet()
 
     def _on_wifi_ready(self, *args):
         wifi = self._network_client.wifi_device
         if wifi:
-            handler1 = wifi.connect('notify::enabled', lambda *_: self._schedule_update())
-            handler2 = wifi.connect('notify::ssid', lambda *_: self._schedule_update())
-            self._signal_handlers.extend([(wifi, handler1), (wifi, handler2)])
+            wifi.connect('notify::enabled', lambda *_: self._schedule_update())
+            wifi.connect('notify::ssid', lambda *_: self._schedule_update())
             self._schedule_update()
 
     def _get_wifi_icon(self, strength: int) -> str:
@@ -290,27 +264,17 @@ class NetworkButton(Box):
             self.network_ssid.set_label("Включено")
             self._start_animation()
 
-    def cleanup(self):
-        self._stop_animation()
-        for obj, handler_id in self._signal_handlers:
-            try: obj.disconnect(handler_id)
-            except: pass
-        self._signal_handlers.clear()
-        self._widgets_ref = None
-        self._notch_ref = None
-        self._network_client = None
-        self._style_manager = None
-
 
 # ================== BluetoothButton ==================
 
 class BluetoothButton(Box):
-    def __init__(self, **kwargs):
-        self._widgets = kwargs.pop("widgets", None)
-        self._notch_instance = kwargs.pop("notch", None)
+    def __init__(self, widgets=None, notch=None):
         super().__init__()
         
+        self._widgets = widgets
+        self._notch = notch
         self._is_bluetooth_enabled = False
+        
         self._create_ui()
         self._setup_signals()
         self.update_state()
@@ -318,12 +282,11 @@ class BluetoothButton(Box):
     def _setup_signals(self):
         if hasattr(self._widgets, 'bluetooth'):
             bt_client = self._widgets.bluetooth
-            if hasattr(bt_client, 'client'):
+            if hasattr(bt_client, 'client') and hasattr(bt_client.client, 'connect'):
                 try:
-                    if hasattr(bt_client.client, 'connect'):
-                        bt_client.client.connect('power-changed', self._on_power_changed)
-                        bt_client.client.connect('device-added', self._on_device_changed)
-                        bt_client.client.connect('device-removed', self._on_device_changed)
+                    bt_client.client.connect('power-changed', self._on_power_changed)
+                    bt_client.client.connect('device-added', self.update_state)
+                    bt_client.client.connect('device-removed', self.update_state)
                 except Exception:
                     pass
     
@@ -398,23 +361,19 @@ class BluetoothButton(Box):
         self.bluetooth_icon.set_markup(icons.bluetooth if is_enabled else icons.bluetooth_off)
         self.bluetooth_status_text.set_label("Включено" if is_enabled else "Выключено")
     
-    def _on_power_changed(self, client, power_state):
-        self._update_ui(power_state)
-    
-    def _on_device_changed(self, *args):
-        self.update_state()
-    
     def update_state(self):
         run_in_thread(self._get_bluetooth_power_state, self._update_ui)
     
     def _open_bt_menu(self):
-        if self._notch_instance:
-            self._notch_instance.open_notch("bluetooth")
+        if self._notch:
+            self._notch.open_notch("bluetooth")
         elif hasattr(self._widgets, 'show_bt'):
             self._widgets.show_bt()
         else:
-            try: subprocess.Popen(["blueman-manager"])
-            except Exception: pass
+            try: 
+                subprocess.Popen(["blueman-manager"])
+            except Exception: 
+                pass
 
 
 # ================== ToggleServiceButton, NightModeButton, CaffeineButton ==================
@@ -498,8 +457,10 @@ class CaffeineButton(ToggleServiceButton):
         try:
             if self._inhibit_process and self._inhibit_process.poll() is None:
                 self._inhibit_process.terminate()
-                try: self._inhibit_process.wait(timeout=5)
-                except subprocess.TimeoutExpired: self._inhibit_process.kill()
+                try: 
+                    self._inhibit_process.wait(timeout=5)
+                except subprocess.TimeoutExpired: 
+                    self._inhibit_process.kill()
                 self._inhibit_process = None
                 return False
             
@@ -521,10 +482,10 @@ class CaffeineButton(ToggleServiceButton):
 # ================== Buttons Grid Container ==================
 
 class Buttons(Gtk.Grid):
-    def __init__(self, **kwargs):
+    def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")
-        self._widgets = kwargs.pop("widgets", None)
-        self._notch_instance = kwargs.pop("notch", None)
+        self._widgets = widgets
+        self._notch = notch
         self._configure_grid()
         self._create_buttons()
         self._layout_buttons()
@@ -538,8 +499,8 @@ class Buttons(Gtk.Grid):
         self.set_vexpand(False)
 
     def _create_buttons(self):
-        self.network_button = NetworkButton(widgets=self._widgets, notch=self._notch_instance)
-        self.bluetooth_button = BluetoothButton(widgets=self._widgets, notch=self._notch_instance)
+        self.network_button = NetworkButton(widgets=self._widgets, notch=self._notch)
+        self.bluetooth_button = BluetoothButton(widgets=self._widgets, notch=self._notch)
         self.night_mode_button = NightModeButton()
         self.caffeine_button = CaffeineButton()
 
@@ -554,13 +515,3 @@ class Buttons(Gtk.Grid):
         self.bluetooth_button.update_state()
         self.night_mode_button.update_state()
         self.caffeine_button.update_state()
-
-    def cleanup(self):
-        if hasattr(self.network_button, 'cleanup'): self.network_button.cleanup()
-        if hasattr(self.caffeine_button, 'cleanup'): self.caffeine_button.cleanup()
-
-    def __del__(self):
-        try:
-            self.cleanup()
-        except Exception:
-            pass

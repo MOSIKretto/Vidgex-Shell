@@ -3,7 +3,7 @@ from fabric.widgets.label import Label
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Gio
+from gi.repository import Gtk
 
 import calendar
 import locale
@@ -53,14 +53,9 @@ class Calendar(Gtk.Box):
 
         self.weekday_row = Gtk.Box(spacing=4, name="weekday-row")
         
-        self.stack = Gtk.Stack(name="calendar-stack")
-        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
-
         self.add(self.header)
         self.pack_start(self.weekday_row, False, False, 0)
-        self.pack_start(self.stack, True, True, 0)
 
-        self.setup_dbus_listeners()
         self.refresh_ui()
 
     def reset_to_current(self):
@@ -70,34 +65,12 @@ class Calendar(Gtk.Box):
             diff = (self.current_day_date.weekday() - self.first_weekday + 7) % 7
             self.current_shown_date = self.current_day_date - timedelta(days=diff)
 
-    def setup_dbus_listeners(self):
-        try:
-            self._dbus_bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
-            self._dbus_id = self._dbus_bus.signal_subscribe(
-                'org.freedesktop.login1',
-                'org.freedesktop.login1.Manager',
-                'PrepareForSleep',
-                '/org/freedesktop/login1',
-                None,
-                Gio.DBusSignalFlags.NONE,
-                self.on_system_wakeup,
-                None
-            )
-        except:
-            self._dbus_id = None
-
-    def on_system_wakeup(self, *args):
-        new_now = datetime.now().date()
-        if new_now != self.current_day_date.date():
-            self.current_day_date = datetime.combine(new_now, datetime.min.time())
-            self.reset_to_current()
-            GLib.idle_add(self.refresh_ui)
-
     def refresh_ui(self):
-        for child in self.stack.get_children():
-            self.stack.remove(child)
-            child.destroy()
-
+        # Clear existing widgets except header and weekday_row
+        for child in self.get_children():
+            if child not in [self.header, self.weekday_row]:
+                self.remove(child)
+        
         self.month_label.set_text(self.current_shown_date.strftime("%B %Y").capitalize())
 
         if not self.weekday_row.get_children():
@@ -109,11 +82,8 @@ class Calendar(Gtk.Box):
             self.weekday_row.show_all()
 
         view = self.create_month_view() if self.view_mode == "month" else self.create_week_view()
-        
-        child_id = str(self.current_shown_date.timestamp())
-        self.stack.add_named(view, child_id)
+        self.pack_start(view, True, True, 0)
         view.show_all()
-        self.stack.set_visible_child_name(child_id)
 
     def create_month_view(self):
         grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name="calendar-grid")
@@ -170,7 +140,6 @@ class Calendar(Gtk.Box):
         return grid
 
     def on_prev_clicked(self, _):
-        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_RIGHT)
         if self.view_mode == "month":
             m, y = self.current_shown_date.month, self.current_shown_date.year
             new_m, new_y = (12, y - 1) if m == 1 else (m - 1, y)
@@ -180,7 +149,6 @@ class Calendar(Gtk.Box):
         self.refresh_ui()
 
     def on_next_clicked(self, _):
-        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT)
         if self.view_mode == "month":
             m, y = self.current_shown_date.month, self.current_shown_date.year
             new_m, new_y = (1, y + 1) if m == 12 else (m + 1, y)
@@ -188,9 +156,3 @@ class Calendar(Gtk.Box):
         else:
             self.current_shown_date += timedelta(days=7)
         self.refresh_ui()
-
-    def destroy(self):
-        if hasattr(self, '_dbus_id') and self._dbus_id:
-            try: self._dbus_bus.signal_unsubscribe(self._dbus_id)
-            except: pass
-        super().destroy()
