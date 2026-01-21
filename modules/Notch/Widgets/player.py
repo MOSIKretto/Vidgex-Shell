@@ -8,17 +8,12 @@ from fabric.widgets.stack import Stack
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 
-import os
-import tempfile
-import urllib.parse
-import urllib.request
-
 import modules.icons as icons
 from services.mpris import MprisPlayer, MprisPlayerManager
 from widgets.circle_image import CircleImage
 
 
-WALLPAPER_PATH = os.path.expanduser("~/.current.wall")
+WALLPAPER_PATH = GLib.build_filenamev([GLib.get_home_dir(), ".current.wall"])
 
 
 def add_hover_cursor(widget):
@@ -36,6 +31,41 @@ def add_hover_cursor(widget):
     widget.connect("leave-notify-event", on_leave)
 
 
+def _file_exists(path):
+    """Проверяет существование файла через Gio."""
+    return Gio.File.new_for_path(path).query_exists(None)
+
+
+def _parse_uri(uri):
+    """Парсит URI и возвращает (scheme, path)."""
+    if not uri:
+        return None, None
+    
+    scheme = GLib.uri_parse_scheme(uri)
+    
+    if scheme == "file":
+        # file:///path/to/file -> /path/to/file
+        path = uri[7:]  # Убираем "file://"
+        # Декодируем percent-encoding
+        path = GLib.uri_unescape_string(path, None)
+        return scheme, path
+    elif scheme in ("http", "https"):
+        return scheme, uri
+    else:
+        # Возможно это просто путь
+        return None, uri
+
+
+def _get_file_extension(path):
+    """Получает расширение файла."""
+    if not path:
+        return ""
+    basename = GLib.path_get_basename(path)
+    if "." in basename:
+        return "." + basename.rsplit(".", 1)[-1]
+    return ""
+
+
 class PlayerBox(Box):
     def __init__(self, mpris_player=None):
         super().__init__(orientation="v", h_align="fill", spacing=0, h_expand=False, v_expand=True)
@@ -43,6 +73,7 @@ class PlayerBox(Box):
         self._progress_timer_id = None
         self._wallpaper_monitor = None
         self._update_pending = False
+        self._download_cancellable = None
 
         self.cover = CircleImage(
             name="player-cover",
@@ -201,10 +232,11 @@ class PlayerBox(Box):
             self._set_cover_with_fallback()
             return
 
-        parsed = urllib.parse.urlparse(arturl)
-        if parsed.scheme == "file":
-            self._set_cover_image(urllib.parse.unquote(parsed.path))
-        elif parsed.scheme in ("http", "https"):
+        scheme, path = _parse_uri(arturl)
+        
+        if scheme == "file":
+            self._set_cover_image(path)
+        elif scheme in ("http", "https"):
             self._download_artwork(arturl)
         else:
             self._set_cover_image(arturl)
@@ -227,32 +259,69 @@ class PlayerBox(Box):
         self._update_progress()
 
     def _set_cover_image(self, image_path):
-        if image_path and os.path.isfile(image_path):
+        if image_path and _file_exists(image_path):
             self.cover.set_image_from_file(image_path)
         else:
             self._set_cover_with_fallback()
 
     def _download_artwork(self, arturl):
-        def worker(user_data):
-            try:
-                parsed = urllib.parse.urlparse(arturl)
-                suffix = os.path.splitext(parsed.path)[1] or ".png"
-                with urllib.request.urlopen(arturl, timeout=5) as response:
-                    data = response.read()
-                
-                if len(data) > 5 * 1024 * 1024:
-                    local_arturl = WALLPAPER_PATH
-                else:
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-                    temp_file.write(data)
-                    temp_file.close()
-                    local_arturl = temp_file.name
-            except Exception:
-                local_arturl = WALLPAPER_PATH
-            
-            GLib.idle_add(self._set_cover_image, local_arturl)
+        """Скачивает обложку асинхронно через Gio."""
+        # Отменяем предыдущую загрузку если есть
+        if self._download_cancellable:
+            self._download_cancellable.cancel()
+        
+        self._download_cancellable = Gio.Cancellable.new()
+        
+        file = Gio.File.new_for_uri(arturl)
+        file.load_contents_async(
+            self._download_cancellable,
+            self._on_artwork_downloaded,
+            arturl
+        )
 
-        GLib.Thread.new("artwork", worker, None)
+    def _on_artwork_downloaded(self, file, result, arturl):
+        """Callback после скачивания обложки."""
+        try:
+            success, contents, etag = file.load_contents_finish(result)
+            
+            if not success or not contents:
+                GLib.idle_add(self._set_cover_with_fallback)
+                return
+            
+            # Проверяем размер (не больше 5MB)
+            if len(contents) > 5 * 1024 * 1024:
+                GLib.idle_add(self._set_cover_with_fallback)
+                return
+            
+            # Определяем расширение из URL
+            extension = _get_file_extension(arturl)
+            if not extension:
+                extension = ".png"
+            
+            # Создаём временный файл
+            try:
+                fd, temp_path = GLib.file_open_tmp(f"cover_XXXXXX{extension}")
+                
+                # Записываем данные
+                temp_file = Gio.File.new_for_path(temp_path)
+                temp_file.replace_contents(
+                    contents,
+                    None,  # etag
+                    False,  # make_backup
+                    Gio.FileCreateFlags.PRIVATE,
+                    None  # cancellable
+                )
+                
+                # Закрываем файловый дескриптор
+                GLib.close(fd)
+                
+                GLib.idle_add(self._set_cover_image, temp_path)
+                
+            except GLib.Error:
+                GLib.idle_add(self._set_cover_with_fallback)
+                
+        except GLib.Error:
+            GLib.idle_add(self._set_cover_with_fallback)
 
     def _update_play_pause_icon(self):
         if self.mpris_player.playback_status == "playing":

@@ -1,6 +1,7 @@
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, monitor_file
-import os
+from gi.repository import GLib
+
 
 class Brightness(Service):
     instance = None
@@ -15,11 +16,25 @@ class Brightness(Service):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Безопасный поиск устройства
+        
+        # Безопасный поиск устройства через GLib вместо os.listdir
+        self.device = None
         try:
-            self.device = os.listdir("/sys/class/backlight")[0]
-        except (IndexError, FileNotFoundError):
-            self.device = None
+            path = "/sys/class/backlight"
+            # Проверяем, существует ли директория
+            if GLib.file_test(path, GLib.FileTest.IS_DIR):
+                d = GLib.Dir.open(path, 0)
+                # Берем первое попавшееся имя файла/директории
+                while True:
+                    name = d.read_name()
+                    if not name:
+                        break
+                    self.device = name
+                    break # Нам нужно только первое устройство, как было в [0]
+        except Exception:
+            pass
+
+        if not self.device:
             self.max_screen = -1
             return
 
@@ -27,6 +42,7 @@ class Brightness(Service):
         
         # Чтение максимальной яркости
         try:
+            # open() является встроенной функцией python и не требует import os
             with open(f"{self.base_path}/max_brightness") as f:
                 self.max_screen = int(f.read().strip())
         except:

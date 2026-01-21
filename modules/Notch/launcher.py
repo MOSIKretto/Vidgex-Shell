@@ -1,11 +1,4 @@
-from collections.abc import Iterator
-
-from fabric.utils import (
-    DesktopApp,
-    get_desktop_applications,
-    idle_add,
-    remove_handler,
-)
+from fabric.utils import DesktopApp, get_desktop_applications, idle_add, remove_handler
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
@@ -132,11 +125,11 @@ class AppLauncher(Box):
             pin=True,
         )
         
-        # Выделяем первое приложение, если есть результаты
         if apps:
             GLib.idle_add(lambda: self.update_selection(0) or False)
 
-    def add_next_application(self, apps_iter: Iterator[DesktopApp]):
+    def add_next_application(self, apps_iter):
+        """Добавляет следующее приложение из итератора в viewport."""
         app = next(apps_iter, None)
         if not app:
             return False

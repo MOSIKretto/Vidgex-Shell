@@ -39,7 +39,7 @@ class Dashboard(Box):
             spacing=8,
         )
 
-        self.stack.add_titled(self.widgets, "widgets", "Widgets")
+        self.stack.add_titled(self.widgets, "widgets", "Dashboard")
         self.stack.add_titled(self.wallpapers, "wallpapers", "Wallpapers")
         self.stack.add_titled(self.mixer, "mixer", "Mixer")
 

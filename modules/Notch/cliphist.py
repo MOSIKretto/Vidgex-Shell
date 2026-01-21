@@ -1,9 +1,3 @@
-import os
-import re
-import subprocess
-import sys
-import tempfile
-
 from fabric.utils import remove_handler
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -11,7 +5,7 @@ from fabric.widgets.entry import Entry
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
-from gi.repository import Gdk, GdkPixbuf, GLib
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib
 
 import modules.icons as icons
 
@@ -25,7 +19,6 @@ class ClipHistory(Box):
             **kwargs,
         )
 
-        self.tmp_dir = tempfile.mkdtemp(prefix="cliphist-")
         self.image_cache = {}
         
         self.notch = kwargs["notch"]
@@ -93,6 +86,64 @@ class ClipHistory(Box):
         self.add(self.history_box)
         self.show_all()
 
+    def _run_command_async(self, args, callback, input_data=None):
+        """Запускает команду асинхронно через Gio.Subprocess."""
+        try:
+            flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            if input_data is not None:
+                flags |= Gio.SubprocessFlags.STDIN_PIPE
+            
+            launcher = Gio.SubprocessLauncher.new(flags)
+            proc = launcher.spawnv(args)
+            
+            if input_data is not None:
+                proc.communicate_async(
+                    GLib.Bytes.new(input_data),
+                    None,
+                    lambda p, res: self._on_command_complete(p, res, callback)
+                )
+            else:
+                proc.communicate_async(
+                    None,
+                    None,
+                    lambda p, res: self._on_command_complete(p, res, callback)
+                )
+        except GLib.Error as e:
+            print(f"Error running command {args}: {e.message}")
+            callback(None, e.message)
+
+    def _on_command_complete(self, proc, result, callback):
+        """Обработчик завершения команды."""
+        try:
+            success, stdout, stderr = proc.communicate_finish(result)
+            if stdout:
+                callback(stdout.get_data(), None)
+            else:
+                callback(None, stderr.get_data().decode() if stderr else "Unknown error")
+        except GLib.Error as e:
+            callback(None, e.message)
+
+    def _run_command_sync(self, args, input_data=None):
+        """Синхронный запуск команды (для использования в потоках)."""
+        try:
+            flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            if input_data is not None:
+                flags |= Gio.SubprocessFlags.STDIN_PIPE
+            
+            launcher = Gio.SubprocessLauncher.new(flags)
+            proc = launcher.spawnv(args)
+            
+            if input_data is not None:
+                success, stdout, stderr = proc.communicate(GLib.Bytes.new(input_data), None)
+            else:
+                success, stdout, stderr = proc.communicate(None, None)
+            
+            if success and stdout:
+                return stdout.get_data(), None
+            return None, stderr.get_data().decode() if stderr else "Unknown error"
+        except GLib.Error as e:
+            return None, e.message
+
     def close(self):
         self.viewport.children = []
         self.selected_index = -1
@@ -105,30 +156,28 @@ class ClipHistory(Box):
         self.search_entry.set_text("")
         self.search_entry.grab_focus()
 
-        # Use GLib.Thread for proper async execution
         GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
 
     def _load_clipboard_items_thread(self, user_data):
         try:
-            result = subprocess.run(
-                ["cliphist", "list"], 
-                capture_output=True, 
-                check=True
-            )
-            # Decode stdout with error handling
-            stdout_str = result.stdout.decode('utf-8', errors='replace')
+            stdout, error = self._run_command_sync(["cliphist", "list"])
+            
+            if error:
+                print(f"Error loading clipboard: {error}")
+                GLib.idle_add(self._loading_finished)
+                return
+            
+            stdout_str = stdout.decode('utf-8', errors='replace')
             lines = stdout_str.strip().split('\n')
             new_items = []
             for line in lines:
                 if not line or "<meta http-equiv" in line:
                     continue
                 new_items.append(line)
-            # Update UI from main thread
+            
             GLib.idle_add(self._update_items, new_items)
-        except subprocess.CalledProcessError as e:
-            print(f"Error loading clipboard history: {e}", file=sys.stderr)
         except Exception as e:
-            print(f"Unexpected error: {e}", file=sys.stderr)
+            print(f"Error in clipboard loader: {e}")
         finally:
             GLib.idle_add(self._loading_finished)
     
@@ -142,23 +191,20 @@ class ClipHistory(Box):
     def _update_items(self, new_items):
         self.clipboard_items = new_items
         self.display_clipboard_items()
+        return False
 
     def display_clipboard_items(self, filter_text=""):
         remove_handler(self._arranger_handler) if self._arranger_handler else None
         self.viewport.children = []
         self.selected_index = -1
-        
 
         filtered_items = []
         for item in self.clipboard_items:
-
             content = item.split('\t', 1)[1] if '\t' in item else item
             if filter_text.lower() in content.lower():
                 filtered_items.append(item)
-        
 
         if not filtered_items:
-
             container = Box(
                 name="no-clip-container",
                 orientation="v",
@@ -168,7 +214,6 @@ class ClipHistory(Box):
                 v_expand=True
             )
             
-
             label = Label(
                 name="no-clip",
                 markup=icons.clipboard,
@@ -179,7 +224,6 @@ class ClipHistory(Box):
             container.add(label)
             self.viewport.add(container)
             return
-            
 
         self._display_items_batch(filtered_items, 0, 10)
 
@@ -189,30 +233,27 @@ class ClipHistory(Box):
         for i in range(start, end):
             item = items[i]
             self.viewport.add(self.create_clipboard_item(item))
-        
 
         if end < len(items):
             GLib.idle_add(self._display_items_batch, items, end, batch_size)
         else:
-
             if self.search_entry.get_text() and self.viewport.get_children():
                 self.update_selection(0)
+        
+        return False
 
     def create_clipboard_item(self, item):
         parts = item.split('\t', 1)
         item_id = parts[0] if len(parts) > 1 else "0"
         content = parts[1] if len(parts) > 1 else item
-        
 
         display_text = content.strip()
         if len(display_text) > 100:
             display_text = display_text[:97] + "..."
-        
 
         is_image = self.is_image_data(content)
         
         if is_image:
-
             button = Button(
                 name="slot-button",
                 child=Box(
@@ -235,22 +276,16 @@ class ClipHistory(Box):
                 on_clicked=lambda *_, id=item_id: self.paste_item(id),
             )
 
-            self._load_image_preview_async(item_id, button)
+            GLib.Thread.new("image-preview", self._load_image_preview_thread, (item_id, button))
         else:
-
             button = self.create_text_item_button(item_id, display_text)
-        
 
         button.connect("key-press-event", lambda widget, event, id=item_id: self.on_item_key_press(widget, event, id))
         
-
         button.set_can_focus(True)
         button.add_events(Gdk.EventMask.KEY_PRESS_MASK)
             
         return button
-
-    def _load_image_preview_async(self, item_id, button):
-        GLib.Thread.new("image-preview", self._load_image_preview_thread, (item_id, button))
 
     def _load_image_preview_thread(self, data):
         item_id, button = data
@@ -260,13 +295,14 @@ class ClipHistory(Box):
                 GLib.idle_add(self._update_image_button, button, pixbuf)
                 return
             
-            result = subprocess.run(
-                ["cliphist", "decode", item_id],
-                capture_output=True,
-                check=True
-            )
+            stdout, error = self._run_command_sync(["cliphist", "decode", item_id])
+            
+            if error or not stdout:
+                print(f"Error decoding image: {error}")
+                return
+            
             loader = GdkPixbuf.PixbufLoader()
-            loader.write(result.stdout)
+            loader.write(stdout)
             loader.close()
             pixbuf = loader.get_pixbuf()
             width, height = pixbuf.get_width(), pixbuf.get_height()
@@ -282,7 +318,7 @@ class ClipHistory(Box):
             
             GLib.idle_add(self._update_image_button, button, pixbuf)
         except Exception as e:
-            print(f"Error loading image preview: {e}", file=sys.stderr)
+            print(f"Error loading image preview: {e}")
 
     def _update_image_button(self, button, pixbuf):
         box = button.get_child()
@@ -290,6 +326,7 @@ class ClipHistory(Box):
             image_widget = box.get_children()[0]
             if isinstance(image_widget, Image):
                 image_widget.set_from_pixbuf(pixbuf)
+        return False
 
     def create_text_item_button(self, item_id, display_text):
         return Button(
@@ -319,60 +356,86 @@ class ClipHistory(Box):
         )
 
     def is_image_data(self, content):
-        return (
-            content.startswith("data:image/") or
-            content.startswith("\x89PNG") or
-            content.startswith("GIF8") or
-            content.startswith("\xff\xd8\xff") or
-            re.match(r'^\s*<img\s+', content) is not None or
-            "binary" in content.lower() and any(ext in content.lower() for ext in ["jpg", "jpeg", "png", "bmp", "gif"])
-        )
+        """Проверяет, является ли контент изображением (без regex)."""
+        # Проверка magic bytes
+        if content.startswith("data:image/"):
+            return True
+        if content.startswith("\x89PNG"):
+            return True
+        if content.startswith("GIF8"):
+            return True
+        if content.startswith("\xff\xd8\xff"):
+            return True
+        
+        # Простая проверка на img тег
+        stripped = content.strip().lower()
+        if stripped.startswith("<img ") or stripped.startswith("<img>"):
+            return True
+        
+        # Проверка на binary с расширениями изображений
+        content_lower = content.lower()
+        if "binary" in content_lower:
+            image_extensions = ["jpg", "jpeg", "png", "bmp", "gif"]
+            for ext in image_extensions:
+                if ext in content_lower:
+                    return True
+        
+        return False
 
     def paste_item(self, item_id):
         GLib.Thread.new("paste-item", self._paste_item_thread, item_id)
 
     def _paste_item_thread(self, item_id):
         try:
-            result = subprocess.run(
-                ["cliphist", "decode", item_id],
-                capture_output=True,
-                check=True
-            )
-            subprocess.run(
-                ["wl-copy"],
-                input=result.stdout,
-                check=True
-            )
+            stdout, error = self._run_command_sync(["cliphist", "decode", item_id])
+            
+            if error or not stdout:
+                print(f"Error decoding clipboard item: {error}")
+                return
+            
+            _, error = self._run_command_sync(["wl-copy"], stdout)
+            
+            if error:
+                print(f"Error copying to clipboard: {error}")
+                return
+            
             GLib.idle_add(self.close)
-        except subprocess.CalledProcessError as e:
-            print(f"Error pasting clipboard item: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error pasting clipboard item: {e}")
 
     def delete_item(self, item_id):
         GLib.Thread.new("delete-item", self._delete_item_thread, item_id)
 
     def _delete_item_thread(self, item_id):
         try:
-            subprocess.run(
-                ["cliphist", "delete", item_id],
-                check=True
-            )
+            _, error = self._run_command_sync(["cliphist", "delete", item_id])
+            
+            if error:
+                print(f"Error deleting clipboard item: {error}")
+                return
+            
             self._pending_updates = True
             if not self._loading:
                 GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-        except subprocess.CalledProcessError as e:
-            print(f"Error deleting clipboard item: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error deleting clipboard item: {e}")
 
     def clear_history(self):
         GLib.Thread.new("clear-history", self._clear_history_thread, None)
 
     def _clear_history_thread(self, user_data):
         try:
-            subprocess.run(["cliphist", "wipe"], check=True)
+            _, error = self._run_command_sync(["cliphist", "wipe"])
+            
+            if error:
+                print(f"Error clearing clipboard history: {error}")
+                return
+            
             self._pending_updates = True
             if not self._loading:
                 GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-        except subprocess.CalledProcessError as e:
-            print(f"Error clearing clipboard history: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error clearing clipboard history: {e}")
 
     def filter_items(self, entry, *_):
         self.display_clipboard_items(entry.get_text())
@@ -397,12 +460,10 @@ class ClipHistory(Box):
 
     def update_selection(self, new_index):
         children = self.viewport.get_children()
-        
 
         if self.selected_index != -1 and self.selected_index < len(children):
             current_button = children[self.selected_index]
             current_button.get_style_context().remove_class("selected")
-            
 
         if new_index != -1 and new_index < len(children):
             new_button = children[new_index]
@@ -416,7 +477,6 @@ class ClipHistory(Box):
         children = self.viewport.get_children()
         if not children:
             return
-            
 
         if self.selected_index == -1 and delta == 1:
             new_index = 0
@@ -442,10 +502,8 @@ class ClipHistory(Box):
             visible_bottom = current_value + page_size
 
             if y < visible_top:
-
                 adj.set_value(y)
             elif y + height > visible_bottom:
-
                 new_value = y + height - page_size
                 adj.set_value(new_value)
             return False
@@ -455,7 +513,6 @@ class ClipHistory(Box):
         children = self.viewport.get_children()
         if not children or self.selected_index == -1 or self.selected_index >= len(self.clipboard_items):
             return
-            
 
         item_line = self.clipboard_items[self.selected_index]
         item_id = item_line.split('\t', 1)[0]
@@ -466,23 +523,18 @@ class ClipHistory(Box):
         if not children or self.selected_index == -1:
             return
             
-
         item_line = self.clipboard_items[self.selected_index]
         item_id = item_line.split('\t', 1)[0]
         self.delete_item(item_id)
 
     def on_item_key_press(self, widget, event, item_id):
         if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-
             self.paste_item(item_id)
             return True
         return False
 
     def __del__(self):
         try:
-            if hasattr(self, 'tmp_dir') and os.path.exists(self.tmp_dir):
-                import shutil
-                shutil.rmtree(self.tmp_dir)
             self.image_cache.clear()
         except Exception as e:
-            print(f"Error cleaning up temporary files: {e}", file=sys.stderr)
+            print(f"Error cleaning up: {e}")

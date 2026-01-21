@@ -1,7 +1,5 @@
 import gi
-
 gi.require_version("Gray", "0.1")
-import os
 
 from fabric.widgets.box import Box
 from gi.repository import Gdk, GdkPixbuf, GLib, Gray, Gtk
@@ -40,7 +38,8 @@ class SystemTray(Box):
                 return pm.as_pixbuf(self.pixel_size, GdkPixbuf.InterpType.HYPER)
 
             name = item.get_icon_name()
-            if name and os.path.exists(name):
+            # Замена os.path.exists на GLib.file_test
+            if name and GLib.file_test(name, GLib.FileTest.EXISTS):
                 return GdkPixbuf.Pixbuf.new_from_file_at_scale(
                     name, self.pixel_size, self.pixel_size, True
                 )                    

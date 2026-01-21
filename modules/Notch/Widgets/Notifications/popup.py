@@ -5,6 +5,8 @@ from .history import NotificationHistory, NotificationContainer
 
 
 class NotificationPopup(Window):
+    __slots__ = ('widgets', 'notification_history', 'notification_container', 'show_box')
+
     def __init__(self, **kwargs):
         super().__init__(
             name="notification-popup",
@@ -16,23 +18,19 @@ class NotificationPopup(Window):
             all_visible=True,
         )
 
-        self.widgets = kwargs.get("widgets", None)
+        self.widgets = kwargs.get("widgets")
+        self.notification_history = self.widgets.notification_history if self.widgets else NotificationHistory()
 
-        if self.widgets: self.notification_history = self.widgets.notification_history
-        else: self.notification_history = NotificationHistory()
-        
         self.notification_container = NotificationContainer(
             notification_history_instance=self.notification_history,
-            revealer_transition_type="slide-down" if True else "slide-up",
+            revealer_transition_type="slide-down",
         )
 
         self.show_box = Box()
         self.show_box.set_size_request(1, 1)
 
-        main_box = Box(
+        self.add(Box(
             name="notification-popup-box",
             orientation="v",
             children=[self.notification_container, self.show_box],
-        )
-        
-        self.add(main_box)
+        ))

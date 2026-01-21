@@ -220,3 +220,94 @@
 #wifi-network-slot {
     margin-bottom: 4px;
 }
+
+/* ===== СТИЛИ ДЛЯ КНОПОК В КОНТЕЙНЕРЕ ВВОДА ПАРОЛЯ ===== */
+
+/* Базовый стиль для кнопок (как у кнопки подключения в WiFi) */
+#password-entry-container button {
+    background-color: var(--surface);
+    border-radius: 8px;
+    padding: 8px;
+    margin: 2px;
+    border: 1px solid var(--surface-bright);
+    transition: all 0.1s ease;
+    font-weight: bold;
+}
+
+/* Кнопка Отмена - красные акценты */
+#password-entry-container button:nth-child(1) {
+    color: var(--red);
+    border-color: var(--red);
+}
+
+/* Кнопка ОК - синие акценты */
+#password-entry-container button:nth-child(2) {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+/* Hover эффекты для всех активных кнопок */
+#password-entry-container button:nth-child(1):hover,
+#password-entry-container button:nth-child(2):hover {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+}
+
+/* Специфичные hover цвета */
+#password-entry-container button:nth-child(1):hover {
+    border-color: var(--red);
+}
+
+/* Состояние disabled для кнопки ОК */
+#password-entry-container button:nth-child(2):disabled {
+    background-color: transparent;
+    border-color: var(--surface-bright);
+    color: var(--outline);
+    opacity: 0.6;
+}
+
+/* Active/pressed состояния */
+#password-entry-container button:nth-child(1):active,
+#password-entry-container button:nth-child(2):active,
+#password-entry-container button:nth-child(1).pressed,
+#password-entry-container button:nth-child(2).pressed {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: var(--cursor);
+}
+
+/* Особый случай для кнопки Отмена в active состоянии */
+#password-entry-container button:nth-child(1):active,
+#password-entry-container button:nth-child(1).pressed {
+    background-color: var(--red);
+    border-color: var(--red);
+    color: var(--cursor);
+}
+
+/* ===== ДОПОЛНИТЕЛЬНЫЕ СТИЛИ ДЛЯ КОНСИСТЕНТНОСТИ ===== */
+
+/* Поле ввода в контейнере */
+#password-entry-container entry {
+    background-color: var(--surface);
+    border: 1px solid var(--surface-bright);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 12px;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+/* Эффект фокуса для поля ввода */
+#password-entry-container entry:focus {
+    border-color: var(--primary);
+    border-width: 1px;
+}
+
+/* Контейнер для пароля */
+#password-entry-container {
+    background-color: var(--surface);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 8px;
+    border: 1px solid var(--surface-bright);
+}

@@ -1,80 +1,40 @@
 #!/usr/bin/env bash
 
-# Конфигурация сетки
-ROWS=3
-COLS=3
+# Конфигурация
+COLS=3 ROWS=3
 
-# Проверка аргументов
-if [ "$#" -ne 1 ]; then
-    exit 1
-fi
-DIRECTION=$1
+# 1. Получение ID.
+# Используем встроенный regex BASH (быстрее внешних утилит).
+# Если regex не нашел ID, считаем, что ws=5.
+[[ $(hyprctl activeworkspace -j) =~ \"id\":\ *([0-9]+) ]] && ws=${BASH_REMATCH[1]} || ws=5
 
-# --- 1. Получение текущего Workspace ID ---
-# Используем grep/awk для извлечения ID активного воркспейса.
-# Это работает быстрее, чем python/jq и не требует зависимостей.
-CURRENT_WS=$(hyprctl activeworkspace -j | grep '"id":' | head -n 1 | awk '{print $2}' | tr -d ',')
+# Проверка границ (если мы на scratchpad или workspace > 9, сбрасываем на центр)
+(( ws < 1 || ws > COLS * ROWS )) && ws=5
 
-# Валидация: если не число или пусто, ставим дефолт (5)
-if [[ -z "$CURRENT_WS" ]] || ! [[ "$CURRENT_WS" =~ ^[0-9]+$ ]]; then
-    CURRENT_WS=5
-fi
+# 2. Вычисление координат (0-индекс)
+(( row = (ws - 1) / COLS, col = (ws - 1) % COLS ))
 
-# Если текущий воркспейс выходит за пределы сетки (например, scratchpad), сбрасываем на 5
-if (( CURRENT_WS < 1 || CURRENT_WS > 9 )); then
-    CURRENT_WS=5
-fi
-
-# --- 2. Вычисление текущей позиции (Row/Col) ---
-# Индексы: 0..8
-IDX=$((CURRENT_WS - 1))
-CURRENT_ROW=$((IDX / COLS))
-CURRENT_COL=$((IDX % COLS))
-
-# --- 3. Вычисление следующей позиции ---
-NEXT_ROW=$CURRENT_ROW
-NEXT_COL=$CURRENT_COL
-
-case $DIRECTION in
-    "nextR")
-        NEXT_COL=$(( (CURRENT_COL + 1) % COLS ))
-        ;;
-    "nextL")
-        # Добавляем COLS, чтобы корректно обработать переход 0 -> 2
-        NEXT_COL=$(( (CURRENT_COL - 1 + COLS) % COLS ))
-        ;;
-    "nextU")
-        NEXT_ROW=$(( (CURRENT_ROW - 1 + ROWS) % ROWS ))
-        ;;
-    "nextD")
-        NEXT_ROW=$(( (CURRENT_ROW + 1) % ROWS ))
-        ;;
-    *)
-        exit 1
-        ;;
+# 3. Вычисление новой позиции
+case $1 in
+    nextR) (( col = (col + 1) % COLS )) ;;        # Вправо
+    nextL) (( col = (col + COLS - 1) % COLS )) ;; # Влево
+    nextD) (( row = (row + 1) % ROWS )) ;;        # Вниз
+    nextU) (( row = (row + ROWS - 1) % ROWS )) ;; # Вверх
+    *) exit 1 ;;
 esac
 
-# --- 4. Преобразование позиции обратно в ID ---
-# Формула: (Row * Cols) + Col + 1
-NEXT_WS=$(( (NEXT_ROW * COLS) + NEXT_COL + 1 ))
+# 4. Обратно в ID
+(( next = row * COLS + col + 1 ))
 
-# --- 5. Выполнение команд Hyprland ---
-# Примечание: movetoworkspace перемещает активное окно на указанный WS
-
-if [[ "$DIRECTION" == "nextU" ]] || [[ "$DIRECTION" == "nextD" ]]; then
-    # Вертикальная анимация
-    # Используем --batch для небольшой оптимизации, но разделяем команды анимации,
-    # чтобы они применились в правильном порядке.
-    
-    # 1. Меняем анимацию на вертикальную
-    hyprctl keyword animation workspaces,1,6,overshot,slidevert > /dev/null
-    
-    # 2. Перемещаем окно
-    hyprctl dispatch movetoworkspace "$NEXT_WS" > /dev/null
-    
-    # 3. Возвращаем обычную анимацию
-    hyprctl keyword animation workspaces,1,6,overshot,slide > /dev/null
+# 5. Выполнение (movetoworkspace перемещает окно)
+# Используем exec для замены процесса оболочки процессом hyprctl
+if [[ $1 == next[UD] ]]; then
+    # Вертикаль: меняем анимацию -> двигаем окно -> возвращаем анимацию (в одном запросе)
+    exec hyprctl --batch "\
+keyword animation workspaces,1,6,overshot,slidevert;\
+dispatch movetoworkspace $next;\
+keyword animation workspaces,1,6,overshot,slide" >/dev/null
 else
-    # Горизонтальное перемещение (без смены анимации)
-    hyprctl dispatch movetoworkspace "$NEXT_WS" > /dev/null
+    # Горизонталь: просто двигаем
+    exec hyprctl dispatch movetoworkspace "$next" >/dev/null
 fi

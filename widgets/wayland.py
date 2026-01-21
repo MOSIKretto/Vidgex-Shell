@@ -1,6 +1,5 @@
 from fabric.widgets.window import Window
 from gi.repository import Gdk, Gtk, GtkLayerShell
-import cairo
 
 
 class WaylandWindow(Window):
@@ -210,7 +209,12 @@ class WaylandWindow(Window):
             self._update_input_region()
 
     def _update_input_region(self):
-        region = cairo.Region() if self._pass_through else None
+        region = None
+        if self._pass_through:
+            # Импортируем cairo только при необходимости создать пустой регион
+            import cairo
+            region = cairo.Region()
+        
         self.input_shape_combine_region(region)
 
     def show(self):

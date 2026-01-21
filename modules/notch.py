@@ -16,8 +16,8 @@ from modules.Notch.tools import Toolbox
 
 from services.icon_resolver import IconResolver
 from widgets.corners import MyCorner
-from widgets.wayland import WaylandWindow as Window
 
+from widgets.wayland import WaylandWindow as Window
 
 class Notch(Window):
     """Оптимизированный виджет Notch с ленивой загрузкой."""

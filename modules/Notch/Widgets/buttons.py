@@ -5,22 +5,20 @@ from fabric.widgets.label import Label
 
 from gi.repository import Gdk, GLib, Gtk
 
-import subprocess
-from typing import Optional, List, Callable
-from dataclasses import dataclass
-
 import modules.icons as icons
 from modules.Notch.Widgets.Network.network import NetworkClient
 
 
-@dataclass(frozen=True)
 class WifiStrengthThresholds:
-    WEAK: int = 25
-    FAIR: int = 50
-    GOOD: int = 75
+    """Пороги силы сигнала Wi-Fi (замена dataclass)."""
+    __slots__ = ()
+    WEAK = 25
+    FAIR = 50
+    GOOD = 75
 
 
-def add_hover_cursor(widget: Gtk.Widget) -> None:
+def add_hover_cursor(widget):
+    """Добавляет курсор-указатель при наведении на виджет."""
     widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
     
     def on_enter(w, event):
@@ -39,23 +37,25 @@ def add_hover_cursor(widget: Gtk.Widget) -> None:
 
 
 class ProcessMonitor:
-    def __init__(self, pattern: str, timeout: float = 2.0):
+    """Монитор процессов через GLib.spawn_command_line_sync."""
+    
+    def __init__(self, pattern, timeout=2.0):
         self.pattern = pattern
         self.timeout = timeout
     
-    def check(self) -> bool:
+    def check(self):
+        """Синхронная проверка наличия процесса."""
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", self.pattern],
-                capture_output=True,
-                timeout=self.timeout
+            success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
+                f"pgrep -f '{self.pattern}'"
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, Exception):
+            return exit_status == 0
+        except Exception:
             return False
 
 
-def run_in_thread(func: Callable, callback: Optional[Callable] = None) -> None:
+def run_in_thread(func, callback=None):
+    """Выполняет функцию в отдельном потоке."""
     def worker(user_data):
         result = func()
         if callback:
@@ -65,10 +65,13 @@ def run_in_thread(func: Callable, callback: Optional[Callable] = None) -> None:
 
 
 class StyleManager:
-    def __init__(self, widgets: List[Gtk.Widget]):
+    """Управляет стилями для группы виджетов."""
+    
+    def __init__(self, widgets):
         self._styled_widgets = widgets
     
-    def set_disabled(self, disabled: bool) -> None:
+    def set_disabled(self, disabled):
+        """Устанавливает или убирает класс 'disabled' для всех виджетов."""
         method = "add_style_class" if disabled else "remove_style_class"
         for widget in self._styled_widgets:
             if hasattr(widget, method):
@@ -76,17 +79,14 @@ class StyleManager:
 
 
 class ButtonContentBuilder:
+    """Строитель содержимого кнопок."""
+    
     @staticmethod
-    def create_labeled_box(label_widget: Label) -> Box:
+    def create_labeled_box(label_widget):
         return Box(children=[label_widget, Box(h_expand=True)])
     
     @staticmethod
-    def create_status_layout(
-        icon: Label,
-        title_label: Label,
-        status_label: Label,
-        spacing: int = 10
-    ) -> Box:
+    def create_status_layout(icon, title_label, status_label, spacing=10):
         title_box = ButtonContentBuilder.create_labeled_box(title_label)
         status_box = ButtonContentBuilder.create_labeled_box(status_label)
         
@@ -105,9 +105,9 @@ class ButtonContentBuilder:
         )
 
 
-# ================== NetworkButton ==================
-
 class NetworkButton(Box):
+    """Кнопка управления сетью Wi-Fi."""
+    
     WIFI_ICONS = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
     ANIMATION_ICONS = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
     ANIMATION_INTERVAL = 500
@@ -121,10 +121,10 @@ class NetworkButton(Box):
         self._notch = notch
         
         self._network_client = NetworkClient()
-        self._animation_timeout_id: Optional[int] = None
-        self._update_timeout_id: Optional[int] = None
+        self._animation_timeout_id = None
+        self._update_timeout_id = None
         self._animation_step = 0
-        self._style_manager: Optional[StyleManager] = None
+        self._style_manager = None
         
         self._create_ui()
         self._connect_signals()
@@ -194,7 +194,7 @@ class NetworkButton(Box):
             wifi.connect('notify::ssid', lambda *_: self._schedule_update())
             self._schedule_update()
 
-    def _get_wifi_icon(self, strength: int) -> str:
+    def _get_wifi_icon(self, strength):
         if strength < self.THRESHOLDS.WEAK:
             return self.WIFI_ICONS[0]
         elif strength < self.THRESHOLDS.FAIR:
@@ -216,7 +216,7 @@ class NetworkButton(Box):
             GLib.source_remove(self._animation_timeout_id)
             self._animation_timeout_id = None
 
-    def _animate_searching(self) -> bool:
+    def _animate_searching(self):
         wifi = self._network_client.wifi_device
         if not wifi or not wifi.enabled:
             self._stop_animation()
@@ -265,9 +265,9 @@ class NetworkButton(Box):
             self._start_animation()
 
 
-# ================== BluetoothButton ==================
-
 class BluetoothButton(Box):
+    """Кнопка управления Bluetooth."""
+    
     def __init__(self, widgets=None, notch=None):
         super().__init__()
         
@@ -290,37 +290,49 @@ class BluetoothButton(Box):
                 except Exception:
                     pass
     
-    def _get_bluetooth_power_state(self) -> bool:
+    def _on_power_changed(self, *args):
+        self.update_state()
+    
+    def _get_bluetooth_power_state(self):
+        """Получает состояние питания Bluetooth."""
         try:
             monitor = ProcessMonitor("bluetoothd")
             running = monitor.check()
             if running:
-                result = subprocess.run(
-                    ["bluetoothctl", "show"], capture_output=True, text=True, timeout=2
+                success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
+                    "bluetoothctl show"
                 )
-                if result.returncode == 0:
-                    for line in result.stdout.splitlines():
+                if exit_status == 0 and stdout:
+                    output = stdout.decode('utf-8', errors='ignore')
+                    for line in output.splitlines():
                         if "Powered:" in line:
                             return "yes" in line
-            result = subprocess.run(["rfkill", "list", "bluetooth"], capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                return "unblocked" in result.stdout.lower()
+            
+            # Fallback to rfkill
+            success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
+                "rfkill list bluetooth"
+            )
+            if exit_status == 0 and stdout:
+                output = stdout.decode('utf-8', errors='ignore').lower()
+                return "soft blocked: no" in output and "hard blocked: no" in output
         except Exception:
             return False
         return False
     
-    def _toggle_bluetooth_power(self) -> bool:
+    def _toggle_bluetooth_power(self):
+        """Переключает питание Bluetooth."""
         try:
             monitor = ProcessMonitor("bluetoothd")
             is_running = monitor.check()
             if is_running:
                 current_state = self._get_bluetooth_power_state()
                 new_state = "off" if current_state else "on"
-                subprocess.run(["bluetoothctl", "power", new_state], capture_output=True, timeout=3)
+                GLib.spawn_command_line_sync(f"bluetoothctl power {new_state}")
                 return not current_state
+            
             current_state = self._get_bluetooth_power_state()
             action = "unblock" if not current_state else "block"
-            subprocess.run(["rfkill", action, "bluetooth"], capture_output=True, timeout=3)
+            GLib.spawn_command_line_sync(f"rfkill {action} bluetooth")
             return not current_state
         except Exception:
             return self._is_bluetooth_enabled
@@ -354,14 +366,14 @@ class BluetoothButton(Box):
         self.add(self.bluetooth_status_button)
         self.add(self.bluetooth_menu_button)
     
-    def _update_ui(self, is_enabled: Optional[bool] = None):
+    def _update_ui(self, is_enabled=None):
         if is_enabled is None:
             is_enabled = self._get_bluetooth_power_state()
         self._is_bluetooth_enabled = is_enabled
         self.bluetooth_icon.set_markup(icons.bluetooth if is_enabled else icons.bluetooth_off)
         self.bluetooth_status_text.set_label("Включено" if is_enabled else "Выключено")
     
-    def update_state(self):
+    def update_state(self, *args):
         run_in_thread(self._get_bluetooth_power_state, self._update_ui)
     
     def _open_bt_menu(self):
@@ -370,23 +382,23 @@ class BluetoothButton(Box):
         elif hasattr(self._widgets, 'show_bt'):
             self._widgets.show_bt()
         else:
-            try: 
-                subprocess.Popen(["blueman-manager"])
-            except Exception: 
+            try:
+                GLib.spawn_command_line_async("blueman-manager")
+            except Exception:
                 pass
 
 
-# ================== ToggleServiceButton, NightModeButton, CaffeineButton ==================
-
 class ToggleServiceButton(Button):
-    PROCESS_PATTERN: str = ""
-    START_COMMAND: str = ""
-    STOP_COMMAND: str = ""
-    BUTTON_NAME: str = ""
-    ICON: str = ""
-    LABEL_TEXT: str = ""
-    ENABLED_TEXT: str = "Включено"
-    DISABLED_TEXT: str = "Выключено"
+    """Базовый класс для кнопок переключения сервисов."""
+    
+    PROCESS_PATTERN = ""
+    START_COMMAND = ""
+    STOP_COMMAND = ""
+    BUTTON_NAME = ""
+    ICON = ""
+    LABEL_TEXT = ""
+    ENABLED_TEXT = "Включено"
+    DISABLED_TEXT = "Выключено"
     
     def __init__(self):
         self._icon_label = Label(name=f"{self.BUTTON_NAME}-icon", markup=self.ICON)
@@ -412,7 +424,7 @@ class ToggleServiceButton(Button):
     def _on_clicked(self, *args):
         run_in_thread(self._toggle_service, self._update_ui)
 
-    def _toggle_service(self) -> bool:
+    def _toggle_service(self):
         monitor = ProcessMonitor(self.PROCESS_PATTERN)
         is_running = monitor.check()
         if is_running:
@@ -426,13 +438,15 @@ class ToggleServiceButton(Button):
         monitor = ProcessMonitor(self.PROCESS_PATTERN)
         run_in_thread(lambda: monitor.check(), self._update_ui)
 
-    def _update_ui(self, is_enabled: bool):
+    def _update_ui(self, is_enabled):
         self._status_label.set_label(self.ENABLED_TEXT if is_enabled else self.DISABLED_TEXT)
         self._style_manager.set_disabled(not is_enabled)
         return False
 
 
 class NightModeButton(ToggleServiceButton):
+    """Кнопка ночного режима (hyprsunset)."""
+    
     PROCESS_PATTERN = "hyprsunset"
     START_COMMAND = "hyprsunset -t 3500"
     STOP_COMMAND = "pkill hyprsunset"
@@ -442,6 +456,8 @@ class NightModeButton(ToggleServiceButton):
 
 
 class CaffeineButton(ToggleServiceButton):
+    """Кнопка режима Caffeine (предотвращение засыпания)."""
+    
     PROCESS_PATTERN = "vidgex-inhibit"
     START_COMMAND = "python ~/.config/Vidgex-Shell/scripts/inhibit.py"
     STOP_COMMAND = "pkill -f vidgex-inhibit"
@@ -450,38 +466,65 @@ class CaffeineButton(ToggleServiceButton):
     LABEL_TEXT = "Caffeine"
     
     def __init__(self):
-        self._inhibit_process: Optional[subprocess.Popen] = None
+        self._inhibit_pid = None
         super().__init__()
 
-    def _toggle_service(self) -> bool:
+    def _toggle_service(self):
         try:
-            if self._inhibit_process and self._inhibit_process.poll() is None:
-                self._inhibit_process.terminate()
-                try: 
-                    self._inhibit_process.wait(timeout=5)
-                except subprocess.TimeoutExpired: 
-                    self._inhibit_process.kill()
-                self._inhibit_process = None
-                return False
+            # Проверяем, запущен ли наш процесс по PID
+            if self._inhibit_pid is not None:
+                # Проверяем, жив ли процесс с этим PID
+                try:
+                    success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
+                        f"kill -0 {self._inhibit_pid}"
+                    )
+                    if exit_status == 0:
+                        # Процесс жив, убиваем его
+                        GLib.spawn_command_line_sync(f"kill {self._inhibit_pid}")
+                        self._inhibit_pid = None
+                        return False
+                except Exception:
+                    pass
+                self._inhibit_pid = None
             
+            # Проверяем через pgrep
             monitor = ProcessMonitor(self.PROCESS_PATTERN)
             if monitor.check():
                 exec_shell_command_async(self.STOP_COMMAND)
+                self._inhibit_pid = None
                 return False
             
-            self._inhibit_process = subprocess.Popen(
-                self.START_COMMAND,
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            # Запускаем процесс и сохраняем PID
+            try:
+                # GLib.spawn_async возвращает PID
+                pid, stdin, stdout, stderr = GLib.spawn_async(
+                    argv=["/bin/sh", "-c", self.START_COMMAND],
+                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+                )
+                self._inhibit_pid = pid
+                
+                # Добавляем watch чтобы очистить PID когда процесс завершится
+                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_process_exit)
+            except Exception:
+                # Fallback - просто запускаем без отслеживания PID
+                GLib.spawn_command_line_async(self.START_COMMAND)
+                self._inhibit_pid = None
+            
             return True
         except Exception:
             return False
+    
+    def _on_process_exit(self, pid, status):
+        """Вызывается когда процесс завершается."""
+        if self._inhibit_pid == pid:
+            self._inhibit_pid = None
+        # Обновляем UI
+        GLib.idle_add(self.update_state)
 
-# ================== Buttons Grid Container ==================
 
 class Buttons(Gtk.Grid):
+    """Сетка кнопок быстрых настроек."""
+    
     def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")
         self._widgets = widgets

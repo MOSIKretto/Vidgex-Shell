@@ -1,12 +1,9 @@
-from fabric.utils.helpers import exec_shell_command_async
+from fabric.utils.helpers import exec_shell_command, exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
-from gi.repository import GLib, Gdk
-
-import os
-from pathlib import Path
+from gi.repository import GLib, Gdk, Gio
 
 import modules.icons as icons
 
@@ -16,7 +13,9 @@ class Toolbox(Box):
         super().__init__(name="toolbox", spacing=4, visible=True, **kwargs)
         self.notch = kwargs.get("notch")
         self._buttons_list = []
-        self._path = str(Path(__file__).parent.parent.parent / "scripts")
+        
+        current_file = Gio.File.new_for_path(__file__)
+        self._path = current_file.get_parent().get_parent().get_parent().get_child("scripts").get_path()
         
         self._setup_ui()
         self.connect("key-press-event", self._on_key_press)
@@ -64,9 +63,9 @@ class Toolbox(Box):
         exec_shell_command_async(cmd)
 
     def _update_ui_state(self, *args):
-        is_rec = any(os.path.exists(f"/proc/{p}/cmdline") and 
-                     b"gpu-screen-recorder" in open(f"/proc/{p}/cmdline", "rb").read()
-                     for p in os.listdir("/proc") if p.isdigit())
+        # Синхронная проверка как в оригинале
+        output = exec_shell_command("pgrep -f gpu-screen-recorder")
+        is_rec = bool(output and output.strip())
         
         self.btn_rec.get_child().set_markup(icons.stop if is_rec else icons.screenrecord)
         ctx = self.btn_rec.get_style_context()

@@ -1,6 +1,5 @@
 from fabric.widgets.image import Image
 from gi.repository import Gtk
-import math
 
 
 class CustomImage(Image):
@@ -8,18 +7,21 @@ class CustomImage(Image):
         width = self.get_allocated_width()
         height = self.get_allocated_height()
         radius = self.get_style_context().get_property("border-radius", Gtk.StateFlags.NORMAL)
+        
+        # Определяем константу локально
+        PI = 3.141592653589793
 
         cr.save()
 
         cr.move_to(radius, 0)
         cr.line_to(width - radius, 0)
-        cr.arc(width - radius, radius, radius, -math.pi / 2, 0)
+        cr.arc(width - radius, radius, radius, -PI / 2, 0)
         cr.line_to(width, height - radius)
-        cr.arc(width - radius, height - radius, radius, 0, math.pi / 2)
+        cr.arc(width - radius, height - radius, radius, 0, PI / 2)
         cr.line_to(radius, height)
-        cr.arc(radius, height - radius, radius, math.pi / 2, math.pi)
+        cr.arc(radius, height - radius, radius, PI / 2, PI)
         cr.line_to(0, radius)
-        cr.arc(radius, radius, radius, math.pi, 3 * math.pi / 2)
+        cr.arc(radius, radius, radius, PI, 3 * PI / 2)
         cr.close_path()
 
         cr.clip()

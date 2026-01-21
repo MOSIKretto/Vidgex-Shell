@@ -1,8 +1,6 @@
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, GObject, GdkPixbuf
-import os
-import re
 
 
 class IconResolver(GObject.GObject):
@@ -19,32 +17,50 @@ class IconResolver(GObject.GObject):
         # Директории для поиска иконок напрямую
         self._icon_dirs = self._get_icon_dirs()
 
+    def _join(self, *args) -> str:
+        """Ручная реализация join для путей Unix без использования os или GLib"""
+        parts = [str(arg) for arg in args if arg]
+        if not parts:
+            return ""
+        
+        path = parts[0]
+        for part in parts[1:]:
+            # Убираем слеш в конце текущего пути
+            if path.endswith("/"):
+                path = path[:-1]
+            # Убираем слеш в начале добавляемой части
+            if part.startswith("/"):
+                part = part[1:]
+            path = path + "/" + part
+        return path
+
     def _get_desktop_dirs(self) -> list:
         """Получить все директории с .desktop файлами"""
         dirs = []
         
         # Системные директории
         for base in GLib.get_system_data_dirs():
-            dirs.append(os.path.join(base, "applications"))
+            dirs.append(self._join(base, "applications"))
         
         # Пользовательская директория
         user_data = GLib.get_user_data_dir()
         if user_data:
-            dirs.append(os.path.join(user_data, "applications"))
+            dirs.append(self._join(user_data, "applications"))
         
         # Flatpak директории
-        flatpak_dirs = [
-            os.path.expanduser("~/.local/share/flatpak/exports/share/applications"),
-            "/var/lib/flatpak/exports/share/applications"
-        ]
-        dirs.extend(flatpak_dirs)
+        home = GLib.get_home_dir()
+        flatpak_user = self._join(home, ".local/share/flatpak/exports/share/applications")
+        flatpak_sys = "/var/lib/flatpak/exports/share/applications"
+        
+        dirs.append(flatpak_user)
+        dirs.append(flatpak_sys)
         
         # Snap директории
         snap_dir = "/var/lib/snapd/desktop/applications"
-        if os.path.exists(snap_dir):
+        if GLib.file_test(snap_dir, GLib.FileTest.EXISTS):
             dirs.append(snap_dir)
         
-        return [d for d in dirs if os.path.isdir(d)]
+        return [d for d in dirs if GLib.file_test(d, GLib.FileTest.IS_DIR)]
 
     def _get_icon_dirs(self) -> list:
         """Получить директории с иконками"""
@@ -56,13 +72,13 @@ class IconResolver(GObject.GObject):
         
         # Иконки приложений
         for base in GLib.get_system_data_dirs():
-            dirs.append(os.path.join(base, "icons"))
+            dirs.append(self._join(base, "icons"))
         
         user_data = GLib.get_user_data_dir()
         if user_data:
-            dirs.append(os.path.join(user_data, "icons"))
+            dirs.append(self._join(user_data, "icons"))
         
-        return [d for d in dirs if os.path.isdir(d)]
+        return [d for d in dirs if GLib.file_test(d, GLib.FileTest.IS_DIR)]
 
     def _normalize_name(self, name: str) -> str:
         """Нормализовать имя приложения"""
@@ -78,6 +94,28 @@ class IconResolver(GObject.GObject):
                 name = name[:-len(suffix)]
         
         return name
+
+    def _camel_case_split(self, identifier: str) -> list:
+        """Ручное разбиение CamelCase без regex"""
+        parts = []
+        if not identifier:
+            return parts
+            
+        start = 0
+        for i in range(1, len(identifier)):
+            # Переход от строчной к заглавной (camelCase)
+            if identifier[i].isupper() and not identifier[i-1].isupper():
+                parts.append(identifier[start:i])
+                start = i
+            # Обработка аббревиатур (XMLHttp -> XML, Http)
+            elif (identifier[i].isupper() and i + 1 < len(identifier) and 
+                  not identifier[i+1].isupper()):
+                if start != i:
+                    parts.append(identifier[start:i])
+                    start = i
+                    
+        parts.append(identifier[start:])
+        return parts
 
     def _generate_name_variants(self, app_id: str) -> list:
         """Генерировать варианты имени для поиска"""
@@ -121,12 +159,26 @@ class IconResolver(GObject.GObject):
                 variants.add(app_id[:-len(suffix)])
         
         # Camel case разбор (например: TelegramDesktop -> telegram, desktop)
-        camel_parts = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', app_id)
+        camel_parts = self._camel_case_split(app_id)
         if len(camel_parts) > 1:
             variants.add(camel_parts[0].lower())
             variants.add("-".join(p.lower() for p in camel_parts))
         
         return [v for v in variants if v and len(v) > 1]
+
+    def _listdir(self, path: str) -> list:
+        """Аналог os.listdir на GLib"""
+        files = []
+        try:
+            d = GLib.Dir.open(path, 0)
+            while True:
+                name = d.read_name()
+                if not name:
+                    break
+                files.append(name)
+        except Exception:
+            pass
+        return files
 
     def _find_desktop_file(self, app_id: str) -> str | None:
         """Найти .desktop файл для приложения"""
@@ -146,9 +198,8 @@ class IconResolver(GObject.GObject):
         
         # Ищем в директориях
         for desktop_dir in self._desktop_dirs:
-            try:
-                files = os.listdir(desktop_dir)
-            except OSError:
+            files = self._listdir(desktop_dir)
+            if not files:
                 continue
             
             files_lower = {f.lower(): f for f in files}
@@ -156,13 +207,13 @@ class IconResolver(GObject.GObject):
             for name in desktop_names:
                 name_lower = name.lower()
                 if name_lower in files_lower:
-                    return os.path.join(desktop_dir, files_lower[name_lower])
+                    return self._join(desktop_dir, files_lower[name_lower])
             
             # Поиск по частичному совпадению
             for variant in variants:
                 for file_lower, file_orig in files_lower.items():
                     if file_lower.endswith('.desktop') and variant in file_lower:
-                        return os.path.join(desktop_dir, file_orig)
+                        return self._join(desktop_dir, file_orig)
         
         return None
 
@@ -176,42 +227,70 @@ class IconResolver(GObject.GObject):
         except Exception:
             return None
 
+    def _recursive_find(self, base_dir: str, target_names: set, max_depth: int = 3, current_depth: int = 0) -> str | None:
+        """Рекурсивный поиск файлов без os.walk"""
+        if current_depth > max_depth:
+            return None
+            
+        try:
+            d = GLib.Dir.open(base_dir, 0)
+            entries = []
+            while True:
+                name = d.read_name()
+                if not name:
+                    break
+                entries.append(name)
+        except Exception:
+            return None
+            
+        # Сначала проверяем файлы в текущей директории
+        files_lower = {}
+        subdirs = []
+        
+        for name in entries:
+            full_path = self._join(base_dir, name)
+            if GLib.file_test(full_path, GLib.FileTest.IS_DIR):
+                subdirs.append(full_path)
+            else:
+                files_lower[name.lower()] = full_path
+                
+        # Проверка совпадений
+        for target in target_names:
+            if target in files_lower:
+                return files_lower[target]
+                
+        # Рекурсивный спуск
+        for subdir in subdirs:
+            result = self._recursive_find(subdir, target_names, max_depth, current_depth + 1)
+            if result:
+                return result
+                
+        return None
+
     def _find_icon_file(self, app_id: str) -> str | None:
         """Искать файл иконки напрямую в директориях"""
         variants = self._generate_name_variants(app_id)
         extensions = ('.png', '.svg', '.xpm', '.ico')
         
+        # Подготовка списка имен файлов для поиска (name.ext) в нижнем регистре
+        target_files = set()
+        for variant in variants:
+            for ext in extensions:
+                target_files.add(f"{variant}{ext}".lower())
+
         for icon_dir in self._icon_dirs:
-            try:
-                # Поиск в корне директории (pixmaps)
-                if 'pixmaps' in icon_dir:
-                    try:
-                        files = os.listdir(icon_dir)
-                        files_lower = {f.lower(): os.path.join(icon_dir, f) for f in files}
-                        
-                        for variant in variants:
-                            for ext in extensions:
-                                check_name = f"{variant}{ext}"
-                                if check_name in files_lower:
-                                    return files_lower[check_name]
-                    except OSError:
-                        continue
-                
-                # Рекурсивный поиск в hicolor и других темах
-                for root, dirs, files in os.walk(icon_dir):
-                    files_lower = {f.lower(): os.path.join(root, f) for f in files}
-                    for variant in variants:
-                        for ext in extensions:
-                            check_name = f"{variant}{ext}"
-                            if check_name in files_lower:
-                                return files_lower[check_name]
-                    
-                    # Ограничиваем глубину поиска
-                    if root.count(os.sep) - icon_dir.count(os.sep) > 3:
-                        dirs.clear()
-                        
-            except OSError:
-                continue
+            if 'pixmaps' in icon_dir:
+                # В pixmaps ищем плоским списком
+                files = self._listdir(icon_dir)
+                files_lower = {f.lower(): self._join(icon_dir, f) for f in files}
+                for target in target_files:
+                    if target in files_lower:
+                        return files_lower[target]
+            else:
+                # В остальных папках ищем рекурсивно
+                found = self._recursive_find(icon_dir, target_files)
+                if found:
+                    return found
         
         return None
 
@@ -250,8 +329,8 @@ class IconResolver(GObject.GObject):
         if desktop_path:
             icon = self._get_icon_from_desktop(desktop_path)
             if icon:
-                # Если это путь к файлу
-                if os.path.isabs(icon) and os.path.exists(icon):
+                # Если это путь к файлу (проверка на абсолютный путь строковым методом)
+                if icon.startswith("/") and GLib.file_test(icon, GLib.FileTest.EXISTS):
                     return icon
                 # Если это имя иконки
                 if self.theme.has_icon(icon):
@@ -273,8 +352,8 @@ class IconResolver(GObject.GObject):
         icon_name = self.get_icon_name(app_id)
         
         try:
-            # Если это путь к файлу
-            if os.path.isabs(icon_name) and os.path.exists(icon_name):
+            # Если это путь к файлу (проверка через строку)
+            if icon_name.startswith("/") and GLib.file_test(icon_name, GLib.FileTest.EXISTS):
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file(icon_name)
                 if pixbuf.get_width() != size or pixbuf.get_height() != size:
                     pixbuf = pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)

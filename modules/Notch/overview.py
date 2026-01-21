@@ -1,6 +1,3 @@
-import json
-import cairo
-
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk
@@ -28,18 +25,8 @@ connection = Hyprland()
 icon_resolver = IconResolver()
 
 
-def create_surface_from_widget(widget: Gtk.Widget) -> cairo.ImageSurface:
-    alloc = widget.get_allocation()
-    surface = cairo.ImageSurface(cairo.Format.ARGB32, alloc.width, alloc.height)
-    cr = cairo.Context(surface)
-    cr.set_source_rgba(0, 0, 0, 0)
-    cr.paint()
-    widget.draw(cr)
-    return surface
-
-
 class HyprlandWindowButton(Button):
-    __slots__ = ("address", "app_id", "title", "size", "desktop_app")
+    __slots__ = ("address", "app_id", "title", "size", "desktop_app", "_icon_pixbuf")
 
     def __init__(self, overview, title, address, app_id, size, transform=0):
         self.address = address
@@ -49,11 +36,11 @@ class HyprlandWindowButton(Button):
         self.desktop_app = overview.find_app(app_id)
         
         icon_size = int(min(size) * 0.5)
-        icon_pixbuf = icon_resolver.resolve_icon(app_id, icon_size, self.desktop_app)
+        self._icon_pixbuf = icon_resolver.resolve_icon(app_id, icon_size, self.desktop_app)
 
         super().__init__(
             name="overview-client-box",
-            image=Image(pixbuf=icon_pixbuf),
+            image=Image(pixbuf=self._icon_pixbuf),
             tooltip_text=title,
             size=size,
             on_clicked=self._focus,
@@ -75,7 +62,10 @@ class HyprlandWindowButton(Button):
         data.set_text(self.address, len(self.address))
 
     def _on_drag_begin(self, _, context):
-        Gtk.drag_set_icon_surface(context, create_surface_from_widget(self))
+        if self._icon_pixbuf:
+            Gtk.drag_set_icon_pixbuf(context, self._icon_pixbuf, 0, 0)
+        else:
+            Gtk.drag_set_icon_default(context)
 
 
 class WorkspaceEventBox(EventBox):
@@ -160,12 +150,30 @@ class Overview(Box):
 
         self.children = []
 
+        try:
+            # Пробуем разные методы получения данных
+            monitors_data = connection.get_monitors()
+            print(f"[DEBUG] monitors type: {type(monitors_data)}, data: {monitors_data}")
+        except Exception as e:
+            print(f"[ERROR] get_monitors failed: {e}")
+            # Fallback на старый метод
+            import json
+            monitors_data = json.loads(connection.send_command("j/monitors").reply)
+
+        try:
+            clients_data = connection.get_clients()
+            print(f"[DEBUG] clients type: {type(clients_data)}, count: {len(clients_data) if isinstance(clients_data, list) else 'N/A'}")
+        except Exception as e:
+            print(f"[ERROR] get_clients failed: {e}")
+            import json
+            clients_data = json.loads(connection.send_command("j/clients").reply)
+
         monitors = {
             m["id"]: (m["x"], m["y"], m["transform"])
-            for m in json.loads(connection.send_command("j/monitors").reply)
+            for m in monitors_data
         }
 
-        clients = json.loads(connection.send_command("j/clients").reply)
+        clients = clients_data
 
         rows = [Box(spacing=8) for _ in range(3)]
         self.children = rows

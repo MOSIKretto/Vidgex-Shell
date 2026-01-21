@@ -4,8 +4,6 @@ from fabric.utils import bulk_connect
 import gi
 from gi.repository import GLib
 
-import contextlib
-
 
 class PlayerctlImportError(ImportError):
     def __init__(self, *args):
@@ -22,8 +20,6 @@ except ValueError:
 
 
 class MprisPlayer(Service):
-    """A service to manage a mpris player."""
-
     @Signal
     def exit(self, value: bool) -> bool: ...
 
@@ -91,8 +87,10 @@ class MprisPlayer(Service):
 
     def on_player_exit(self, player):
         for id in list(self._signal_connectors.values()):
-            with contextlib.suppress(Exception):
+            try:
                 self._player.disconnect(id)
+            except Exception:
+                pass
         del self._signal_connectors
         GLib.idle_add(lambda: (self.emit("exit", True), False))
         del self._player
@@ -240,10 +238,7 @@ class MprisPlayerManager(Service):
     @Signal
     def player_vanished(self, player_name: str) -> str: ...
 
-    def __init__(
-        self,
-        **kwargs,
-    ):
+    def __init__(self, **kwargs):
         self._manager = Playerctl.PlayerManager.new()
         bulk_connect(
             self._manager,
