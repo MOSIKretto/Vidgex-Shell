@@ -11,14 +11,10 @@ from modules.Notch.Widgets.widgets import Widgets
 
 
 class Dashboard(Box):
+    __slots__ = ('notch', 'widgets', 'wallpapers', 'mixer', 'stack', 'switcher')
+
     def __init__(self, **kwargs):
-        super().__init__(
-            name="dashboard",
-            orientation="v",
-            spacing=8,
-            visible=True,
-            all_visible=True,
-        )
+        super().__init__(name="dashboard", orientation="v", spacing=8, visible=True, all_visible=True)
 
         self.notch = kwargs["notch"]
 
@@ -26,18 +22,10 @@ class Dashboard(Box):
         self.wallpapers = WallpaperSelector()
         self.mixer = Mixer()
 
-        self.stack = Stack(
-            name="stack",
-            transition_type="slide-left-right",
-            v_expand=True,
-        )
-
+        self.stack = Stack(name="stack", transition_type="slide-left-right", v_expand=True)
         self.stack.set_homogeneous(False)
 
-        self.switcher = Gtk.StackSwitcher(
-            name="switcher",
-            spacing=8,
-        )
+        self.switcher = Gtk.StackSwitcher(name="switcher", spacing=8)
 
         self.stack.add_titled(self.widgets, "widgets", "Dashboard")
         self.stack.add_titled(self.wallpapers, "wallpapers", "Wallpapers")
@@ -48,24 +36,26 @@ class Dashboard(Box):
         self.switcher.set_homogeneous(True)
         self.switcher.set_can_focus(True)
 
-        self.stack.connect("notify::visible-child", self.on_visible_child_changed)
+        self.stack.connect("notify::visible-child", self._on_vis)
 
         self.add(self.switcher)
         self.add(self.stack)
 
-        self.connect(
-            "button-release-event",
-            lambda widget, event: (event.button == 3 and self.notch.close_notch()),
-        )
+        self.connect("button-release-event", lambda _, e: e.button == 3 and self.notch.close_notch())
         self.show_all()
 
-    def on_visible_child_changed(self, stack, param):
-        visible = stack.get_visible_child()
-        if visible == self.wallpapers:
-            self.wallpapers.search_entry.set_text("")
-            self.wallpapers.search_entry.grab_focus()
+    def _on_vis(self, stack, _):
+        if stack.get_visible_child() == self.wallpapers:
+            self.wallpapers._ent.set_text("")
+            self.wallpapers._ent.grab_focus()
 
-    def go_to_section(self, section_name):
-        if section_name == "widgets": self.stack.set_visible_child(self.widgets)
-        elif section_name == "wallpapers": self.stack.set_visible_child(self.wallpapers)
-        else: self.stack.set_visible_child(self.mixer)
+    def go_to_section(self, name):
+        self.stack.set_visible_child(
+            self.widgets if name == "widgets" else (self.wallpapers if name == "wallpapers" else self.mixer)
+        )
+
+    def cleanup(self):
+        for w in (self.widgets, self.wallpapers, self.mixer):
+            if hasattr(w, 'cleanup'):
+                w.cleanup()
+        self.notch = None

@@ -1,18 +1,18 @@
+/* Пустое состояние: буфер обмена пуст */
+#no-clip {
+  font-size: 96px;
+  color: var(--surface);
+}
+
 #toolbox-button {
   border-radius: 40px;
   min-width: 52px;
   min-height: 52px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 #toolbox-button label {
   font-size: 24px;
   color: var(--foreground);
-}
-
-#toolbox-button.recording:hover label,
-#toolbox-button.recording:focus label {
-  color: var(--primary);
 }
 
 #toolbox-button:hover,
@@ -22,7 +22,9 @@
 }
 
 #toolbox-button:hover label,
-#toolbox-button:focus label {
+#toolbox-button:focus label,
+#toolbox-button.recording:hover label,
+#toolbox-button.recording:focus label {
   color: var(--primary);
 }
 
@@ -39,14 +41,10 @@
   background-color: var(--red-dim);
 }
 
-#toolbox-button.recording:active label {
-  color: var(--shadow);
-}
-
 #tool-sep {
   min-width: 4px;
   min-height: 4px;
-  margin: 0px 4px;
+  margin: 0 4px;
   border-radius: 16px;
   background-color: var(--surface-bright);
 }

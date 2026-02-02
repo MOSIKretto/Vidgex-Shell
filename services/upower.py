@@ -5,12 +5,13 @@ class UPowerManager:
     _DEFAULTS = {
         'HasHistory': False, 'HasStatistics': False, 'IsPresent': False,
         'IsRechargeable': False, 'Online': False, 'PowerSupply': False,
-        'Capacity': 0.0, 'Energy': 0.0, 'EnergyEmpty': 0.0, 'EnergyFull': 0.0,
-        'EnergyFullDesign': 0.0, 'EnergyRate': 0.0, 'Luminosity': 0.0,
-        'Percentage': 0.0, 'Temperature': 0.0, 'Voltage': 0.0,
-        'TimeToEmpty': 0, 'TimeToFull': 0, 'IconName': '',
-        'Model': '', 'NativePath': '', 'Serial': '', 'Vendor': '',
-        'State': 0, 'Technology': 0, 'Type': 0, 'WarningLevel': 0,
+        'Capacity': 0.0, 'Energy': 0.0, 'EnergyEmpty': 0.0, 
+        'EnergyFull': 0.0,'EnergyFullDesign': 0.0, 'EnergyRate': 0.0, 
+        'Luminosity': 0.0,'Percentage': 0.0, 'Temperature': 0.0, 
+        'Voltage': 0.0,'TimeToEmpty': 0, 'TimeToFull': 0, 
+        'IconName': '', 'Model': '', 'NativePath': '', 
+        'Serial': '', 'Vendor': '', 'State': 0, 
+        'Technology': 0, 'Type': 0, 'WarningLevel': 0,
         'UpdateTime': 0
     }
     

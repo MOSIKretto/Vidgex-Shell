@@ -36,7 +36,6 @@ class Wifi(Service):
 
     def ap_update(self):
         self._notify("changed")
-        # Direct notifications without creating intermediate lists
         self.notify("enabled")
         self.notify("internet")
         self.notify("strength")
@@ -167,7 +166,6 @@ class NetworkClient(Service):
         self.wifi_device = None
         self.ethernet_device = None
         super().__init__(**kwargs)
-        # Direct initialization via thread for responsiveness
         GLib.idle_add(self._init_worker)
 
     def _init_worker(self, _=None):
@@ -178,7 +176,6 @@ class NetworkClient(Service):
             self._setup_fallback()
 
     def _setup(self):
-        # Device search without extra abstractions
         devs = self._client.get_devices() or []
         for d in devs:
             t = d.get_device_type()
@@ -190,7 +187,6 @@ class NetworkClient(Service):
         self.emit("device-ready")
 
     def _setup_fallback(self):
-        # Lightweight object instead of full class
         self.wifi_device = type('FB', (), {'enabled': False, 'strength': 0, 'ssid': 'Disconnected', 'access_points': [], 'scan': lambda: None})()
         self.emit("device-ready")
 
@@ -223,7 +219,7 @@ class NetworkClient(Service):
 
     def connect_to_new_network(self, ssid: str, password: str, success_cb=None, error_cb=None) -> bool:
         exec_shell_command_async(f'nmcli dev wifi connect "{ssid}" password "{password}"', 
-            lambda ok, out, err: success_cb() if ok and success_cb else error_cb(ssid, err) if error_cb else None)
+                                 lambda ok, out, err: success_cb() if ok and success_cb else error_cb(ssid, err) if error_cb else None)
         return True
 
     def delete_saved_network(self, ssid: str) -> bool:

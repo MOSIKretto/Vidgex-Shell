@@ -2,21 +2,8 @@ from fabric.core.service import Property, Service, Signal
 from fabric.utils import bulk_connect
 
 import gi
-from gi.repository import GLib
-
-
-class PlayerctlImportError(ImportError):
-    def __init__(self, *args):
-        super().__init__(
-            "Playerctl is not installed, please install it first",
-            *args,
-        )
-
-try:
-    gi.require_version("Playerctl", "2.0")
-    from gi.repository import Playerctl
-except ValueError:
-    raise PlayerctlImportError
+from gi.repository import GLib, Playerctl
+gi.require_version("Playerctl", "2.0")
 
 
 class MprisPlayer(Service):
@@ -26,49 +13,24 @@ class MprisPlayer(Service):
     @Signal
     def changed(self) -> None: ...
 
-    def __init__(
-        self,
-        player: Playerctl.Player,
-        **kwargs,
-    ):
+    def __init__(self, player: Playerctl.Player, **kwargs):
         self._signal_connectors: dict = {}
         self._player: Playerctl.Player = player
         super().__init__(**kwargs)
         for sn in ["playback-status", "loop-status", "shuffle", "volume", "seeked"]:
-            self._signal_connectors[sn] = self._player.connect(
-                sn,
-                lambda *args, sn=sn: self.notifier(sn, args),
-            )
+            self._signal_connectors[sn] = self._player.connect(sn, lambda *args, sn=sn: self.notifier(sn, args))
 
-        self._signal_connectors["exit"] = self._player.connect(
-            "exit",
-            self.on_player_exit,
-        )
-        self._signal_connectors["metadata"] = self._player.connect(
-            "metadata",
-            lambda *args: self.update_status(),
-        )
+        self._signal_connectors["exit"] = self._player.connect("exit", self.on_player_exit)
+        self._signal_connectors["metadata"] = self._player.connect("metadata", lambda *args: self.update_status())
         GLib.idle_add(lambda *args: self.update_status_once())
 
     def update_status(self):
         def notify_property(prop):
             if self.get_property(prop) is not None:
                 self.notifier(prop)
-        for prop in [
-            "metadata",
-            "title",
-            "artist",
-            "arturl",
-            "length",
-        ]:
+        for prop in ["metadata", "title", "artist", "arturl", "length"]:
             GLib.idle_add(lambda p=prop: (notify_property(p), False))
-        for prop in [
-            "can-seek",
-            "can-pause",
-            "can-shuffle",
-            "can-go-next",
-            "can-go-previous",
-        ]:
+        for prop in ["can-seek", "can-pause", "can-shuffle", "can-go-next", "can-go-previous"]:
             GLib.idle_add(lambda p=prop: (self.notifier(p), False))
 
     def update_status_once(self):
@@ -87,10 +49,8 @@ class MprisPlayer(Service):
 
     def on_player_exit(self, player):
         for id in list(self._signal_connectors.values()):
-            try:
-                self._player.disconnect(id)
-            except Exception:
-                pass
+            try: self._player.disconnect(id)
+            except Exception: pass
         del self._signal_connectors
         GLib.idle_add(lambda: (self.emit("exit", True), False))
         del self._player

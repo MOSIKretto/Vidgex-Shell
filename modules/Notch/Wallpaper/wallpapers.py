@@ -3,702 +3,526 @@ from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
-from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
+from concurrent.futures import ThreadPoolExecutor
 
-import modules.icons as icons
+import cairo
+import services.icons as icons
 
 _HOME = GLib.get_home_dir()
-_WALLPAPERS_DIR = f"{_HOME}/Wallpapers"
-_CURRENT_WALL = f"{_HOME}/.current.wall"
-_CACHE_DIR = f"{GLib.get_user_cache_dir()}/vidgex-shell"
-_SCHEME_FILE = f"{_CACHE_DIR}/scheme"
+_WALLS = f"{_HOME}/.config/Vidgex-Shell/wallpapers/"
+_CURRENT = f"{_HOME}/.current.wall"
+_CACHE = f"{GLib.get_user_cache_dir()}/vidgex-shell"
+_THUMBS = f"{_CACHE}/thumbnails"
+_SCHEME_F = f"{_CACHE}/scheme"
 
-_THUMBNAIL_SIZE = 110
-_ITEM_PADDING = 6
-_SPACING = 8
-_MARGIN = 0
-_COLUMNS = 8
-
-_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
-
-_SCHEMES = (
-    ("scheme-tonal-spot", "Tonal Spot"),
-    ("scheme-content", "Content"),
-    ("scheme-expressive", "Expressive"),
-    ("scheme-fidelity", "Fidelity"),
-    ("scheme-fruit-salad", "Fruit Salad"),
-    ("scheme-monochrome", "Monochrome"),
-    ("scheme-neutral", "Neutral"),
-    ("scheme-rainbow", "Rainbow"),
+_SZ, _HSZ, _HALF, _SPC, _ARC_K = 180, 90.0, 3, 100, 1.875
+_EXT = frozenset((".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"))
+_SCH = (
+    ("scheme-tonal-spot", "Tonal Spot"), ("scheme-content", "Content"),
+    ("scheme-expressive", "Expressive"), ("scheme-fidelity", "Fidelity"),
+    ("scheme-fruit-salad", "Fruit Salad"), ("scheme-monochrome", "Monochrome"),
+    ("scheme-neutral", "Neutral"), ("scheme-rainbow", "Rainbow"),
 )
+_SCH_K = frozenset(k for k, _ in _SCH)
+_DICE = (icons.dice_1, icons.dice_2, icons.dice_3, icons.dice_4, icons.dice_5, icons.dice_6)
+_ORD = (3, -3, 2, -2, 1, -1, 0)
+_ALP = (0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0)
+_SCL = (0.55, 0.55, 0.7, 0.7, 0.85, 0.85, 1.0)
+_YOF = (16.875, 16.875, 7.5, 7.5, 1.875, 1.875, 0.0)
 
-_DICE_ICONS = (
-    icons.dice_1, icons.dice_2, icons.dice_3,
-    icons.dice_4, icons.dice_5, icons.dice_6,
-)
 
-_NAV_KEYS = frozenset((Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Right))
-_ACT_KEYS = frozenset((Gdk.KEY_Return, Gdk.KEY_KP_Enter))
+class WallpaperCarousel(Gtk.DrawingArea):
+    __slots__ = ('_files', '_flt', '_th', '_ld', '_idx', '_off', '_by', '_bvy',
+                 '_anim', '_bnc', '_dead', '_ldq', '_spl', '_spt', '_spd', '_spi',
+                 '_spcb', '_clr', '_ph', '_ex', '_on_sel', '_on_nav')
+
+    def __init__(self, on_select=None, on_navigate=None):
+        super().__init__()
+        self._files = self._flt = []
+        self._th, self._ld = {}, set()
+        self._idx = 0
+        self._off = self._by = self._bvy = 0.0
+        self._anim = self._bnc = self._dead = self._ldq = False
+        self._spl = self._spt = self._spd = 0
+        self._spi, self._spcb = 16, None
+        self._clr = (1.0, 1.0, 1.0, 1.0)
+        self._ph = None
+        self._ex = ThreadPoolExecutor(max_workers=2, thread_name_prefix="c")
+        self._on_sel, self._on_nav = on_select, on_navigate
+
+        self.set_name("wallpaper-carousel")
+        self.set_can_focus(True)
+        self.add_events(Gdk.EventMask.KEY_PRESS_MASK | Gdk.EventMask.BUTTON_PRESS_MASK |
+                        Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        self.connect("draw", self._draw)
+        self.connect("key-press-event", self._key)
+        self.connect("button-press-event", self._click)
+        self.connect("scroll-event", self._scroll)
+        self.connect("realize", lambda _: (self._mkph(), self._uclr(), self._sched()))
+        self.connect("style-updated", lambda _: self._uclr())
+        self.set_size_request(800, 280)
+
+    def _mkph(self):
+        s = cairo.ImageSurface(cairo.FORMAT_ARGB32, _SZ, _SZ)
+        c = cairo.Context(s)
+        c.set_source_rgba(0.27, 0.27, 0.27, 0.5)
+        self._rnd(c, 0, 0, _SZ, _SZ, 16)
+        c.fill()
+        self._ph = Gdk.pixbuf_get_from_surface(s, 0, 0, _SZ, _SZ)
+
+    def _uclr(self):
+        c = self.get_style_context().get_color(Gtk.StateFlags.NORMAL)
+        self._clr = (c.red, c.green, c.blue, c.alpha)
+
+    def _rst(self, f):
+        self._files = self._flt = f
+        self._idx = 0 if f else -1
+        self._off = 0.0
+        self._th.clear()
+        self._ld.clear()
+        if self.get_realized() and f:
+            self._sched()
+        self.queue_draw()
+
+    def set_files(self, f):
+        self._rst(f[:])
+
+    def filter_files(self, q):
+        self._rst([f for f in self._files if q.casefold() in f.casefold()] if q else self._files[:])
+
+    def _sched(self):
+        if self._ldq or self._dead or self._bnc:
+            return
+        self._ldq = True
+        GLib.idle_add(self._load)
+
+    def _load(self):
+        self._ldq = False
+        if self._dead or not self._flt:
+            return False
+        n, cur = len(self._flt), self._idx
+        need = {self._flt[(cur + i) % n] for i in range(-_HALF - 1, _HALF + 2)}
+        for k in [k for k in self._th if k not in need]:
+            del self._th[k]
+        for nm in need - self._th.keys() - self._ld:
+            self._ld.add(nm)
+            self._ex.submit(self._ldth, nm)
+        return False
+
+    def _ldth(self, nm):
+        if self._dead:
+            return
+        cp = f"{_THUMBS}/{GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, nm, -1)}_r.png"
+        pb = None
+        try:
+            if Gio.File.new_for_path(cp).query_exists():
+                pb = GdkPixbuf.Pixbuf.new_from_file(cp)
+        except GLib.Error:
+            pass
+        if not pb:
+            try:
+                raw = GdkPixbuf.Pixbuf.new_from_file_at_scale(f"{_WALLS}/{nm}", _SZ, _SZ, True)
+                if raw:
+                    w, h = raw.get_width(), raw.get_height()
+                    sq = raw if w == _SZ == h else (
+                        raw.scale_simple(_SZ, _SZ, GdkPixbuf.InterpType.BILINEAR) if w < _SZ or h < _SZ
+                        else raw.new_subpixbuf((w - _SZ) >> 1, (h - _SZ) >> 1, _SZ, _SZ))
+                    sf = cairo.ImageSurface(cairo.FORMAT_ARGB32, _SZ, _SZ)
+                    ct = cairo.Context(sf)
+                    self._rnd(ct, 0, 0, _SZ, _SZ, 16)
+                    ct.clip()
+                    Gdk.cairo_set_source_pixbuf(ct, sq, 0, 0)
+                    ct.paint()
+                    pb = Gdk.pixbuf_get_from_surface(sf, 0, 0, _SZ, _SZ)
+                    try:
+                        pb.savev(cp, "png", [], [])
+                    except GLib.Error:
+                        pass
+            except Exception:
+                pass
+        if not self._dead:
+            GLib.idle_add(self._onth, nm, pb)
+
+    def _onth(self, nm, pb):
+        self._ld.discard(nm)
+        if self._dead or not pb:
+            return False
+        n, cur = len(self._flt), self._idx
+        if nm in {self._flt[(cur + i) % n] for i in range(-_HALF - 1, _HALF + 2)}:
+            self._th[nm] = pb
+            if not self._bnc and not self._anim:
+                self.queue_draw()
+        return False
+
+    def _draw(self, w, cr):
+        a = w.get_allocation()
+        flt = self._flt
+        if not flt:
+            cr.set_source_rgba(0.6, 0.6, 0.6, 0.6)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            cr.set_font_size(16)
+            t, e = "No wallpapers found", cr.text_extents("No wallpapers found")
+            cr.move_to((a.width - e.width) * 0.5, (a.height + e.height) * 0.5)
+            cr.show_text(t)
+            return
+
+        cx, cy = a.width * 0.5, a.height * 0.5 + 10
+        n, off, idx, th, ph = len(flt), self._off, self._idx, self._th, self._ph
+
+        if abs(off) < 0.01:
+            by = self._by
+            for j in range(7):
+                i = _ORD[j]
+                pb = th.get(flt[(idx + i) % n], ph)
+                if pb:
+                    y = cy + _YOF[j] - (by if j == 6 and by > 0 else 0)
+                    self._card(cr, pb, cx + i * _SPC, y, _SCL[j], _ALP[j], j == 6)
+            return
+
+        items = []
+        for i in range(-4, 5):
+            p, d = i + off, abs(i + off)
+            if d > 4.2:
+                continue
+            al = 1.0 - d * 0.25
+            if al <= 0.05:
+                continue
+            items.append((d, th.get(flt[(idx + i) % n], ph), cx + p * _SPC, cy + p * p * _ARC_K, max(0.4, 1.0 - d * 0.15), al, d < 0.15))
+
+        for _, pb, x, y, sc, al, sel in sorted(items, reverse=True):
+            if pb:
+                self._card(cr, pb, x, y, sc, al, sel)
+
+    def _card(self, cr, pb, x, y, sc, al, sel):
+        cr.save()
+        cr.translate(x, y)
+        cr.scale(sc, sc)
+        if al > 0.1:
+            o = 8 if sel else 5
+            cr.set_source_rgba(0, 0, 0, (0.4 if sel else 0.2) * al)
+            self._rnd(cr, -_HSZ + o, -_HSZ + o, _SZ, _SZ, 16)
+            cr.fill()
+        Gdk.cairo_set_source_pixbuf(cr, pb, -_HSZ, -_HSZ)
+        cr.paint_with_alpha(al)
+        if sel:
+            r, g, b, _ = self._clr
+            cr.set_source_rgba(r, g, b, 0.3 * al)
+            cr.set_line_width(6)
+            self._rnd(cr, -_HSZ - 2, -_HSZ - 2, _SZ + 4, _SZ + 4, 18)
+            cr.stroke()
+            cr.set_source_rgba(r, g, b, 0.9 * al)
+            cr.set_line_width(3)
+            self._rnd(cr, -_HSZ, -_HSZ, _SZ, _SZ, 16)
+            cr.stroke()
+        cr.restore()
+
+    def _rnd(self, c, x, y, w, h, r):
+        c.new_path()
+        c.arc(x + w - r, y + r, r, -1.5708, 0)
+        c.arc(x + w - r, y + h - r, r, 0, 1.5708)
+        c.arc(x + r, y + h - r, r, 1.5708, 3.1416)
+        c.arc(x + r, y + r, r, 3.1416, 4.7124)
+        c.close_path()
+
+    def _key(self, _, e):
+        k = e.keyval
+        if k == Gdk.KEY_Left:
+            self.nav(-1)
+        elif k == Gdk.KEY_Right:
+            self.nav(1)
+        elif k in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self._sel()
+        else:
+            return False
+        return True
+
+    def _click(self, w, e):
+        self.grab_focus()
+        if e.button != 1:
+            return False
+        rx = e.x - w.get_allocation().width * 0.5
+        self._sel() if abs(rx) < _HSZ else self.nav(-1 if rx < 0 else 1)
+        return True
+
+    def _scroll(self, _, e):
+        d = 0
+        if e.direction == Gdk.ScrollDirection.UP:
+            d = -1
+        elif e.direction == Gdk.ScrollDirection.DOWN:
+            d = 1
+        elif e.direction == Gdk.ScrollDirection.SMOOTH:
+            _, dx, dy = e.get_scroll_deltas()
+            d = ((1 if dx > 0 else -1) if abs(dx) > 0.5 else 0) if abs(dx) > abs(dy) else ((1 if dy > 0 else -1) if abs(dy) > 0.5 else 0)
+        if d and not self._anim:
+            self.nav(d)
+        return True
+
+    def nav(self, dr, anim=True):
+        if not self._flt or (self._anim and anim and not self._spl):
+            return
+        self._idx = (self._idx + dr) % len(self._flt)
+        if anim:
+            self._off, self._anim = float(dr), True
+            GLib.timeout_add(16, self._slide)
+        else:
+            self._off = 0.0
+            self.queue_draw()
+            self._sched()
+        if self._on_nav:
+            self._on_nav()
+
+    def _slide(self):
+        if self._dead:
+            return False
+        self._off *= 0.7
+        if abs(self._off) < 0.01:
+            self._off, self._anim = 0.0, False
+            self._sched()
+        self.queue_draw()
+        return self._anim
+
+    def spin(self, tgt, cb=None):
+        if self._anim or not self._flt:
+            return
+        n, d = len(self._flt), 1 if GLib.random_int_range(0, 2) else -1
+        dist = ((tgt - self._idx) % n) if d == 1 else ((self._idx - tgt) % n)
+        self._spl = dist + GLib.random_int_range(2, 4) * n or n * 2
+        self._spt, self._spd, self._spi, self._spcb = self._spl, d, 16, cb
+        self._anim = True
+        self._spst()
+
+    def _spst(self):
+        if self._dead:
+            return False
+        if self._spl <= 0:
+            self._anim, self._off = False, 0.0
+            self._sched()
+            self.queue_draw()
+            self._sel(emit=False)
+            if self._spcb:
+                self._spcb()
+            self._spcb = None
+            return False
+        self.nav(self._spd, anim=False)
+        self._spl -= 1
+        p = 1.0 - self._spl / self._spt
+        self._spi = 20 if p < 0.6 else 20 + int(((p - 0.6) / 0.4) ** 2 * 200)
+        GLib.timeout_add(self._spi, self._spst)
+        return False
+
+    def _sel(self, emit=True):
+        if not self._flt or self._bnc:
+            return
+        self._bnc, self._by, self._bvy = True, 0.0, 12.0
+        GLib.timeout_add(16, self._bst)
+        if emit and self._on_sel and (nm := self.cur()):
+            GLib.timeout_add(150, lambda: self._on_sel(nm) or False)
+
+    def _bst(self):
+        if self._dead:
+            self._bnc = False
+            return False
+        by, bvy = self._by + self._bvy, self._bvy - 1.5
+        if by <= 0:
+            bvy_abs = -bvy * 0.5
+            if bvy_abs < 4.0:
+                self._bnc, self._by = False, 0.0
+                GLib.idle_add(self._sched)
+                self.queue_draw()
+                return False
+            self._by, self._bvy = 0.0, bvy_abs
+        else:
+            self._by, self._bvy = by, bvy
+        self.queue_draw()
+        return True
+
+    def cur(self):
+        return self._flt[self._idx] if self._flt and 0 <= self._idx < len(self._flt) else None
+
+    def idx(self):
+        return self._idx
+
+    def set_idx(self, i):
+        if self._flt and 0 <= i < len(self._flt):
+            self._idx, self._off = i, 0.0
+            self._th.clear()
+            self._ld.clear()
+            self._sched()
+            self.queue_draw()
+            if self._on_nav:
+                self._on_nav()
+
+    def cleanup(self):
+        self._dead = True
+        self._ex.shutdown(wait=False, cancel_futures=True)
+        self._th.clear()
+        self._ld.clear()
+        self._files = self._flt = []
+        self._ph = None
 
 
 class WallpaperSelector(Box):
-    """Виджет выбора обоев."""
-    
-    DEBOUNCE_SEARCH_MS = 400
-    DEBOUNCE_SCROLL_MS = 250
-    DEBOUNCE_FILE_MS = 500
-    
-    MAX_QUEUE_SIZE = 12
-    MAX_VISIBLE = 32
-    BUFFER_ROWS = 2
+    __slots__ = ('_dead', '_pend', '_files', '_mon', '_car', '_ent', '_dd', '_rb', '_lbl')
 
-    def __init__(self, **kwargs):
-        super().__init__(name="wallpapers", spacing=4, orientation="v", **kwargs)
-        
-        self.files = []
-        self.selected_index = -1
-        self.is_applying_scheme = False
-        self._destroyed = False
-        self._load_queue = []
-        self._is_loading = False
-        self._last_query = ""
-        self._visible_range = (0, 100)
-        self._pending_search = None
-        self._pending_scroll = None
-        self._pending_file_events = {}
-        
-        self._init_dirs()
-        self._build_ui()
-        self.connect("destroy", self._on_destroy)
-        GLib.idle_add(self._deferred_init, priority=GLib.PRIORITY_LOW)
+    def __init__(self, **kw):
+        super().__init__(name="wallpapers", spacing=4, orientation="v", **kw)
+        self._dead, self._pend, self._files, self._mon = False, {}, [], None
 
-    def _init_dirs(self):
-        for path in (_WALLPAPERS_DIR, _CACHE_DIR):
-            gfile = Gio.File.new_for_path(path)
-            if not gfile.query_exists():
+        for p in (_WALLS, _THUMBS):
+            f = Gio.File.new_for_path(p)
+            if not f.query_exists():
                 try:
-                    gfile.make_directory_with_parents(None)
-                except Exception:
+                    f.make_directory_with_parents(None)
+                except GLib.Error:
                     pass
 
-    def _build_ui(self):
-        self.model = Gtk.ListStore(GdkPixbuf.Pixbuf, str)
-        
-        self.viewport = Gtk.IconView(
-            name="wallpaper-icons",
-            model=self.model,
-            pixbuf_column=0,
-            text_column=-1,
-            columns=_COLUMNS,
-            item_width=-1,
-            item_padding=_ITEM_PADDING,
-            column_spacing=_SPACING,
-            row_spacing=_SPACING,
-            margin=_MARGIN
-        )
-        self.viewport.set_activate_on_single_click(False)
-        self.viewport.connect("item-activated", self._on_wallpaper_activated)
+        self._car = WallpaperCarousel(on_select=self._on_sel, on_navigate=self._ulbl)
+        ew = Gtk.EventBox()
+        ew.add(self._car)
+        ew.connect("button-press-event", lambda *_: self._car.grab_focus())
+        cb = Box(name="carousel-container", h_align="center", v_align="center")
+        cb.pack_start(ew, True, True, 0)
 
-        self.scrolled_window = ScrolledWindow(
-            name="scrolled-window",
-            spacing=10,
-            child=self.viewport,
-            propagate_width=False,
-            propagate_height=False,
-        )
-        self.scrolled_window.set_size_request(-1, 297)
-        self.scrolled_window.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self._ent = Entry(name="search-entry-walls", placeholder="Search Wallpapers...", h_expand=True, h_align="fill")
+        self._ent.connect("notify::text", lambda e, _: self._deb("s", 300, self._srch, e.get_text()))
+        self._ent.connect("key-press-event", self._ekey)
 
-        self.search_entry = Entry(
-            name="search-entry-walls",
-            placeholder="Search Wallpapers...",
-            h_expand=True,
-            h_align="fill",
-            xalign=0.5,
-        )
-        self.search_entry.connect("key-press-event", self._on_key_press)
-        self.search_entry.connect("notify::text", self._on_search_changed)
-        self.search_entry.connect("focus-out-event", self._on_focus_out)
+        self._dd = Gtk.ComboBoxText(name="scheme-dropdown")
+        for k, v in _SCH:
+            self._dd.append(k, v)
+        self._dd.set_active_id(self._ldsch())
+        self._dd.connect("changed", self._schch)
 
-        self.scheme_dropdown = Gtk.ComboBoxText(name="scheme-dropdown")
-        self.scheme_dropdown.set_tooltip_text("Select color scheme")
-        for key, name in _SCHEMES:
-            self.scheme_dropdown.append(key, name)
-        self.scheme_dropdown.set_active_id(self._load_scheme())
-        self.scheme_dropdown.connect("changed", self._on_scheme_changed)
+        self._rb = Button(name="random-wall-button", child=Label(name="random-wall-label", markup=_DICE[0]), tooltip_text="Random Wallpaper")
+        self._rb.connect("clicked", self.random_wall)
+        self._lbl = Label(name="wallpaper-name-label", label="Select a wallpaper")
 
-        self.random_btn = Button(
-            name="random-wall-button",
-            child=Label(name="random-wall-label", markup=_DICE_ICONS[0]),
-            tooltip_text="Random Wallpaper",
-        )
-        self.random_btn.connect("clicked", self.set_random_wallpaper)
+        self.add(Box(spacing=8, children=[self._rb, self._ent, self._dd]))
+        self.pack_start(cb, True, True, 0)
+        self.add(self._lbl)
+        self._roll()
 
-        header = Box(
-            name="header-box",
-            spacing=8,
-            children=[self.random_btn, self.search_entry, self.scheme_dropdown],
-        )
-        self.add(header)
-        self.pack_start(self.scrolled_window, True, True, 0)
+        self.connect("destroy", self._destroy)
+        self.connect("realize", lambda _: self._scan() if not self._files else None)
+        self._scan()
+        self._watch()
 
-    def _deferred_init(self):
-        if self._destroyed:
-            return False
-        self._load_wallpapers()
-        self._setup_monitor()
-        self.show_all()
-        self._randomize_dice_icon()
-        self.search_entry.grab_focus()
-        return False
-
-    def _load_wallpapers(self):
-        gfile = Gio.File.new_for_path(_WALLPAPERS_DIR)
-        gfile.enumerate_children_async(
-            "standard::name",
-            Gio.FileQueryInfoFlags.NONE,
-            GLib.PRIORITY_LOW,
-            None,
-            self._on_enum_done,
-            []
-        )
-
-    def _on_enum_done(self, source, result, files):
-        if self._destroyed:
-            return
+    def _scan(self):
+        nf = []
         try:
-            enumerator = source.enumerate_children_finish(result)
-            self._read_batch(enumerator, files)
-        except Exception:
-            self._finalize_files(files)
-
-    def _read_batch(self, enumerator, files):
-        if self._destroyed:
-            return
-        enumerator.next_files_async(
-            100, GLib.PRIORITY_LOW, None,
-            self._on_files_batch, (enumerator, files)
-        )
-
-    def _on_files_batch(self, source, result, user_data):
-        if self._destroyed:
-            return
-        enumerator, files = user_data
-        try:
-            infos = source.next_files_finish(result)
-            if not infos:
-                enumerator.close_async(GLib.PRIORITY_LOW, None, None, None)
-                self._finalize_files(files)
-                return
-            for info in infos:
-                name = info.get_name()
-                lower = name.lower()
-                for ext in _IMAGE_EXTENSIONS:
-                    if lower.endswith(ext):
-                        normalized = lower.replace(" ", "-")
-                        if normalized != name:
-                            self._rename_file(name, normalized)
-                        files.append(normalized)
-                        break
-            self._read_batch(enumerator, files)
-        except Exception:
-            self._finalize_files(files)
-
-    def _rename_file(self, old, new):
-        src = f"{_WALLPAPERS_DIR}/{old}"
-        dst = f"{_WALLPAPERS_DIR}/{new}"
-        try:
-            Gio.File.new_for_path(src).move(
-                Gio.File.new_for_path(dst),
-                Gio.FileCopyFlags.NONE, None, None
-            )
-        except Exception:
-            try:
-                GLib.spawn_command_line_sync(f'mv "{src}" "{dst}"')
-            except Exception:
-                pass
-
-    def _finalize_files(self, files):
-        files.sort()
-        self.files = files
-        GLib.idle_add(self._populate_model, priority=GLib.PRIORITY_LOW)
-
-    def _populate_model(self):
-        if self._destroyed:
-            return False
-        self.viewport.set_model(None)
-        self.model.clear()
-        self._load_queue.clear()
-        
-        for filename in self.files:
-            self.model.append((None, filename))
-        
-        self.viewport.set_model(self.model)
-        self._load_visible_range(0, min(len(self.files), _COLUMNS * 3))
-        return False
-
-    def _load_visible_range(self, start, end):
-        if self._destroyed:
-            return
-        for i in range(start, end):
-            if i >= len(self.model):
-                break
-            try:
-                iter_ = self.model.get_iter(Gtk.TreePath.new_from_indices([i]))
-                if self.model.get_value(iter_, 0) is None:
-                    filename = self.model.get_value(iter_, 1)
-                    if filename and filename not in self._load_queue:
-                        if len(self._load_queue) < self.MAX_QUEUE_SIZE:
-                            self._load_queue.append((i, filename))
-            except Exception:
-                pass
-        if self._load_queue and not self._is_loading:
-            self._process_next()
-
-    def _process_next(self):
-        if self._destroyed or not self._load_queue:
-            self._is_loading = False
-            return
-        self._is_loading = True
-        idx, filename = self._load_queue.pop(0)
-        GLib.idle_add(self._load_thumbnail, idx, filename, priority=GLib.PRIORITY_LOW)
-
-    def _load_thumbnail(self, idx, filename):
-        if self._destroyed:
-            return False
-        
-        path = f"{_WALLPAPERS_DIR}/{filename}"
-        if not Gio.File.new_for_path(path).query_exists():
-            GLib.idle_add(self._process_next, priority=GLib.PRIORITY_LOW)
-            return False
-        
-        pixbuf = None
-        is_gif = filename.lower().endswith('.gif')
-        
-        if is_gif:
-            try:
-                animation = GdkPixbuf.PixbufAnimation.new_from_file(path)
-                if animation:
-                    if animation.is_static_image():
-                        raw = animation.get_static_image()
-                    else:
-                        anim_iter = animation.get_iter(None)
-                        raw = anim_iter.get_pixbuf() if anim_iter else None
-                    if raw:
-                        pixbuf = self._scale_pixbuf(raw)
-            except Exception:
-                pass
-        
-        if not pixbuf:
-            try:
-                raw = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                    path, _THUMBNAIL_SIZE + 20, _THUMBNAIL_SIZE + 20, True
-                )
-                if raw:
-                    pixbuf = self._scale_pixbuf(raw)
-            except Exception:
-                pass
-        
-        if not pixbuf:
-            try:
-                raw = GdkPixbuf.Pixbuf.new_from_file(path)
-                if raw:
-                    pixbuf = self._scale_pixbuf(raw)
-            except Exception:
-                pass
-        
-        if pixbuf and idx < len(self.model):
-            try:
-                iter_ = self.model.get_iter(Gtk.TreePath.new_from_indices([idx]))
-                self.model.set_value(iter_, 0, pixbuf)
-            except Exception:
-                pass
-        
-        self._unload_distant()
-        GLib.idle_add(self._process_next, priority=GLib.PRIORITY_LOW)
-        return False
-
-    def _scale_pixbuf(self, pixbuf):
-        if not pixbuf:
-            return None
-        w, h = pixbuf.get_width(), pixbuf.get_height()
-        if w <= 0 or h <= 0:
-            return None
-        
-        size = _THUMBNAIL_SIZE
-        scale = size / min(w, h)
-        new_w = max(size, int(w * scale))
-        new_h = max(size, int(h * scale))
-        
-        try:
-            scaled = pixbuf.scale_simple(new_w, new_h, GdkPixbuf.InterpType.BILINEAR)
-            if not scaled:
-                return None
-            if new_w > size or new_h > size:
-                x = (new_w - size) // 2
-                y = (new_h - size) // 2
-                return scaled.new_subpixbuf(x, y, size, size)
-            return scaled
-        except Exception:
-            return None
-
-    def _unload_distant(self):
-        start, end = self._visible_range
-        threshold = _COLUMNS * 4
-        count = 0
-        
-        for i in range(len(self.model)):
-            if i < start - threshold or i > end + threshold:
-                try:
-                    iter_ = self.model.get_iter(Gtk.TreePath.new_from_indices([i]))
-                    if self.model.get_value(iter_, 0) is not None:
-                        self.model.set_value(iter_, 0, None)
-                        count += 1
-                        if count >= 10:
-                            break
-                except Exception:
-                    pass
-
-    def _setup_monitor(self):
-        gfile = Gio.File.new_for_path(_WALLPAPERS_DIR)
-        self.file_monitor = gfile.monitor_directory(Gio.FileMonitorFlags.NONE, None)
-        self.file_monitor.connect("changed", self._on_dir_changed)
-        self.scrolled_window.get_vadjustment().connect("value-changed", self._on_scroll)
-
-    def _on_scroll(self, adj):
-        if self._pending_scroll:
-            GLib.source_remove(self._pending_scroll)
-        self._pending_scroll = GLib.timeout_add(
-            self.DEBOUNCE_SCROLL_MS, self._handle_scroll, adj
-        )
-
-    def _handle_scroll(self, adj):
-        self._pending_scroll = None
-        if self._destroyed:
-            return False
-        
-        total = len(self.model)
-        if total == 0:
-            return False
-        
-        upper = adj.get_upper()
-        page = adj.get_page_size()
-        if upper <= page:
-            return False
-        
-        row_height = _THUMBNAIL_SIZE + _SPACING
-        first_row = int(adj.get_value() / row_height)
-        visible_rows = int(page / row_height) + 1
-        
-        first_idx = first_row * _COLUMNS
-        last_idx = min(total, (first_row + visible_rows + 1) * _COLUMNS)
-        
-        self._visible_range = (first_idx, last_idx)
-        
-        buffer = _COLUMNS * self.BUFFER_ROWS
-        load_start = max(0, first_idx - buffer)
-        load_end = min(total, last_idx + buffer)
-        
-        self._load_queue.clear()
-        self._load_visible_range(load_start, load_end)
-        return False
-
-    def _on_dir_changed(self, monitor, file, other, event_type):
-        if self._destroyed:
-            return
-        if event_type not in (
-            Gio.FileMonitorEvent.DELETED,
-            Gio.FileMonitorEvent.CREATED,
-            Gio.FileMonitorEvent.CHANGES_DONE_HINT,
-        ):
-            return
-        
-        filename = file.get_basename()
-        lower = filename.lower()
-        is_image = any(lower.endswith(ext) for ext in _IMAGE_EXTENSIONS)
-        if not is_image and event_type != Gio.FileMonitorEvent.DELETED:
-            return
-        
-        if filename in self._pending_file_events:
-            GLib.source_remove(self._pending_file_events[filename])
-        self._pending_file_events[filename] = GLib.timeout_add(
-            self.DEBOUNCE_FILE_MS, self._process_file_event, filename, event_type
-        )
-
-    def _process_file_event(self, filename, event_type):
-        if self._destroyed:
-            return False
-        self._pending_file_events.pop(filename, None)
-        if event_type == Gio.FileMonitorEvent.DELETED:
-            self._handle_deleted(filename)
-        else:
-            self._handle_added(filename)
-        return False
-
-    def _handle_deleted(self, filename):
-        normalized = filename.lower().replace(" ", "-")
-        target = filename if filename in self.files else (normalized if normalized in self.files else None)
-        if not target:
-            return
-        
-        idx = self.files.index(target)
-        self.files.remove(target)
-        
-        self._load_queue = [(i, f) for i, f in self._load_queue if f != target]
-        
-        try:
-            iter_ = self.model.get_iter(Gtk.TreePath.new_from_indices([idx]))
-            self.model.remove(iter_)
-        except Exception:
+            d = GLib.Dir.open(_WALLS, 0)
+            while (nm := d.read_name()):
+                if any(nm.lower().endswith(e) for e in _EXT):
+                    nf.append(nm)
+        except GLib.Error:
             pass
-        
-        if self.selected_index >= len(self.model):
-            self.selected_index = max(-1, len(self.model) - 1)
+        nf.sort()
+        self._files = nf
+        self._car.set_files(nf)
+        self._ulbl()
 
-    def _handle_added(self, filename):
-        lower = filename.lower()
-        if not any(lower.endswith(ext) for ext in _IMAGE_EXTENSIONS):
-            return
-        
-        normalized = lower.replace(" ", "-")
-        if normalized != filename:
-            self._rename_file(filename, normalized)
-            filename = normalized
-        
-        if not Gio.File.new_for_path(f"{_WALLPAPERS_DIR}/{filename}").query_exists():
-            return
-        
-        if filename in self.files:
-            idx = self.files.index(filename)
+    def _ulbl(self):
+        n = self._car.cur()
+        self._lbl.set_label(n[:47] + "..." if n and len(n) > 50 else n or "No wallpapers available")
+
+    def _srch(self, t):
+        if not self._dead:
+            self._car.filter_files(t)
+            self._ulbl()
+
+    def _ekey(self, _, e):
+        k = e.keyval
+        if k in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            r = self._car._key(self._car, e)
+            if k in (Gdk.KEY_Left, Gdk.KEY_Right):
+                GLib.timeout_add(50, self._ulbl)
+            return r
+        if k == Gdk.KEY_Escape:
+            self._ent.set_text("")
+            return True
+        return False
+
+    def _on_sel(self, nm):
+        self._apply(nm)
+        self._ulbl()
+
+    def _apply(self, nm, notify=False):
+        if nm not in self._files:
+            return False
+        p, sch = f"{_WALLS}/{nm}", self._dd.get_active_id() or "scheme-tonal-spot"
+        try:
+            f = Gio.File.new_for_path(_CURRENT)
+            if f.query_exists():
+                f.delete(None)
+            f.make_symbolic_link(p, None)
+        except GLib.Error:
             try:
-                iter_ = self.model.get_iter(Gtk.TreePath.new_from_indices([idx]))
-                self.model.set_value(iter_, 0, None)
-            except Exception:
-                pass
-            self._load_queue.insert(0, (idx, filename))
-            if not self._is_loading:
-                self._process_next()
-            return
-        
-        lo, hi = 0, len(self.files)
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if self.files[mid] < filename:
-                lo = mid + 1
-            else:
-                hi = mid
-        
-        self.files.insert(lo, filename)
-        
-        if self._last_query:
-            q = self._last_query.casefold()
-            if q not in filename.casefold():
-                return
-            pos = sum(1 for f in self.files[:lo] if q in f.casefold())
-        else:
-            pos = lo
-        
-        iter_ = self.model.insert(pos)
-        self.model.set(iter_, 0, None, 1, filename)
-        
-        self._load_queue.insert(0, (pos, filename))
-        if not self._is_loading:
-            self._process_next()
-
-    def _on_search_changed(self, entry, *args):
-        text = entry.get_text()
-        if text == self._last_query:
-            return
-        if self._pending_search:
-            GLib.source_remove(self._pending_search)
-        self._pending_search = GLib.timeout_add(
-            self.DEBOUNCE_SEARCH_MS, self._apply_filter, text
-        )
-
-    def _apply_filter(self, query):
-        self._pending_search = None
-        if self._destroyed:
-            return False
-        
-        self._last_query = query
-        self._load_queue.clear()
-        self._is_loading = False
-        self._visible_range = (0, 100)
-        
-        self.viewport.set_model(None)
-        self.model.clear()
-        
-        q = query.casefold() if query else None
-        count = 0
-        for filename in self.files:
-            if not q or q in filename.casefold():
-                self.model.append((None, filename))
-                count += 1
-        
-        self.viewport.set_model(self.model)
-        
-        if count > 0:
-            self._load_visible_range(0, min(count, _COLUMNS * 3))
-        
-        if not query:
-            self.viewport.unselect_all()
-            self.selected_index = -1
-        elif count > 0:
-            self._update_selection(0)
-        return False
-
-    def _on_key_press(self, widget, event):
-        key = event.keyval
-        if event.state & Gdk.ModifierType.SHIFT_MASK:
-            return self._handle_scheme_nav(key)
-        if key in _NAV_KEYS:
-            self._move_selection(key)
-            return True
-        if key in _ACT_KEYS and self.selected_index >= 0:
-            path = Gtk.TreePath.new_from_indices([self.selected_index])
-            self._on_wallpaper_activated(self.viewport, path)
-            return True
-        return False
-
-    def _handle_scheme_nav(self, key):
-        current = self.scheme_dropdown.get_active()
-        n = len(_SCHEMES)
-        if key == Gdk.KEY_Up:
-            self.scheme_dropdown.set_active((current - 1) % n)
-            return True
-        if key == Gdk.KEY_Down:
-            self.scheme_dropdown.set_active((current + 1) % n)
-            return True
-        if key == Gdk.KEY_Right:
-            self.scheme_dropdown.popup()
-            return True
-        return False
-
-    def _move_selection(self, key):
-        total = len(self.model)
-        if total == 0:
-            return
-        current = self.selected_index
-        if current < 0:
-            new = 0 if key in (Gdk.KEY_Down, Gdk.KEY_Right) else total - 1
-        elif key == Gdk.KEY_Up:
-            new = current - _COLUMNS if current >= _COLUMNS else current
-        elif key == Gdk.KEY_Down:
-            new = current + _COLUMNS if current + _COLUMNS < total else current
-        elif key == Gdk.KEY_Left:
-            new = current - 1 if current > 0 else current
-        else:
-            new = current + 1 if current < total - 1 else current
-        if 0 <= new < total and new != current:
-            self._update_selection(new)
-
-    def _update_selection(self, index):
-        self.viewport.unselect_all()
-        path = Gtk.TreePath.new_from_indices([index])
-        self.viewport.select_path(path)
-        self.viewport.scroll_to_path(path, False, 0.5, 0.5)
-        self.selected_index = index
-
-    def _on_focus_out(self, widget, event):
-        if self.get_mapped():
-            widget.grab_focus()
-        return False
-
-    def _on_wallpaper_activated(self, iconview, path):
-        try:
-            filename = self.model[path][1]
-            self._apply_wallpaper(filename)
-        except Exception:
-            pass
-
-    def _apply_wallpaper(self, filename, notify=False):
-        if filename not in self.files:
-            return False
-        full_path = f"{_WALLPAPERS_DIR}/{filename}"
-        scheme = self.scheme_dropdown.get_active_id()
-        try:
-            gfile = Gio.File.new_for_path(_CURRENT_WALL)
-            if gfile.query_exists():
-                gfile.delete(None)
-            gfile.make_symbolic_link(full_path, None)
-        except Exception:
-            GLib.spawn_command_line_sync(f'ln -sf "{full_path}" "{_CURRENT_WALL}"')
-        exec_shell_command_async(
-            f'awww img "{full_path}" --type outer '
-            f'--transition-duration 0.5 --transition-step 255 --transition-fps 60'
-        )
-        exec_shell_command_async(f'matugen image "{full_path}" --type {scheme}')
+                GLib.spawn_command_line_sync(f'ln -sf "{p}" "{_CURRENT}"')
+            except GLib.Error:
+                return False
+        exec_shell_command_async(f'awww img "{p}" --type outer --transition-duration 0.5 --transition-step 255 --transition-fps 60')
+        exec_shell_command_async(f'matugen image "{p}" --type {sch}')
         if notify:
-            exec_shell_command_async(
-                f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨' "
-                f"-a 'Vidgex-Shell' -i '{full_path}' -e"
-            )
+            exec_shell_command_async(f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨' -a 'Vidgex-Shell' -i '{p}' -e")
         return True
 
-    def _on_scheme_changed(self, widget):
-        if self.is_applying_scheme:
+    def _schch(self, w):
+        if s := w.get_active_id():
+            try:
+                Gio.File.new_for_path(_SCHEME_F).replace_contents(s.encode(), None, False, Gio.FileCreateFlags.REPLACE_DESTINATION, None)
+            except GLib.Error:
+                pass
+            try:
+                f = Gio.File.new_for_path(_CURRENT)
+                if f.query_info("standard::is-symlink", Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None).get_is_symlink():
+                    exec_shell_command_async(f'matugen image "{_CURRENT}" -t {s}')
+            except GLib.Error:
+                pass
+
+    def _roll(self):
+        self._rb.get_child().set_markup(_DICE[GLib.random_int_range(0, 6)])
+
+    def random_wall(self, _=None, ext=False):
+        if not self._files:
             return
-        scheme = widget.get_active_id()
-        if not scheme:
-            return
-        self.is_applying_scheme = True
+        i, nm = GLib.random_int_range(0, len(self._files)), None
+        if self._ent.get_text():
+            self._ent.set_text("")
+        nm = self._files[i]
+        self._car.spin(i, lambda: (self._apply(nm, notify=ext), self._roll(), self._ulbl()))
+
+    def _ldsch(self):
         try:
-            self._save_scheme(scheme)
-            gfile = Gio.File.new_for_path(_CURRENT_WALL)
-            info = gfile.query_info(
-                Gio.FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
-                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None
-            )
-            if info.get_is_symlink():
-                exec_shell_command_async(f'matugen image "{_CURRENT_WALL}" -t {scheme}')
-        except Exception:
-            pass
-        finally:
-            self.is_applying_scheme = False
-
-    def set_random_wallpaper(self, widget=None, external=False):
-        if self.files:
-            idx = GLib.random_int_range(0, len(self.files))
-            if self._apply_wallpaper(self.files[idx], notify=external):
-                self._randomize_dice_icon()
-
-    def _randomize_dice_icon(self):
-        idx = GLib.random_int_range(0, len(_DICE_ICONS))
-        self.random_btn.get_child().set_markup(_DICE_ICONS[idx])
-
-    def _load_scheme(self):
-        try:
-            gfile = Gio.File.new_for_path(_SCHEME_FILE)
-            if gfile.query_exists():
-                ok, data, _ = gfile.load_contents(None)
-                if ok:
-                    scheme = data.decode('utf-8').strip()
-                    for key, _ in _SCHEMES:
-                        if key == scheme:
-                            return scheme
-        except Exception:
+            f = Gio.File.new_for_path(_SCHEME_F)
+            if f.query_exists():
+                ok, d, _ = f.load_contents(None)
+                if ok and (s := d.decode().strip()) in _SCH_K:
+                    return s
+        except GLib.Error:
             pass
         return "scheme-tonal-spot"
 
-    def _save_scheme(self, scheme):
+    def _watch(self):
         try:
-            Gio.File.new_for_path(_SCHEME_FILE).replace_contents(
-                scheme.encode('utf-8'), None, False,
-                Gio.FileCreateFlags.REPLACE_DESTINATION, None
-            )
-        except Exception:
+            self._mon = Gio.File.new_for_path(_WALLS).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+            self._mon.connect("changed", lambda *_: self._deb("r", 1000, self._scan) if not self._dead else None)
+        except GLib.Error:
             pass
 
-    def _on_destroy(self, widget):
-        self._destroyed = True
-        for source_id in (self._pending_search, self._pending_scroll):
-            if source_id:
-                GLib.source_remove(source_id)
-        for source_id in self._pending_file_events.values():
-            GLib.source_remove(source_id)
-        self._pending_file_events.clear()
-        self._load_queue.clear()
-        self.files.clear()
-        self.model.clear()
+    def _deb(self, k, ms, f, *a):
+        if k in self._pend:
+            GLib.source_remove(self._pend[k])
+        self._pend[k] = GLib.timeout_add(ms, lambda: (self._pend.pop(k, None), f(*a) if a else f()) or False)
+
+    def _destroy(self, _):
+        self._dead = True
+        if self._mon:
+            self._mon.cancel()
+            self._mon = None
+        for i in self._pend.values():
+            GLib.source_remove(i)
+        self._pend.clear()
+        self._car.cleanup()
+        self._files = []

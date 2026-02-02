@@ -1,6 +1,8 @@
 from fabric.hyprland.widgets import (
     HyprlandLanguage as Language,
     HyprlandWorkspaces as Workspaces,
+    WorkspaceButton,
+    get_hyprland_connection,
 )
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
@@ -10,131 +12,136 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.centerbox import CenterBox
 from gi.repository import Gdk
 
-from modules.metrics import Battery, MetricsSmall, NetworkApplet
-from modules.systemtray import SystemTray
-from modules.controls import ControlSmall
-from widgets.wayland import WaylandWindow as Window
-import modules.icons as icons
+from modules.Bar.metrics import Battery, MetricsSmall, NetworkApplet
+from modules.Bar.systemtray import SystemTray
+from services.wayland import WaylandWindow as Window
+import services.icons as icons
+
+from time import time
+
+_CD = 0.2
+_TH = 0.3
+_SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
+_CP = "dispatch workspace e-1"
+_CN = "dispatch workspace e+1"
+_WB = tuple(WorkspaceButton(h_expand=False, v_expand=False, h_align="center", v_align="center", id=i, label=None) for i in range(1, 10))
 
 
 class Bar(Window):
+    __slots__ = (
+        "mid", "notch", "lang", "conn", "_lst", "_hc", "ws", "wsc",
+        "tray", "net", "rl", "met", "rr", "ll", "dt", "bat", "bp",
+    )
+
     def __init__(self, monitor_id=0, **kwargs):
         super().__init__(exclusivity="auto")
 
-        self.monitor_id = monitor_id
+        self.mid = monitor_id
         self.notch = kwargs.get("notch")
-
         self.anchor = "left top right"
-        self.set_margin("-4px -4px -8px -4px")
+        self.margin = "-4px -4px -8px -4px"
 
-        self.language = Language()
+        self.lang = Language()
+        self.conn = get_hyprland_connection()
+        self._lst = 0.0
+        self._hc = None
 
-        self._build_ui()
-        self._setup_signals()
+        self._build()
+        self.lang.connect("notify::label", self._lchg)
+        self._lchg()
 
-    def _build_ui(self):
-        self.workspaces = Workspaces(name="workspaces", spacing=8)
-        self.systray = SystemTray()
-        self.network = NetworkApplet()
+    def _build(self):
+        self.ws = Workspaces(
+            name="workspaces", invert_scroll=True, empty_scroll=True,
+            v_align="fill", orientation="h", spacing=8, buttons=list(_WB),
+        )
+        self.ws.add_events(_SM)
+        self.ws.connect("scroll-event", self._scr)
 
-        left_revealer = Revealer(
-            name="bar-revealer",
-            transition_type="slide-right",
-            child_revealed=True,
-            child=Box(
-                name="bar-revealer-box",
-                spacing=4,
-                children=[
-                    self.systray,
-                    Box(name="network-container", children=[self.network]),
-                ],
-            ),
+        self.wsc = Box(name="workspaces-container", children=[self.ws])
+        self.tray = SystemTray()
+        self.net = NetworkApplet()
+        self.met = MetricsSmall()
+
+        self.rl = Revealer(
+            name="bar-revealer", transition_type="slide-right", child_revealed=True,
+            child=Box(name="bar-revealer-box", spacing=4, children=[
+                self.tray, Box(name="network-container", children=[self.net]),
+            ]),
         )
 
-        self.metrics = MetricsSmall()
-        self.control = ControlSmall()
-
-        right_revealer = Revealer(
-            name="bar-revealer",
-            transition_type="slide-left",
-            child_revealed=True,
-            child=Box(
-                name="bar-revealer-box",
-                spacing=4,
-                children=[self.metrics, self.control],
-            ),
+        self.rr = Revealer(
+            name="bar-revealer", transition_type="slide-left", child_revealed=True,
+            child=Box(name="bar-revealer-box", spacing=4, children=[self.met]),
         )
 
-        self.lang_label = Label(name="lang-label")
-        self.date_time = DateTime(name="date-time", formatters=["%H:%M"])
-        self.battery = Battery()
+        self.ll = Label(name="lang-label")
+        self.dt = DateTime(name="date-time", formatters=["%H:%M"])
+        self.bat = Battery()
 
-        self.button_power = Button(
-            name="button-bar",
-            tooltip_markup="<b>Меню питания</b>",
-            on_clicked=self.power_menu,
-            child=Label(
-                name="button-bar-label",
-                markup=icons.shutdown,
-            ),
+        self.bp = Button(
+            name="button-bar", tooltip_markup="<b>Меню питания</b>",
+            on_clicked=self._pwr, child=Label(name="button-bar-label", markup=icons.shutdown),
         )
-        self._setup_cursor_hover(self.button_power)
+        self._hov(self.bp)
 
-        self.add(
-            CenterBox(
-                name="bar-inner",
-                start_children=Box(
-                    name="start-container",
-                    spacing=4,
-                    children=[
-                        Box(children=[self.workspaces]),
-                        Box(name="boxed-revealer", children=[left_revealer]),
-                    ],
-                ),
-                end_children=Box(
-                    name="end-container",
-                    spacing=4,
-                    children=[
-                        Box(name="boxed-revealer", children=[right_revealer]),
-                        Box(
-                            name="power-battery-container",
-                            children=[
-                                self.date_time,
-                                Box(
-                                    name="language-indicator",
-                                    children=[self.lang_label],
-                                ),
-                                self.battery,
-                                self.button_power,
-                            ],
-                        ),
-                    ],
-                ),
-            )
-        )
+        self.add(CenterBox(
+            name="bar-inner",
+            start_children=Box(name="start-container", spacing=4, children=[
+                self.wsc, Box(name="boxed-revealer", children=[self.rl]),
+            ]),
+            end_children=Box(name="end-container", spacing=4, children=[
+                Box(name="boxed-revealer", children=[self.rr]),
+                Box(name="power-battery-container", children=[
+                    self.dt, Box(name="language-indicator", children=[self.ll]), self.bat, self.bp,
+                ]),
+            ]),
+        ))
 
-    def _setup_signals(self):
-        self.language.connect("notify::label", self._update_language)
-        self._update_language()
+    def _scr(self, _, e):
+        now = time()
+        if now - self._lst < _CD:
+            return True
 
-    def _update_language(self, *args):
-        lang = self.language.get_label()
-        if not lang:
-            return
+        d, cmd = e.direction, None
 
-        self.lang_label.set_label(lang[:3].upper())
+        if d == Gdk.ScrollDirection.UP:
+            cmd = _CP
+        elif d == Gdk.ScrollDirection.DOWN:
+            cmd = _CN
+        elif d == Gdk.ScrollDirection.SMOOTH:
+            dy = e.get_scroll_deltas()[2]
+            cmd = _CP if dy < -_TH else (_CN if dy > _TH else None)
 
-    def _setup_cursor_hover(self, button):
-        cursor = Gdk.Cursor.new_from_name(button.get_display(), "hand2")
-        button.connect(
-            "enter-notify-event",
-            lambda *_: button.get_window().set_cursor(cursor),
-        )
-        button.connect(
-            "leave-notify-event",
-            lambda *_: button.get_window().set_cursor(None),
-        )
+        if cmd:
+            self._lst = now
+            self.conn.send_command(cmd)
 
-    def power_menu(self, *args):
+        return True
+
+    def _lchg(self, *_):
+        if l := self.lang.get_label():
+            self.ll.set_label(l[:3].upper())
+
+    def _hov(self, w):
+        def sc(_, __, h):
+            if h and not self._hc:
+                self._hc = Gdk.Cursor.new_from_name(w.get_display(), "hand2")
+            if win := w.get_window():
+                win.set_cursor(self._hc if h else None)
+
+        w.connect("enter-notify-event", sc, True)
+        w.connect("leave-notify-event", sc, False)
+
+    def _pwr(self, *_):
         if self.notch:
             self.notch.open_notch("power")
+
+    def cleanup(self):
+        if hasattr(self.tray, 'cleanup'):
+            self.tray.cleanup()
+        if hasattr(self.net, 'cleanup'):
+            self.net.cleanup()
+        if hasattr(self.bat, 'cleanup'):
+            self.bat.cleanup()
+        self.notch = self.conn = self.lang = None

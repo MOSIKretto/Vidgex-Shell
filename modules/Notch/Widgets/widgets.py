@@ -1,55 +1,37 @@
-from fabric.widgets.box import Box
-from fabric.widgets.stack import Stack
-
 import gi
 gi.require_version("Gtk", "3.0")
 
+from fabric.widgets.box import Box
+from fabric.widgets.stack import Stack
+
+from modules.Notch.Widgets.player import Player
+from modules.Notch.Widgets.calendar import Calendar
+from modules.Notch.Widgets.network import NetworkConnections
 from modules.Notch.Widgets.bluetooth import BluetoothConnections
 from modules.Notch.Widgets.buttons import Buttons
-from modules.Notch.Widgets.calendar import Calendar
-from modules.controls import ControlSliders
-from modules.metrics import Metrics
-from modules.Notch.Widgets.Network.network import NetworkConnections
-from modules.Notch.Widgets.player import Player
-from modules.Notch.Widgets.Notifications.history import NotificationHistory
+
+from modules.Notch.Widgets.controls import ControlSliders
+from modules.Bar.metrics import Metrics
+
+from modules.Notifications.history import NotificationHistory
 
 
 class Widgets(Box):
-    def __init__(self, **kwargs):
-        super().__init__(
-            name="dash-widgets",
-            h_align="fill",
-            v_align="fill",
-            h_expand=True,
-            v_expand=True,
-            visible=True,
-            all_visible=True,
-        )        
+    __slots__ = ('notch', 'calendar', 'buttons', 'bluetooth', 'controls',
+                 'player', 'metrics', 'notification_history', 'network_connections',
+                 'applet_stack')
+
+    _D = {'h_expand': True, 'v_expand': True}
+
+    def __init__(self, notch=None, **kwargs):
+        super().__init__(name="dash-widgets", h_align="fill", v_align="fill",
+                         visible=True, all_visible=True, **self._D)
+
+        self.notch = notch
 
         self.calendar = Calendar(view_mode="month")
-
-        self.notch = kwargs["notch"]
-
         self.buttons = Buttons(widgets=self)
         self.bluetooth = BluetoothConnections(widgets=self)
-
-        self.box_1 = Box(
-            name="box-1",
-            h_expand=True,
-            v_expand=True,
-        )
-
-        self.box_2 = Box(
-            name="box-2",
-            h_expand=True,
-            v_expand=True,
-        )
-
-        self.box_3 = Box(
-            name="box-3",
-            v_expand=True,
-        )
-
         self.controls = ControlSliders()
         self.player = Player()
         self.metrics = Metrics()
@@ -57,77 +39,27 @@ class Widgets(Box):
         self.network_connections = NetworkConnections(widgets=self)
 
         self.applet_stack = Stack(
-            h_expand=True,
-            v_expand=True,
             transition_type="slide-left-right",
-            children=[
-                self.notification_history,
-                self.network_connections,
-                self.bluetooth,
-            ],
+            children=[self.notification_history, self.network_connections, self.bluetooth],
+            **self._D,
         )
 
-        self.applet_stack_box = Box(
-            name="applet-stack",
-            h_expand=True,
-            v_expand=True,
-            h_align="fill",
-            children=[
-                self.applet_stack,
-            ],
-        )
+        self._build()
 
-        self.children_1 = [
-            Box(
-                name="container-sub-1",
-                h_expand=True,
-                v_expand=True,
-                spacing=8,
-                children=[
-                    self.calendar,
-                    self.applet_stack_box,
-                ],
-            ),
-            self.metrics,
-        ]
+    def _build(self):
+        d, mkbox = self._D, lambda **kw: Box(**{**d, **kw})
 
-        self.container_1 = Box(
-            name="container-1",
-            h_expand=True,
-            v_expand=True,
-            orientation="h",
-            spacing=8,
-            children=self.children_1,
-        )
+        applet_box = mkbox(name="applet-stack", h_align="fill", children=[self.applet_stack])
 
-        self.container_2 = Box(
-            name="container-2",
-            h_expand=True,
-            v_expand=True,
-            orientation="v",
-            spacing=8,
-            children=[
-                self.buttons,
-                self.controls,
-                self.container_1,
-            ],
-        )
+        sub = mkbox(name="container-sub-1", spacing=8, children=[self.calendar, applet_box])
 
-        self.children_3 = [
-            self.player,
-            self.container_2,
-        ]
+        c1 = mkbox(name="container-1", orientation="h", spacing=8, children=[sub, self.metrics])
 
-        self.container_3 = Box(
-            name="container-3",
-            h_expand=True,
-            v_expand=True,
-            orientation="h",
-            spacing=8,
-            children=self.children_3,
-        )
+        c2 = mkbox(name="container-2", orientation="v", spacing=8,
+                   children=[self.buttons, self.controls, c1])
 
-        self.add(self.container_3)
+        self.add(mkbox(name="container-3", orientation="h", spacing=8,
+                       children=[self.player, c2]))
 
     def show_bt(self):
         self.applet_stack.set_visible_child(self.bluetooth)
@@ -136,4 +68,11 @@ class Widgets(Box):
         self.applet_stack.set_visible_child(self.notification_history)
 
     def show_network_applet(self):
-        self.notch.open_notch("network_applet")
+        if self.notch:
+            self.notch.open_notch("network_applet")
+
+    def cleanup(self):
+        for w in (self.player, self.controls, self.bluetooth, self.network_connections):
+            if hasattr(w, 'cleanup'):
+                w.cleanup()
+        self.notch = None

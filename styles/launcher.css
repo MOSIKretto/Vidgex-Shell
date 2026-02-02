@@ -23,7 +23,6 @@
   background-color: var(--surface);
   border-radius: 40px;
   padding: 8px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 #close-button:hover,
@@ -41,18 +40,24 @@
 
 #close-button:active,
 #clear-button:active {
-  background-color: var(--red-dim);
+  background-color: var(--primary);
   border-radius: 40px;
 }
 
 #close-label,
-#clear-label {
-  color: var(--red-dim);
+#clear-label,
+#config-label,
+#new-session-label,
+#random-wall-label {
+  color: var(--primary);
   font-size: 24px;
 }
 
 #close-button:active #close-label,
-#clear-button:active #clear-label {
+#clear-button:active #clear-label,
+#config-button:active #config-label,
+#new-session-button:active #new-session-label,
+#random-wall-button:active #random-wall-label {
   color: var(--shadow);
 }
 
@@ -61,19 +66,6 @@
 #random-wall-button:active {
   background-color: var(--primary);
   border-radius: 40px;
-}
-
-#config-label,
-#new-session-label,
-#random-wall-label {
-  color: var(--primary);
-  font-size: 24px;
-}
-
-#config-button:active #config-label,
-#new-session-button:active #new-session-label,
-#random-wall-button:active #random-wall-label {
-  color: var(--shadow);
 }
 
 #scrolled-window {
@@ -101,19 +93,8 @@
 #slot-button {
   border-radius: 40px;
   padding: 0 16px;
-  animation: loadSlot 0.5s ease;
   min-height: 52px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-@keyframes loadSlot {
-  0% {
-    opacity: 0;
-  }
-
-  100% {
-    opacity: 1;
-  }
+  animation: fadeIn 0.5s ease;
 }
 
 #slot-button:hover,
@@ -124,8 +105,14 @@
   padding-left: 20px;
 }
 
-#slot-button:active {
+#slot-button:active,
+#slot-button.activated {
   background-color: var(--primary);
+}
+
+#slot-button:active #app-label,
+#slot-button.activated #app-label {
+  color: var(--shadow);
 }
 
 #app-icon {
@@ -135,18 +122,12 @@
 
 #app-label {
   color: var(--foreground);
-  font-weight: bold;
 }
 
 #slot-button:hover #app-label,
 #slot-button:focus #app-label,
-#slot-button:selected #app-label,
 #slot-button.selected #app-label {
   color: var(--primary);
-}
-
-#slot-button:active #app-label {
-  color: var(--shadow);
 }
 
 #clip-icon {
@@ -158,8 +139,4 @@
   color: var(--outline);
   font-size: 12px;
   font-style: italic;
-}
-
-#clip-label {
-  font-weight: bold;
 }

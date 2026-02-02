@@ -10,221 +10,167 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 
-import modules.icons as icons
+import services.icons as icons
 from services.icon_resolver import IconResolver
 
+_scr = Gdk.Screen.get_default()
+_CW, _CH = _scr.get_width(), _scr.get_height()
+_SW, _SH = int(_CW * 0.1), int(_CH * 0.1)
+del _scr
 
-screen = Gdk.Screen.get_default()
-CURRENT_WIDTH = screen.get_width()
-CURRENT_HEIGHT = screen.get_height()
+_BS = 0.1
+_TG = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
 
-BASE_SCALE = 0.1
-TARGET = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
-
-connection = Hyprland()
-icon_resolver = IconResolver()
+_conn = Hyprland()
+_icr = IconResolver()
 
 
 class HyprlandWindowButton(Button):
-    __slots__ = ("address", "app_id", "title", "size", "desktop_app", "_icon_pixbuf")
+    __slots__ = ("addr", "_px")
 
-    def __init__(self, overview, title, address, app_id, size, transform=0):
-        self.address = address
-        self.app_id = app_id
-        self.title = title
-        self.size = size
-        self.desktop_app = overview.find_app(app_id)
-        
-        icon_size = int(min(size) * 0.5)
-        self._icon_pixbuf = icon_resolver.resolve_icon(app_id, icon_size, self.desktop_app)
+    def __init__(self, addr, aid, title, sz, da):
+        self.addr = addr
+        self._px = _icr.resolve_icon(aid, int(min(sz) * 0.5), da)
 
         super().__init__(
             name="overview-client-box",
-            image=Image(pixbuf=self._icon_pixbuf),
-            tooltip_text=title,
-            size=size,
-            on_clicked=self._focus,
-            on_button_press_event=self._on_button_press,
-            on_drag_data_get=self._on_drag_data_get,
-            on_drag_begin=self._on_drag_begin,
+            image=Image(pixbuf=self._px),
+            tooltip_text=(da.display_name or da.name if da else None) or title or aid,
+            size=sz,
+            on_clicked=self._foc,
+            on_button_press_event=self._press,
+            on_drag_data_get=self._dget,
+            on_drag_begin=self._dbegin,
         )
+        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, _TG, Gdk.DragAction.COPY)
 
-        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, TARGET, Gdk.DragAction.COPY)
+    def _foc(self, *_):
+        _conn.send_command(f"/dispatch focuswindow address:{self.addr}")
 
-    def _focus(self, *_):
-        connection.send_command(f"/dispatch focuswindow address:{self.address}")
+    def _press(self, _, e):
+        if e.button == 3:
+            _conn.send_command(f"/dispatch closewindow address:{self.addr}")
 
-    def _on_button_press(self, _, event):
-        if event.button == 3:
-            connection.send_command(f"/dispatch closewindow address:{self.address}")
+    def _dget(self, _, __, d, *___):
+        d.set_text(self.addr, len(self.addr))
 
-    def _on_drag_data_get(self, _, __, data, *___):
-        data.set_text(self.address, len(self.address))
-
-    def _on_drag_begin(self, _, context):
-        if self._icon_pixbuf:
-            Gtk.drag_set_icon_pixbuf(context, self._icon_pixbuf, 0, 0)
-        else:
-            Gtk.drag_set_icon_default(context)
+    def _dbegin(self, _, ctx):
+        Gtk.drag_set_icon_pixbuf(ctx, self._px, 0, 0) if self._px else Gtk.drag_set_icon_default(ctx)
 
 
 class WorkspaceEventBox(EventBox):
-    def __init__(self, workspace_id, fixed, width, height):
-        child = fixed if fixed else Label(
-            name="overview-add-label",
-            markup=icons.circle_plus,
-            h_expand=True,
-            v_expand=True,
-        )
-        
+    __slots__ = ()
+
+    def __init__(self, wid, fixed):
         super().__init__(
             name="overview-workspace-bg",
-            size=(int(width * BASE_SCALE), int(height * BASE_SCALE)),
-            child=child,
-            on_drag_data_received=lambda _w, _c, _x, _y, data, *_: (
-                connection.send_command(
-                    f"/dispatch movetoworkspacesilent {workspace_id},address:{data.get_data().decode()}"
-                )
+            size=(_SW, _SH),
+            child=fixed or Label(name="overview-add-label", markup=icons.circle_plus, h_expand=True, v_expand=True),
+            on_drag_data_received=lambda *a: _conn.send_command(
+                f"/dispatch movetoworkspacesilent {wid},address:{a[4].get_data().decode()}"
             ),
         )
-
-        self.drag_dest_set(Gtk.DestDefaults.ALL, TARGET, Gdk.DragAction.COPY)
-
+        self.drag_dest_set(Gtk.DestDefaults.ALL, _TG, Gdk.DragAction.COPY)
         if fixed:
             fixed.show_all()
 
 
 class Overview(Box):
+    __slots__ = ("mid", "ws_s", "ws_e", "cli", "wsb", "_apps")
+
     def __init__(self, monitor_id=0, **kwargs):
-        super().__init__(
-            name="overview",
-            orientation="v",
-            spacing=8,
-            **kwargs,
-        )
+        super().__init__(name="overview", orientation="v", spacing=8, **kwargs)
 
-        self.monitor_id = monitor_id
-        self.workspace_start = 1
-        self.workspace_end = 9
+        self.mid = monitor_id
+        self.ws_s = 1
+        self.ws_e = 9
+        self.cli = {}
+        self.wsb = {}
+        self._apps = None
 
-        self.clients = {}
-        self.workspace_boxes = {}
-        self._all_apps = []
-
-        connection.connect("event::openwindow", self.update)
-        connection.connect("event::closewindow", self.update)
-        connection.connect("event::movewindow", self.update)
+        for ev in ("openwindow", "closewindow", "movewindow"):
+            _conn.connect(f"event::{ev}", self.update)
 
         self.update()
 
-    def _load_apps(self):
-        self._all_apps = get_desktop_applications()
-
-    def find_app(self, app_id):
-        if not app_id:
+    def _find(self, aid):
+        if not aid:
             return None
-
-        app_id_lower = app_id.lower()
-        
-        for app in self._all_apps:
-            if app.window_class and app.window_class.lower() == app_id_lower:
-                return app
-            if app.name and app.name.lower() == app_id_lower:
-                return app
-            if app.display_name and app.display_name.lower() == app_id_lower:
-                return app
-            if app.executable and app.executable.split("/")[-1].lower() == app_id_lower:
-                return app
+        al = aid.lower()
+        for a in self._apps:
+            if (al == (a.window_class or "").lower() or 
+                al == (a.name or "").lower() or 
+                al == (a.display_name or "").lower() or 
+                al == (a.executable or "").rsplit("/", 1)[-1].lower()):
+                return a
         return None
 
     def update(self, *_):
-        self._load_apps()
+        for b in self.cli.values():
+            b.destroy()
+        self.cli.clear()
 
-        for btn in self.clients.values():
-            btn.destroy()
-        self.clients.clear()
-
-        for box in self.workspace_boxes.values():
-            box.destroy()
-        self.workspace_boxes.clear()
+        for b in self.wsb.values():
+            b.destroy()
+        self.wsb.clear()
 
         self.children = []
+        self._apps = get_desktop_applications()
 
         try:
-            # Пробуем разные методы получения данных
-            monitors_data = connection.get_monitors()
-            print(f"[DEBUG] monitors type: {type(monitors_data)}, data: {monitors_data}")
-        except Exception as e:
-            print(f"[ERROR] get_monitors failed: {e}")
-            # Fallback на старый метод
+            md = _conn.get_monitors()
+        except:
             import json
-            monitors_data = json.loads(connection.send_command("j/monitors").reply)
+            md = json.loads(_conn.send_command("j/monitors").reply)
 
         try:
-            clients_data = connection.get_clients()
-            print(f"[DEBUG] clients type: {type(clients_data)}, count: {len(clients_data) if isinstance(clients_data, list) else 'N/A'}")
-        except Exception as e:
-            print(f"[ERROR] get_clients failed: {e}")
+            cd = _conn.get_clients()
+        except:
             import json
-            clients_data = json.loads(connection.send_command("j/clients").reply)
+            cd = json.loads(_conn.send_command("j/clients").reply)
 
-        monitors = {
-            m["id"]: (m["x"], m["y"], m["transform"])
-            for m in monitors_data
-        }
-
-        clients = clients_data
-
+        mons = {m["id"]: (m["x"], m["y"]) for m in md}
         rows = [Box(spacing=8) for _ in range(3)]
         self.children = rows
 
-        for client in clients:
-            w_id = client["workspace"]["id"]
-            if not (self.workspace_start <= w_id <= self.workspace_end):
+        ws_s, ws_e = self.ws_s, self.ws_e
+
+        for c in cd:
+            wid = c["workspace"]["id"]
+            if not ws_s <= wid <= ws_e:
                 continue
 
-            mx, my, transform = monitors[client["monitor"]]
+            mx, my = mons[c["monitor"]]
+            addr = c["address"]
+            aid = c["initialClass"]
+            sz = (int(c["size"][0] * _BS), int(c["size"][1] * _BS))
 
-            btn = HyprlandWindowButton(
-                self,
-                client["title"],
-                client["address"],
-                client["initialClass"],
-                (
-                    int(client["size"][0] * BASE_SCALE),
-                    int(client["size"][1] * BASE_SCALE),
-                ),
-                transform,
-            )
+            btn = HyprlandWindowButton(addr, aid, c["title"], sz, self._find(aid))
+            self.cli[addr] = btn
 
-            self.clients[client["address"]] = btn
+            if wid not in self.wsb:
+                self.wsb[wid] = Gtk.Fixed()
 
-            fixed = self.workspace_boxes.setdefault(w_id, Gtk.Fixed())
-            fixed.put(
-                btn,
-                int(abs(client["at"][0] - mx) * BASE_SCALE),
-                int(abs(client["at"][1] - my) * BASE_SCALE),
-            )
+            self.wsb[wid].put(btn, int(abs(c["at"][0] - mx) * _BS), int(abs(c["at"][1] - my) * _BS))
 
-        for w_id in range(self.workspace_start, self.workspace_end + 1):
-            idx = w_id - self.workspace_start
-            row = rows[idx // 3]
+        for wid in range(ws_s, ws_e + 1):
+            rows[(wid - ws_s) // 3].add(Box(
+                name="overview-workspace-box",
+                orientation="vertical",
+                children=[
+                    Label(name="overview-workspace-label", label=f"Workspace {wid}"),
+                    WorkspaceEventBox(wid, self.wsb.get(wid)),
+                ],
+            ))
 
-            row.add(
-                Box(
-                    name="overview-workspace-box",
-                    orientation="vertical",
-                    children=[
-                        Label(
-                            name="overview-workspace-label",
-                            label=f"Workspace {w_id}",
-                        ),
-                        WorkspaceEventBox(
-                            w_id,
-                            self.workspace_boxes.get(w_id),
-                            CURRENT_WIDTH,
-                            CURRENT_HEIGHT,
-                        ),
-                    ],
-                )
-            )
+    def cleanup(self):
+        for b in self.cli.values():
+            b.destroy()
+        self.cli.clear()
+
+        for b in self.wsb.values():
+            b.destroy()
+        self.wsb.clear()
+
+        self._apps = None
+        self.children = []

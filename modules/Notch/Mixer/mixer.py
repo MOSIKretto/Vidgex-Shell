@@ -6,24 +6,12 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import Gtk
 
-# Синглтон для Audio
-_audio_instance = None
-
-def _get_audio():
-    global _audio_instance
-    if _audio_instance is None:
-        _audio_instance = Audio()
-    return _audio_instance
-
-
-# Константы
-_SLIDER_HEIGHT = 30
-_LABEL_HEIGHT = 20
-_SECTION_HEIGHT = 150
-_MAX_LABEL_CHARS = 45
+_SL_H, _LBL_H, _SEC_H, _MAX_CH = 30, 20, 150, 45
 
 
 class MixerSlider(Scale):
+    __slots__ = ('stream', '_upd', '_sig')
+
     def __init__(self, stream, **kwargs):
         super().__init__(
             name="control-slider",
@@ -35,57 +23,51 @@ class MixerSlider(Scale):
             style_classes=["no-icon"],
             **kwargs,
         )
-
         self.stream = stream
-        self._updating = False
-        
-        volume = stream.volume
-        self.set_value(volume * 0.01)
-        self.set_size_request(-1, _SLIDER_HEIGHT)
-        self.set_tooltip_text(f"{volume:.0f}%")
+        self._upd = False
 
-        self.connect("value-changed", self._on_value_changed)
-        stream.connect("changed", self._on_stream_changed)
+        v = stream.volume
+        self.set_value(v * 0.01)
+        self.set_size_request(-1, _SL_H)
+        self.set_tooltip_text(f"{v:.0f}%")
 
-        # Определяем тип стиля
-        stream_type = getattr(stream, "type", "")
-        if stream_type:
-            type_lower = stream_type.lower()
-            if "microphone" in type_lower or "input" in type_lower:
-                self.add_style_class("mic")
-            else:
-                self.add_style_class("vol")
-        else:
-            self.add_style_class("vol")
+        self.connect("value-changed", self._on_val)
+        self._sig = stream.connect("changed", self._on_strm)
 
-        # Начальное состояние muted
+        t = getattr(stream, "type", "").lower()
+        self.add_style_class("mic" if "microphone" in t or "input" in t else "vol")
         if stream.muted:
             self.add_style_class("muted")
 
-    def _on_value_changed(self, _):
-        if self._updating:
+    def _on_val(self, _):
+        if self._upd:
             return
-        stream = self.stream
-        if stream:
-            new_volume = self.value * 100
-            stream.volume = new_volume
-            self.set_tooltip_text(f"{new_volume:.0f}%")
+        s = self.stream
+        if s:
+            nv = self.value * 100.0
+            s.volume = nv
+            self.set_tooltip_text(f"{nv:.0f}%")
 
-    def _on_stream_changed(self, stream):
-        self._updating = True
-        volume = stream.volume
-        self.value = volume * 0.01
-        self.set_tooltip_text(f"{volume:.0f}%")
-        
-        if stream.muted:
-            self.add_style_class("muted")
-        else:
-            self.remove_style_class("muted")
-        
-        self._updating = False
+    def _on_strm(self, s):
+        self._upd = True
+        v = s.volume
+        self.value = v * 0.01
+        self.set_tooltip_text(f"{v:.0f}%")
+        (self.add_style_class if s.muted else self.remove_style_class)("muted")
+        self._upd = False
+
+    def cleanup(self):
+        if self.stream and self._sig:
+            try:
+                self.stream.disconnect(self._sig)
+            except Exception:
+                pass
+        self.stream = None
 
 
 class MixerSection(Box):
+    __slots__ = ('_tl', '_cb', '_sw')
+
     def __init__(self, title, **kwargs):
         super().__init__(
             name="mixer-section",
@@ -94,100 +76,71 @@ class MixerSection(Box):
             h_expand=True,
             v_expand=False,
         )
-
-        self.title_label = Label(
-            name="mixer-section-title",
-            label=title,
-            h_expand=True,
-            h_align="fill",
-        )
-
-        self.content_box = Box(
-            name="mixer-content",
-            orientation="v",
-            spacing=8,
-            h_expand=True,
-            v_expand=False,
-        )
-
-        self.add(self.title_label)
-        self.add(self.content_box)
-        
-        self._stream_widgets = {}
+        self._tl = Label(name="mixer-section-title", label=title, h_expand=True, h_align="fill")
+        self._cb = Box(name="mixer-content", orientation="v", spacing=8, h_expand=True, v_expand=False)
+        self._sw = {}
+        self.add(self._tl)
+        self.add(self._cb)
 
     def update_streams(self, streams):
-        content = self.content_box
-        old_widgets = self._stream_widgets
-        new_widgets = {}
-        
-        # Собираем текущие stream id
-        current_ids = set()
-        for stream in streams:
-            stream_id = id(stream)
-            current_ids.add(stream_id)
-            
-            if stream_id in old_widgets:
-                # Переиспользуем существующий виджет
-                container, label = old_widgets[stream_id]
-                new_widgets[stream_id] = (container, label)
-                # Обновляем только label
-                volume = stream.volume
-                vol_int = int(volume + 0.5)  # Быстрее чем math.ceil для положительных
-                label.set_label(f"[{vol_int}%] {stream.description}")
+        cb, ow, nw, cids = self._cb, self._sw, {}, set()
+
+        for s in streams:
+            sid = id(s)
+            cids.add(sid)
+            if sid in ow:
+                c, lbl, sl, sig = ow[sid]
+                nw[sid] = ow[sid]
+                lbl.set_label(f"[{int(s.volume + 0.5)}%] {s.description}")
             else:
-                # Создаём новый виджет
-                container, label = self._create_stream_widget(stream)
-                new_widgets[stream_id] = (container, label)
-                content.add(container)
-        
-        # Удаляем старые виджеты
-        for stream_id, (container, _) in old_widgets.items():
-            if stream_id not in current_ids:
-                content.remove(container)
-                container.destroy()
-        
-        self._stream_widgets = new_widgets
-        content.show_all()
+                c, lbl, sl, sig = self._mk_widget(s)
+                nw[sid] = (c, lbl, sl, sig)
+                cb.add(c)
 
-    def _create_stream_widget(self, stream):
-        volume = stream.volume
-        vol_int = int(volume + 0.5)
-        
-        container = Box(
-            orientation="v",
-            spacing=4,
-            h_expand=True,
-            v_expand=False,
-        )
+        for sid, (c, _, sl, sig) in ow.items():
+            if sid not in cids:
+                cb.remove(c)
+                sl.cleanup()
+                c.destroy()
 
-        label = Label(
+        self._sw = nw
+        cb.show_all()
+
+    def _mk_widget(self, s):
+        v = int(s.volume + 0.5)
+        c = Box(orientation="v", spacing=4, h_expand=True, v_expand=False)
+        lbl = Label(
             name="mixer-stream-label",
-            label=f"[{vol_int}%] {stream.description}",
+            label=f"[{v}%] {s.description}",
             h_expand=True,
             h_align="start",
             v_align="center",
             ellipsization="end",
-            max_chars_width=_MAX_LABEL_CHARS,
-            height_request=_LABEL_HEIGHT,
+            max_chars_width=_MAX_CH,
+            height_request=_LBL_H,
         )
+        sl = MixerSlider(s)
+        sig = s.connect("changed", lambda st, l=lbl: l.set_label(f"[{int(st.volume + 0.5)}%] {st.description}"))
+        c.add(lbl)
+        c.add(sl)
+        return c, lbl, sl, sig
 
-        slider = MixerSlider(stream)
-        
-        # Подключаем обновление label при изменении stream
-        stream.connect("changed", self._on_stream_volume_changed, label)
-
-        container.add(label)
-        container.add(slider)
-        
-        return container, label
-
-    def _on_stream_volume_changed(self, stream, label):
-        volume = stream.volume
-        vol_int = int(volume + 0.5)
-        label.set_label(f"[{vol_int}%] {stream.description}")
+    def cleanup(self):
+        for c, _, sl, sig in self._sw.values():
+            if sl.stream:
+                try:
+                    sl.stream.disconnect(sig)
+                except Exception:
+                    pass
+            sl.cleanup()
+            c.destroy()
+        self._sw.clear()
+        self._cb.children = []
 
 
 class Mixer(Box):
+    __slots__ = ('audio', '_out', '_inp', '_sigs')
+
     def __init__(self, **kwargs):
         super().__init__(
             name="mixer",
@@ -196,92 +149,80 @@ class Mixer(Box):
             h_expand=True,
             v_expand=True,
         )
-
+        self._sigs = []
         try:
-            self.audio = _get_audio()
+            self.audio = Audio()
         except Exception as e:
-            self.add(Label(
-                label=f"Audio service unavailable: {e}",
-                h_align="center",
-                v_align="center",
-                h_expand=True,
-                v_expand=True,
-            ))
+            self.add(Label(label=f"Audio service unavailable: {e}", h_align="center", v_align="center", h_expand=True, v_expand=True))
+            self.audio = None
             return
 
-        self._setup_ui()
-        self._connect_signals()
-        self._update_mixer()
-        self.show_all()
+        mc = Box(orientation="h", spacing=8, h_expand=True, v_expand=True)
+        mc.set_homogeneous(True)
 
-    def _setup_ui(self):
-        main_container = Box(
-            orientation="h",
-            spacing=8,
-            h_expand=True,
-            v_expand=True,
-        )
-        main_container.set_homogeneous(True)
-
-        # Outputs
-        self.outputs_section = MixerSection("Outputs")
-        outputs_scrolled = ScrolledWindow(
+        self._out = MixerSection("Outputs")
+        osc = ScrolledWindow(
             name="outputs-scrolled",
             h_expand=True,
             v_expand=False,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
-            child=self.outputs_section,
+            child=self._out,
         )
-        outputs_scrolled.set_size_request(-1, _SECTION_HEIGHT)
-        outputs_scrolled.set_max_content_height(_SECTION_HEIGHT)
+        osc.set_size_request(-1, _SEC_H)
+        osc.set_max_content_height(_SEC_H)
 
-        # Inputs
-        self.inputs_section = MixerSection("Inputs")
-        inputs_scrolled = ScrolledWindow(
+        self._inp = MixerSection("Inputs")
+        isc = ScrolledWindow(
             name="inputs-scrolled",
             h_expand=True,
             v_expand=False,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
-            child=self.inputs_section,
+            child=self._inp,
         )
-        inputs_scrolled.set_size_request(-1, _SECTION_HEIGHT)
-        inputs_scrolled.set_max_content_height(_SECTION_HEIGHT)
+        isc.set_size_request(-1, _SEC_H)
+        isc.set_max_content_height(_SEC_H)
 
-        main_container.add(outputs_scrolled)
-        main_container.add(inputs_scrolled)
+        mc.add(osc)
+        mc.add(isc)
+        self.add(mc)
+        self.set_size_request(-1, _SEC_H << 1)
 
-        self.add(main_container)
-        self.set_size_request(-1, _SECTION_HEIGHT * 2)
+        a, u = self.audio, self._upd
+        for sig in ("changed", "stream-added", "stream-removed"):
+            self._sigs.append((a, a.connect(sig, u)))
 
-    def _connect_signals(self):
-        audio = self.audio
-        handler = self._update_mixer
-        audio.connect("changed", handler)
-        audio.connect("stream-added", handler)
-        audio.connect("stream-removed", handler)
+        self._upd()
+        self.show_all()
 
-    def _update_mixer(self):
-        audio = self.audio
-        
-        # Outputs
-        outputs = []
-        speaker = audio.speaker
-        if speaker:
-            outputs.append(speaker)
-        applications = audio.applications
-        if applications:
-            outputs.extend(applications)
-        
-        # Inputs
-        inputs = []
-        microphone = audio.microphone
-        if microphone:
-            inputs.append(microphone)
-        recorders = audio.recorders
-        if recorders:
-            inputs.extend(recorders)
-        
-        self.outputs_section.update_streams(outputs)
-        self.inputs_section.update_streams(inputs)
+    def _upd(self, *_):
+        a = self.audio
+        if not a:
+            return
+
+        outs = [a.speaker] if a.speaker else []
+        if a.applications:
+            outs.extend(a.applications)
+
+        ins = [a.microphone] if a.microphone else []
+        if a.recorders:
+            ins.extend(a.recorders)
+
+        self._out.update_streams(outs)
+        self._inp.update_streams(ins)
+
+    def cleanup(self):
+        for obj, sig in self._sigs:
+            try:
+                obj.disconnect(sig)
+            except Exception:
+                pass
+        self._sigs.clear()
+
+        if hasattr(self, '_out'):
+            self._out.cleanup()
+        if hasattr(self, '_inp'):
+            self._inp.cleanup()
+
+        self.audio = None

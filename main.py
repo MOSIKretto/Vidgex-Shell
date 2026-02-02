@@ -4,10 +4,10 @@ import setproctitle
 from fabric import Application
 from fabric.utils import get_relative_path
 
-from modules.Notch.Widgets.Notifications.popup import NotificationPopup
+from modules.popup import NotificationPopup
 from modules.notch import Notch
 from modules.bar import Bar
-from widgets.corners import Corners
+from modules.corners import Corners
 from modules.dock import Dock
 
 

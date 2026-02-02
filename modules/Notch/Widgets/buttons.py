@@ -5,556 +5,479 @@ from fabric.widgets.label import Label
 
 from gi.repository import Gdk, GLib, Gtk
 
-import modules.icons as icons
-from modules.Notch.Widgets.Network.network import NetworkClient
+import services.icons as icons
+from modules.Notch.Widgets.network import NetworkClient
+
+_TH = (25, 50, 75)
+_WI = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
+_AN = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
+_ON, _OFF = "Enabled", "Disabled"
 
 
-class WifiStrengthThresholds:
-    """Пороги силы сигнала Wi-Fi (замена dataclass)."""
-    __slots__ = ()
-    WEAK = 25
-    FAIR = 50
-    GOOD = 75
+def _hover(w):
+    w.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+    cur = [None]
+
+    def ent(w, _):
+        win = w.get_window()
+        if win:
+            if not cur[0]:
+                cur[0] = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
+            win.set_cursor(cur[0])
+
+    def lv(w, _):
+        win = w.get_window()
+        if win:
+            win.set_cursor(None)
+
+    w.connect("enter-notify-event", ent)
+    w.connect("leave-notify-event", lv)
 
 
-def add_hover_cursor(widget):
-    """Добавляет курсор-указатель при наведении на виджет."""
-    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    
-    def on_enter(w, event):
-        window = w.get_window()
-        if window:
-            cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
-            window.set_cursor(cursor)
-    
-    def on_leave(w, event):
-        window = w.get_window()
-        if window:
-            window.set_cursor(None)
-    
-    widget.connect("enter-notify-event", on_enter)
-    widget.connect("leave-notify-event", on_leave)
+def _chk(pat):
+    try:
+        _, _, _, c = GLib.spawn_command_line_sync(f"pgrep -f '{pat}'")
+        return c == 0
+    except:
+        return False
 
 
-class ProcessMonitor:
-    """Монитор процессов через GLib.spawn_command_line_sync."""
-    
-    def __init__(self, pattern, timeout=2.0):
-        self.pattern = pattern
-        self.timeout = timeout
-    
-    def check(self):
-        """Синхронная проверка наличия процесса."""
-        try:
-            success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
-                f"pgrep -f '{self.pattern}'"
-            )
-            return exit_status == 0
-        except Exception:
-            return False
+def _async(fn, cb=None):
+    def w(_):
+        r = fn()
+        if cb:
+            GLib.idle_add(cb, r)
+    GLib.Thread.new(None, w, None)
 
 
-def run_in_thread(func, callback=None):
-    """Выполняет функцию в отдельном потоке."""
-    def worker(user_data):
-        result = func()
-        if callback:
-            GLib.idle_add(callback, result)
-    
-    GLib.Thread.new(None, worker, None)
+def _dis(ws, d):
+    m = "add_style_class" if d else "remove_style_class"
+    for w in ws:
+        if hasattr(w, m):
+            getattr(w, m)("disabled")
 
 
-class StyleManager:
-    """Управляет стилями для группы виджетов."""
-    
-    def __init__(self, widgets):
-        self._styled_widgets = widgets
-    
-    def set_disabled(self, disabled):
-        """Устанавливает или убирает класс 'disabled' для всех виджетов."""
-        method = "add_style_class" if disabled else "remove_style_class"
-        for widget in self._styled_widgets:
-            if hasattr(widget, method):
-                getattr(widget, method)("disabled")
-
-
-class ButtonContentBuilder:
-    """Строитель содержимого кнопок."""
-    
-    @staticmethod
-    def create_labeled_box(label_widget):
-        return Box(children=[label_widget, Box(h_expand=True)])
-    
-    @staticmethod
-    def create_status_layout(icon, title_label, status_label, spacing=10):
-        title_box = ButtonContentBuilder.create_labeled_box(title_label)
-        status_box = ButtonContentBuilder.create_labeled_box(status_label)
-        
-        text_box = Box(
-            orientation="v",
-            h_align="start",
-            v_align="center",
-            children=[title_box, status_box],
-        )
-        
-        return Box(
-            h_align="start",
-            v_align="center",
-            spacing=spacing,
-            children=[icon, text_box],
-        )
+def _content(ic, ti, st):
+    return Box(
+        h_align="start", v_align="center", spacing=10,
+        children=[
+            ic,
+            Box(orientation="v", h_align="start", v_align="center", children=[
+                Box(children=[ti, Box(h_expand=True)]),
+                Box(children=[st, Box(h_expand=True)])
+            ])
+        ]
+    )
 
 
 class NetworkButton(Box):
-    """Кнопка управления сетью Wi-Fi."""
-    
-    WIFI_ICONS = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
-    ANIMATION_ICONS = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
-    ANIMATION_INTERVAL = 500
-    THRESHOLDS = WifiStrengthThresholds()
-    UPDATE_DEBOUNCE = 100
-    
+    __slots__ = ('_w', '_n', '_cl', '_aid', '_uid', '_ast', '_sw',
+                 'network_icon', 'network_label', 'network_ssid',
+                 'network_status_button', 'network_menu_button', 'network_menu_label')
+
     def __init__(self, widgets=None, notch=None):
         super().__init__()
-        
-        self._widgets = widgets
-        self._notch = notch
-        
-        self._network_client = NetworkClient()
-        self._animation_timeout_id = None
-        self._update_timeout_id = None
-        self._animation_step = 0
-        self._style_manager = None
-        
-        self._create_ui()
-        self._connect_signals()
-        self._schedule_update()
-    
-    def _schedule_update(self):
-        if self._update_timeout_id:
-            GLib.source_remove(self._update_timeout_id)
-        self._update_timeout_id = GLib.timeout_add(self.UPDATE_DEBOUNCE, self._do_update)
-    
-    def _do_update(self):
-        self._update_timeout_id = None
-        self.update_state()
-        return False
+        self._w, self._n = widgets, notch
+        self._aid = self._uid = None
+        self._ast = 0
 
-    def _create_ui(self):
+        self._cl = NetworkClient()
+        self._build()
+        self._cl.connect('device-ready', self._ready)
+        self._sched()
+
+    def _build(self):
         self.network_icon = Label(name="network-icon")
         self.network_label = Label(name="network-label", label="Wi-Fi", justification="left")
         self.network_ssid = Label(name="network-ssid", justification="left")
-        
-        content = ButtonContentBuilder.create_status_layout(
-            self.network_icon, self.network_label, self.network_ssid
-        )
+
         self.network_status_button = Button(
-            name="network-status-button",
-            h_expand=True,
-            child=content,
-            on_clicked=self._on_status_clicked
-        )
-        add_hover_cursor(self.network_status_button)
-        
+            name="network-status-button", h_expand=True,
+            child=_content(self.network_icon, self.network_label, self.network_ssid),
+            on_clicked=self._stat_click)
+        _hover(self.network_status_button)
+
         self.network_menu_label = Label(name="network-menu-label", markup=icons.chevron_right)
-        self.network_menu_button = Button(
-            name="network-menu-button",
-            child=self.network_menu_label,
-            on_clicked=self._on_menu_clicked
-        )
-        add_hover_cursor(self.network_menu_button)
-        
+        self.network_menu_button = Button(name="network-menu-button", child=self.network_menu_label,
+                                          on_clicked=self._menu_click)
+        _hover(self.network_menu_button)
+
         self.add(self.network_status_button)
         self.add(self.network_menu_button)
-        
-        self._style_manager = StyleManager([
-            self, self.network_icon, self.network_label,
-            self.network_ssid, self.network_status_button,
-            self.network_menu_button, self.network_menu_label
-        ])
 
-    def _connect_signals(self):
-        self._network_client.connect('device-ready', self._on_wifi_ready)
+        self._sw = (self, self.network_icon, self.network_label, self.network_ssid,
+                    self.network_status_button, self.network_menu_button, self.network_menu_label)
 
-    def _on_status_clicked(self, *args):
-        wifi = self._network_client.wifi_device
+    def _stat_click(self, *_):
+        wifi = self._cl.wifi_device
         if wifi:
             wifi.toggle_wifi()
 
-    def _on_menu_clicked(self, *args):
-        if self._notch:
-            self._notch.open_notch("network_applet")
-        elif self._widgets and hasattr(self._widgets, 'show_network_applet'):
-            self._widgets.show_network_applet()
+    def _menu_click(self, *_):
+        if self._n:
+            self._n.open_notch("network_applet")
+        elif self._w and hasattr(self._w, 'show_network_applet'):
+            self._w.show_network_applet()
 
-    def _on_wifi_ready(self, *args):
-        wifi = self._network_client.wifi_device
+    def _ready(self, *_):
+        wifi = self._cl.wifi_device
         if wifi:
-            wifi.connect('notify::enabled', lambda *_: self._schedule_update())
-            wifi.connect('notify::ssid', lambda *_: self._schedule_update())
-            self._schedule_update()
+            wifi.connect('notify::enabled', lambda *_: self._sched())
+            wifi.connect('notify::ssid', lambda *_: self._sched())
+            self._sched()
 
-    def _get_wifi_icon(self, strength):
-        if strength < self.THRESHOLDS.WEAK:
-            return self.WIFI_ICONS[0]
-        elif strength < self.THRESHOLDS.FAIR:
-            return self.WIFI_ICONS[1]
-        elif strength < self.THRESHOLDS.GOOD:
-            return self.WIFI_ICONS[2]
-        return self.WIFI_ICONS[3]
+    def _sched(self):
+        if self._uid:
+            GLib.source_remove(self._uid)
+        self._uid = GLib.timeout_add(100, self._do_upd)
 
-    def _start_animation(self):
-        if self._animation_timeout_id is None:
-            self._animation_step = 0
-            self._animation_timeout_id = GLib.timeout_add(
-                self.ANIMATION_INTERVAL,
-                self._animate_searching
-            )
+    def _do_upd(self):
+        self._uid = None
+        self.update_state()
+        return False
 
-    def _stop_animation(self):
-        if self._animation_timeout_id is not None:
-            GLib.source_remove(self._animation_timeout_id)
-            self._animation_timeout_id = None
+    def _wifi_ic(self, s):
+        return _WI[0] if s < _TH[0] else (_WI[1] if s < _TH[1] else (_WI[2] if s < _TH[2] else _WI[3]))
 
-    def _animate_searching(self):
-        wifi = self._network_client.wifi_device
-        if not wifi or not wifi.enabled:
-            self._stop_animation()
+    def _start_anim(self):
+        if self._aid is None:
+            self._ast = 0
+            self._aid = GLib.timeout_add(500, self._anim)
+
+    def _stop_anim(self):
+        if self._aid is not None:
+            GLib.source_remove(self._aid)
+            self._aid = None
+
+    def _anim(self):
+        wifi = self._cl.wifi_device
+        if not wifi or not wifi.enabled or (wifi.state == "activated" and wifi.ssid != "Отключено"):
+            self._stop_anim()
             return False
-        if wifi.state == "activated" and wifi.ssid != "Отключено":
-            self._stop_animation()
-            return False
-        icon = self.ANIMATION_ICONS[self._animation_step]
-        GLib.idle_add(self.network_icon.set_markup, icon)
-        self._animation_step = (self._animation_step + 1) % len(self.ANIMATION_ICONS)
+        GLib.idle_add(self.network_icon.set_markup, _AN[self._ast])
+        self._ast = (self._ast + 1) % 6
         return True
 
     def update_state(self):
-        wifi = self._network_client.wifi_device
-        ethernet = self._network_client.ethernet_device
-        
+        wifi, eth = self._cl.wifi_device, self._cl.ethernet_device
+
         if wifi and not wifi.enabled:
-            self._stop_animation()
+            self._stop_anim()
             self.network_icon.set_markup(icons.wifi_off)
-            self.network_ssid.set_label("Выключено")
-            if self._style_manager:
-                self._style_manager.set_disabled(True)
+            self.network_ssid.set_label(_OFF)
+            _dis(self._sw, True)
             return
-        
-        if self._style_manager:
-            self._style_manager.set_disabled(False)
-        
-        primary = getattr(self._network_client, 'primary_device', 'wireless')
-        if primary == "wired":
-            self._stop_animation()
-            icon = icons.world if (ethernet and ethernet.internet == "activated") else icons.world_off
-            self.network_icon.set_markup(icon)
+
+        _dis(self._sw, False)
+
+        if getattr(self._cl, 'primary_device', 'wireless') == "wired":
+            self._stop_anim()
+            self.network_icon.set_markup(icons.world if eth and eth.internet == "activated" else icons.world_off)
             return
-        
+
         if not wifi:
-            self._stop_animation()
+            self._stop_anim()
             self.network_icon.set_markup(icons.wifi_off)
             return
-        
+
         if wifi.state == "activated" and wifi.ssid != "Отключено":
-            self._stop_animation()
-            self.network_ssid.set_label(wifi.ssid)
-            self.network_icon.set_markup(self._get_wifi_icon(wifi.strength))
+            self._stop_anim()
+            s = wifi.ssid
+            self.network_ssid.set_label(s[:10] + "..." if len(s) > 10 else s)
+            self.network_icon.set_markup(self._wifi_ic(wifi.strength))
         else:
-            self.network_ssid.set_label("Включено")
-            self._start_animation()
+            self.network_ssid.set_label(_ON)
+            self._start_anim()
+
+    def cleanup(self):
+        self._stop_anim()
+        if self._uid:
+            GLib.source_remove(self._uid)
+            self._uid = None
+        self._cl = self._w = self._n = None
 
 
 class BluetoothButton(Box):
-    """Кнопка управления Bluetooth."""
-    
+    __slots__ = ('_w', '_n', '_en',
+                 'bluetooth_icon', 'bluetooth_label', 'bluetooth_status_text',
+                 'bluetooth_status_button', 'bluetooth_menu_button', 'bluetooth_menu_label')
+
     def __init__(self, widgets=None, notch=None):
         super().__init__()
-        
-        self._widgets = widgets
-        self._notch = notch
-        self._is_bluetooth_enabled = False
-        
-        self._create_ui()
-        self._setup_signals()
+        self._w, self._n = widgets, notch
+        self._en = False
+
+        self._build()
+        self._setup_sig()
         self.update_state()
-    
-    def _setup_signals(self):
-        if hasattr(self._widgets, 'bluetooth'):
-            bt_client = self._widgets.bluetooth
-            if hasattr(bt_client, 'client') and hasattr(bt_client.client, 'connect'):
-                try:
-                    bt_client.client.connect('power-changed', self._on_power_changed)
-                    bt_client.client.connect('device-added', self.update_state)
-                    bt_client.client.connect('device-removed', self.update_state)
-                except Exception:
-                    pass
-    
-    def _on_power_changed(self, *args):
-        self.update_state()
-    
-    def _get_bluetooth_power_state(self):
-        """Получает состояние питания Bluetooth."""
-        try:
-            monitor = ProcessMonitor("bluetoothd")
-            running = monitor.check()
-            if running:
-                success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
-                    "bluetoothctl show"
-                )
-                if exit_status == 0 and stdout:
-                    output = stdout.decode('utf-8', errors='ignore')
-                    for line in output.splitlines():
-                        if "Powered:" in line:
-                            return "yes" in line
-            
-            # Fallback to rfkill
-            success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
-                "rfkill list bluetooth"
-            )
-            if exit_status == 0 and stdout:
-                output = stdout.decode('utf-8', errors='ignore').lower()
-                return "soft blocked: no" in output and "hard blocked: no" in output
-        except Exception:
-            return False
-        return False
-    
-    def _toggle_bluetooth_power(self):
-        """Переключает питание Bluetooth."""
-        try:
-            monitor = ProcessMonitor("bluetoothd")
-            is_running = monitor.check()
-            if is_running:
-                current_state = self._get_bluetooth_power_state()
-                new_state = "off" if current_state else "on"
-                GLib.spawn_command_line_sync(f"bluetoothctl power {new_state}")
-                return not current_state
-            
-            current_state = self._get_bluetooth_power_state()
-            action = "unblock" if not current_state else "block"
-            GLib.spawn_command_line_sync(f"rfkill {action} bluetooth")
-            return not current_state
-        except Exception:
-            return self._is_bluetooth_enabled
-    
-    def _create_ui(self):
+
+    def _build(self):
         self.bluetooth_icon = Label(name="bluetooth-icon")
         self.bluetooth_label = Label(name="bluetooth-label", label="Bluetooth", justification="left")
         self.bluetooth_status_text = Label(name="bluetooth-status", justification="left")
-        
-        content = ButtonContentBuilder.create_status_layout(
-            self.bluetooth_icon,
-            self.bluetooth_label,
-            self.bluetooth_status_text
-        )
+
         self.bluetooth_status_button = Button(
-            name="bluetooth-status-button",
-            h_expand=True,
-            child=content,
-            on_clicked=lambda *_: run_in_thread(self._toggle_bluetooth_power, self._update_ui),
-        )
-        add_hover_cursor(self.bluetooth_status_button)
-        
+            name="bluetooth-status-button", h_expand=True,
+            child=_content(self.bluetooth_icon, self.bluetooth_label, self.bluetooth_status_text),
+            on_clicked=lambda *_: _async(self._toggle, self._upd_ui))
+        _hover(self.bluetooth_status_button)
+
         self.bluetooth_menu_label = Label(name="bluetooth-menu-label", markup=icons.chevron_right)
-        self.bluetooth_menu_button = Button(
-            name="bluetooth-menu-button",
-            child=self.bluetooth_menu_label,
-            on_clicked=lambda *_: self._open_bt_menu(),
-        )
-        add_hover_cursor(self.bluetooth_menu_button)
-        
+        self.bluetooth_menu_button = Button(name="bluetooth-menu-button", child=self.bluetooth_menu_label,
+                                            on_clicked=lambda *_: self._open_menu())
+        _hover(self.bluetooth_menu_button)
+
         self.add(self.bluetooth_status_button)
         self.add(self.bluetooth_menu_button)
-    
-    def _update_ui(self, is_enabled=None):
-        if is_enabled is None:
-            is_enabled = self._get_bluetooth_power_state()
-        self._is_bluetooth_enabled = is_enabled
-        self.bluetooth_icon.set_markup(icons.bluetooth if is_enabled else icons.bluetooth_off)
-        self.bluetooth_status_text.set_label("Включено" if is_enabled else "Выключено")
-    
-    def update_state(self, *args):
-        run_in_thread(self._get_bluetooth_power_state, self._update_ui)
-    
-    def _open_bt_menu(self):
-        if self._notch:
-            self._notch.open_notch("bluetooth")
-        elif hasattr(self._widgets, 'show_bt'):
-            self._widgets.show_bt()
+
+    def _setup_sig(self):
+        if hasattr(self._w, 'bluetooth'):
+            bt = self._w.bluetooth
+            if hasattr(bt, 'client') and hasattr(bt.client, 'connect'):
+                try:
+                    bt.client.connect('power-changed', lambda *_: self.update_state())
+                    bt.client.connect('device-added', self.update_state)
+                    bt.client.connect('device-removed', self.update_state)
+                except:
+                    pass
+
+    def _get_pwr(self):
+        try:
+            if _chk("bluetoothd"):
+                _, out, _, c = GLib.spawn_command_line_sync("bluetoothctl show")
+                if c == 0 and out:
+                    for ln in out.decode('utf-8', errors='ignore').splitlines():
+                        if "Powered:" in ln:
+                            return "yes" in ln
+            _, out, _, c = GLib.spawn_command_line_sync("rfkill list bluetooth")
+            if c == 0 and out:
+                o = out.decode('utf-8', errors='ignore').lower()
+                return "soft blocked: no" in o and "hard blocked: no" in o
+        except:
+            pass
+        return False
+
+    def _toggle(self):
+        try:
+            cur = self._get_pwr()
+            if _chk("bluetoothd"):
+                GLib.spawn_command_line_sync(f"bluetoothctl power {'off' if cur else 'on'}")
+            else:
+                GLib.spawn_command_line_sync(f"rfkill {'block' if cur else 'unblock'} bluetooth")
+            return not cur
+        except:
+            return self._en
+
+    def _upd_ui(self, en=None):
+        if en is None:
+            en = self._get_pwr()
+        self._en = en
+        self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
+        self.bluetooth_status_text.set_label(_ON if en else _OFF)
+
+    def update_state(self, *_):
+        _async(self._get_pwr, self._upd_ui)
+
+    def _open_menu(self):
+        if self._n:
+            self._n.open_notch("bluetooth")
+        elif hasattr(self._w, 'show_bt'):
+            self._w.show_bt()
         else:
             try:
                 GLib.spawn_command_line_async("blueman-manager")
-            except Exception:
+            except:
                 pass
 
+    def cleanup(self):
+        self._w = self._n = None
 
-class ToggleServiceButton(Button):
-    """Базовый класс для кнопок переключения сервисов."""
-    
-    PROCESS_PATTERN = ""
-    START_COMMAND = ""
-    STOP_COMMAND = ""
-    BUTTON_NAME = ""
+
+class _ToggleBtn(Button):
+    __slots__ = ('_ic', '_ti', '_st', '_sw')
+    PAT = ""
+    START = ""
+    STOP = ""
+    NAME = ""
     ICON = ""
-    LABEL_TEXT = ""
-    ENABLED_TEXT = "Включено"
-    DISABLED_TEXT = "Выключено"
-    
+    TEXT = ""
+
     def __init__(self):
-        self._icon_label = Label(name=f"{self.BUTTON_NAME}-icon", markup=self.ICON)
-        self._title_label = Label(name=f"{self.BUTTON_NAME}-label", label=self.LABEL_TEXT, justification="left")
-        self._status_label = Label(name=f"{self.BUTTON_NAME}-status", label=self.DISABLED_TEXT, justification="left")
-        
-        content = ButtonContentBuilder.create_status_layout(
-            self._icon_label, self._title_label, self._status_label
-        )
-        
-        super().__init__(
-            name=f"{self.BUTTON_NAME}-button",
-            h_expand=True,
-            child=content,
-            on_clicked=self._on_clicked,
-        )
-        
-        add_hover_cursor(self)
-        
-        self._style_manager = StyleManager([self, self._icon_label, self._title_label, self._status_label])
+        self._ic = Label(name=f"{self.NAME}-icon", markup=self.ICON)
+        self._ti = Label(name=f"{self.NAME}-label", label=self.TEXT, justification="left")
+        self._st = Label(name=f"{self.NAME}-status", label=_OFF, justification="left")
+
+        super().__init__(name=f"{self.NAME}-button", h_expand=True,
+                        child=_content(self._ic, self._ti, self._st), on_clicked=self._click)
+
+        _hover(self)
+        self._sw = (self, self._ic, self._ti, self._st)
         self.update_state()
 
-    def _on_clicked(self, *args):
-        run_in_thread(self._toggle_service, self._update_ui)
+    def _click(self, *_):
+        _async(self._toggle, self._upd)
 
-    def _toggle_service(self):
-        monitor = ProcessMonitor(self.PROCESS_PATTERN)
-        is_running = monitor.check()
-        if is_running:
-            exec_shell_command_async(self.STOP_COMMAND)
+    def _toggle(self):
+        if _chk(self.PAT):
+            exec_shell_command_async(self.STOP)
             return False
-        else:
-            exec_shell_command_async(self.START_COMMAND)
-            return True
+        exec_shell_command_async(self.START)
+        return True
 
-    def update_state(self, *args):
-        monitor = ProcessMonitor(self.PROCESS_PATTERN)
-        run_in_thread(lambda: monitor.check(), self._update_ui)
+    def update_state(self, *_):
+        _async(lambda: _chk(self.PAT), self._upd)
 
-    def _update_ui(self, is_enabled):
-        self._status_label.set_label(self.ENABLED_TEXT if is_enabled else self.DISABLED_TEXT)
-        self._style_manager.set_disabled(not is_enabled)
+    def _upd(self, en):
+        self._st.set_label(_ON if en else _OFF)
+        _dis(self._sw, not en)
         return False
 
 
-class NightModeButton(ToggleServiceButton):
-    """Кнопка ночного режима (hyprsunset)."""
-    
-    PROCESS_PATTERN = "hyprsunset"
-    START_COMMAND = "hyprsunset -t 3500"
-    STOP_COMMAND = "pkill hyprsunset"
-    BUTTON_NAME = "night-mode"
+class NightModeButton(_ToggleBtn):
+    PAT = "hyprsunset"
+    START = "hyprsunset -t 3500"
+    STOP = "pkill hyprsunset"
+    NAME = "night-mode"
     ICON = icons.night
-    LABEL_TEXT = "Ночной режим"
+    TEXT = "Night mode"
 
 
-class CaffeineButton(ToggleServiceButton):
-    """Кнопка режима Caffeine (предотвращение засыпания)."""
-    
-    PROCESS_PATTERN = "vidgex-inhibit"
-    START_COMMAND = "python ~/.config/Vidgex-Shell/scripts/inhibit.py"
-    STOP_COMMAND = "pkill -f vidgex-inhibit"
-    BUTTON_NAME = "caffeine"
+class CaffeineButton(_ToggleBtn):
+    __slots__ = ('_pid',)
+    PAT = "vidgex-inhibit"
+    START = "python ~/.config/Vidgex-Shell/scripts/inhibit.py"
+    STOP = "pkill -f vidgex-inhibit"
+    NAME = "caffeine"
     ICON = icons.coffee
-    LABEL_TEXT = "Caffeine"
-    
+    TEXT = "Caffeine"
+
     def __init__(self):
-        self._inhibit_pid = None
+        self._pid = None
         super().__init__()
 
-    def _toggle_service(self):
+    def _toggle(self):
         try:
-            # Проверяем, запущен ли наш процесс по PID
-            if self._inhibit_pid is not None:
-                # Проверяем, жив ли процесс с этим PID
+            if self._pid is not None:
                 try:
-                    success, stdout, stderr, exit_status = GLib.spawn_command_line_sync(
-                        f"kill -0 {self._inhibit_pid}"
-                    )
-                    if exit_status == 0:
-                        # Процесс жив, убиваем его
-                        GLib.spawn_command_line_sync(f"kill {self._inhibit_pid}")
-                        self._inhibit_pid = None
+                    _, _, _, c = GLib.spawn_command_line_sync(f"kill -0 {self._pid}")
+                    if c == 0:
+                        GLib.spawn_command_line_sync(f"kill {self._pid}")
+                        self._pid = None
                         return False
-                except Exception:
+                except:
                     pass
-                self._inhibit_pid = None
-            
-            # Проверяем через pgrep
-            monitor = ProcessMonitor(self.PROCESS_PATTERN)
-            if monitor.check():
-                exec_shell_command_async(self.STOP_COMMAND)
-                self._inhibit_pid = None
+                self._pid = None
+
+            if _chk(self.PAT):
+                exec_shell_command_async(self.STOP)
+                self._pid = None
                 return False
-            
-            # Запускаем процесс и сохраняем PID
+
             try:
-                # GLib.spawn_async возвращает PID
-                pid, stdin, stdout, stderr = GLib.spawn_async(
-                    argv=["/bin/sh", "-c", self.START_COMMAND],
-                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
-                )
-                self._inhibit_pid = pid
-                
-                # Добавляем watch чтобы очистить PID когда процесс завершится
-                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_process_exit)
-            except Exception:
-                # Fallback - просто запускаем без отслеживания PID
-                GLib.spawn_command_line_async(self.START_COMMAND)
-                self._inhibit_pid = None
-            
+                pid, _, _, _ = GLib.spawn_async(
+                    argv=["/bin/sh", "-c", self.START],
+                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD)
+                self._pid = pid
+                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
+            except:
+                GLib.spawn_command_line_async(self.START)
+                self._pid = None
             return True
-        except Exception:
+        except:
             return False
-    
-    def _on_process_exit(self, pid, status):
-        """Вызывается когда процесс завершается."""
-        if self._inhibit_pid == pid:
-            self._inhibit_pid = None
-        # Обновляем UI
+
+    def _on_exit(self, pid, _):
+        if self._pid == pid:
+            self._pid = None
+        GLib.idle_add(self.update_state)
+
+
+class EyesHandsButton(_ToggleBtn):
+    __slots__ = ('_pid',)
+    PAT = "vidgex-eyes-hands"
+    START = "python ~/.config/Vidgex-Shell/scripts/eyes-hands/eyes-hands.py"
+    STOP = "pkill -f vidgex-eyes-hands"
+    NAME = "eyes-hands"
+    ICON = icons.spy
+    TEXT = "Eyes-Hands"
+
+    def __init__(self):
+        self._pid = None
+        super().__init__()
+
+    def _toggle(self):
+        try:
+            if self._pid is not None:
+                try:
+                    _, _, _, c = GLib.spawn_command_line_sync(f"kill -0 {self._pid}")
+                    if c == 0:
+                        GLib.spawn_command_line_sync(f"kill {self._pid}")
+                        self._pid = None
+                        return False
+                except:
+                    pass
+                self._pid = None
+
+            if _chk(self.PAT):
+                exec_shell_command_async(self.STOP)
+                self._pid = None
+                return False
+
+            try:
+                pid, _, _, _ = GLib.spawn_async(
+                    argv=["/bin/sh", "-c", self.START],
+                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD)
+                self._pid = pid
+                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
+            except:
+                GLib.spawn_command_line_async(self.START)
+                self._pid = None
+            return True
+        except:
+            return False
+
+    def _on_exit(self, pid, _):
+        if self._pid == pid:
+            self._pid = None
         GLib.idle_add(self.update_state)
 
 
 class Buttons(Gtk.Grid):
-    """Сетка кнопок быстрых настроек."""
-    
+    __slots__ = ('_w', '_n', 'network_button', 'bluetooth_button',
+                 'night_mode_button', 'caffeine_button', 'eyes_hands_button')
+
     def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")
-        self._widgets = widgets
-        self._notch = notch
-        self._configure_grid()
-        self._create_buttons()
-        self._layout_buttons()
-        self.show_all()
+        self._w, self._n = widgets, notch
 
-    def _configure_grid(self):
         self.set_row_homogeneous(True)
         self.set_column_homogeneous(True)
         self.set_row_spacing(4)
         self.set_column_spacing(4)
         self.set_vexpand(False)
 
-    def _create_buttons(self):
-        self.network_button = NetworkButton(widgets=self._widgets, notch=self._notch)
-        self.bluetooth_button = BluetoothButton(widgets=self._widgets, notch=self._notch)
+        self.network_button = NetworkButton(widgets=self._w, notch=self._n)
+        self.bluetooth_button = BluetoothButton(widgets=self._w, notch=self._n)
         self.night_mode_button = NightModeButton()
         self.caffeine_button = CaffeineButton()
+        self.eyes_hands_button = EyesHandsButton()
 
-    def _layout_buttons(self):
         self.attach(self.network_button, 0, 0, 1, 1)
         self.attach(self.bluetooth_button, 1, 0, 1, 1)
         self.attach(self.night_mode_button, 2, 0, 1, 1)
         self.attach(self.caffeine_button, 3, 0, 1, 1)
+        self.attach(self.eyes_hands_button, 4, 0, 1, 1)
+
+        self.show_all()
 
     def refresh_all_states(self):
         self.network_button.update_state()
         self.bluetooth_button.update_state()
         self.night_mode_button.update_state()
         self.caffeine_button.update_state()
+        self.eyes_hands_button.update_state()
+
+    def cleanup(self):
+        self.network_button.cleanup()
+        self.bluetooth_button.cleanup()
+        self._w = self._n = None

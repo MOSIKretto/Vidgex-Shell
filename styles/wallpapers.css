@@ -105,9 +105,18 @@
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+#hue-slider slider:hover,
+#hue-slider slider:active {
+  background-color: var(--foreground);
+}
+
 #hue-slider slider:active {
   min-height: 24px;
   min-width: 8px;
+}
+
+#apply-color-button:hover {
+  background-color: var(--foreground);
 }
 
 #apply-color-button {
@@ -122,28 +131,60 @@
   background-color: var(--shadow);
 }
 
+#apply-color-button:active #apply-color-label {
+  color: var(--foreground);
+}
+
 #apply-color-label {
   font-size: 16px;
   color: var(--shadow);
 }
 
+
+/* --- Название обоев внизу --- */
+#wallpaper-name-label {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 800;
+  font-size: 13px; 
+  color: var(--primary);
+  
+  background-color: var(--surface);
+  padding: 4px 12px; 
+  border-radius: 12px;
+  
+  margin-top: 4px; 
+  margin-bottom: 2px;
+  
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+
+  /* Добавлена обводка */
+  border: 2px solid var(--primary);
+}
+
+/* --- Меню --- */
 menu {
-  border: solid 1px;
-  border-radius: 16px;
-  border-color: var(--surface);
-  background-color: var(--shadow);
-  padding: 6px;
+  background-color: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  padding: 4px;
+  margin-top: 2px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
 }
 
-menu > menuitem {
-  border-radius: 10px;
-  padding: 6px 10px;
+menuitem {
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--on-surface);
+  transition: background-color 0.15s ease;
 }
 
-menu > menuitem:hover {
+menuitem:hover {
   background-color: var(--primary);
+  color: var(--shadow);
 }
 
-menu > menuitem:hover > label {
-  color: var(--shadow);
+/* Карусель обоев - цвет для рамки выделения */
+#wallpaper-carousel {
+    color: var(--primary);
 }

@@ -43,6 +43,10 @@
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+#control-slider slider:hover {
+  background-color: var(--foreground);
+}
+
 #control-small {
   padding: 4px;
   background-color: var(--shadow);
@@ -137,9 +141,11 @@
 }
 
 #mixer-section-title {
+  color: var(--primary);
   font-weight: bold;
   padding: 8px;
-  border: 2px solid var(--surface);
+  background-color: var(--surface);
+  border: 2px solid var(--primary);
   border-radius: 12px;
 }
 
@@ -148,6 +154,6 @@
 }
 
 #mixer-stream-label {
-  color: var(--outline);
+  color: var(--primaryT);
   font-weight: bold;
 }

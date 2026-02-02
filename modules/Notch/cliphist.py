@@ -1,540 +1,88 @@
-from fabric.utils import remove_handler
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib
+from gi.repository import GdkPixbuf, GLib, Gio
 
-import modules.icons as icons
+import services.icons as icons
+from services.list_navigation import ListNavigationMixin
 
 
-class ClipHistory(Box):
-    def __init__(self, **kwargs):
-        super().__init__(
-            name="clip-history",
-            visible=False,
-            all_visible=False,
-            **kwargs,
-        )
+class ClipHistory(ListNavigationMixin, Box):
+    __slots__ = ('notch', 'sel', 'vp', 'ent', 'sw', '_it')
 
-        self.image_cache = {}
-        
-        self.notch = kwargs["notch"]
-        self.selected_index = -1
-        self._arranger_handler = 0
-        self.clipboard_items = []
-        self._loading = False
-        self._pending_updates = False
+    def __init__(self, notch, **kw):
+        super().__init__(name="clip-history", visible=False, all_visible=False, **kw)
+        self.notch, self.sel, self._it = notch, -1, None
+        self.vp = Box(name="viewport", spacing=4, orientation="v")
+        self.ent = Entry(name="search-entry", placeholder="Поиск в истории буфера...", h_expand=True,
+                         notify_text=lambda e, *_: self._flt(e.get_text().lower()),
+                         on_activate=lambda *_: self._nav_activate(), on_key_press_event=self._nav_key)
+        self.ent.props.xalign = 0.5
+        self.sw = ScrolledWindow(name="scrolled-window", v_expand=True, child=self.vp, propagate_height=False)
+        self.add(Box(name="launcher-box", spacing=10, h_expand=True, orientation="v", children=[
+            Box(name="header_box", spacing=10, children=[
+                Button(name="clear-button", child=Label(name="clear-label", markup=icons.trash), on_clicked=lambda *_: self._wipe()),
+                self.ent,
+                Button(name="close-button", child=Label(name="close-label", markup=icons.cancel), on_clicked=lambda *_: self.close())]),
+            self.sw]))
 
-        self.viewport = Box(name="viewport", spacing=4, orientation="v")
-        self.search_entry = Entry(
-            name="search-entry",
-            placeholder="Search Clipboard History...",
-            h_expand=True,
-            h_align="fill",
-            notify_text=self.filter_items,
-            on_activate=lambda entry, *_: self.use_selected_item(),
-            on_key_press_event=self.on_search_entry_key_press,
-        )
-        self.search_entry.props.xalign = 0.5
-        
-        self.scrolled_window = ScrolledWindow(
-            name="scrolled-window",
-            spacing=10,
-            h_expand=True,
-            v_expand=True,
-            h_align="fill",
-            v_align="fill",
-            child=self.viewport,
-            propagate_width=False,
-            propagate_height=False,
-        )
+    def _run(self, args, inp=None):
+        try:
+            fl = Gio.SubprocessFlags.STDOUT_PIPE | (Gio.SubprocessFlags.STDIN_PIPE if inp else 0)
+            _, o, _ = Gio.Subprocess.new(args, fl).communicate(GLib.Bytes.new(inp) if inp else None, None)
+            return o.get_data() if o else b""
+        except: return b""
 
-        self.header_box = Box(
-            name="header_box",
-            spacing=10,
-            orientation="h",
-            children=[
-                Button(
-                    name="clear-button",
-                    child=Label(name="clear-label", markup=icons.trash),
-                    on_clicked=lambda *_: self.clear_history(),
-                ),
-                self.search_entry,
-                Button(
-                    name="close-button",
-                    child=Label(name="close-label", markup=icons.cancel),
-                    tooltip_text="Exit",
-                    on_clicked=lambda *_: self.close()
-                ),
-            ],
-        )
+    def _flt(self, s=""):
+        self._nav_clear()
+        if not self._it: return self._empty()
+        n = 0
+        for idx, cnt in self._it:
+            if s and s not in cnt.lower(): continue
+            self.vp.add(self._mk(idx, cnt)); n += 1
+            if n >= 100: break
+        if n: self.show_all(); GLib.idle_add(lambda: self._nav_usel(0) or False)
+        else: self._empty()
 
-        self.history_box = Box(
-            name="launcher-box",
-            spacing=10,
-            h_expand=True,
-            orientation="v",
-            children=[
-                self.header_box,
-                self.scrolled_window,
-            ],
-        )
+    def _mk(self, idx, cnt):
+        img = cnt.startswith("[[ binary data")
+        ic = Image(name="clip-icon") if img else Label(name="clip-icon", markup=icons.clip_text)
+        txt = "[Изображение]" if img else cnt[:100].strip()
+        if img: GLib.idle_add(lambda i=idx: self._thumb(ic, i) or False)
+        return Button(name="slot-button", on_clicked=lambda *_, i=idx: self._paste(i),
+                      child=Box(name="slot-box", orientation="h", spacing=10, children=[
+                          ic, Label(name="clip-label", label=txt, ellipsization="end", h_align="start", h_expand=True)]))
 
-        self.add(self.history_box)
+    def _thumb(self, w, idx):
+        if not (d := self._run(["cliphist", "decode", idx])): return
+        try:
+            ld = GdkPixbuf.PixbufLoader(); ld.write(d); ld.close()
+            if px := ld.get_pixbuf():
+                sc = min(64 / px.get_width(), 64 / px.get_height(), 1)
+                w.set_from_pixbuf(px.scale_simple(int(px.get_width() * sc), int(px.get_height() * sc), GdkPixbuf.InterpType.BILINEAR))
+        except: pass
+
+    def _paste(self, idx):
+        if d := self._run(["cliphist", "decode", idx]): self._run(["wl-copy"], d)
+        self.close()
+
+    def _wipe(self):
+        self._run(["cliphist", "wipe"]); self._it = None; self._flt()
+
+    def _empty(self):
+        self._nav_clear()
+        self.vp.add(Box(name="no-clip-container", v_expand=True, h_expand=True, orientation="v",
+                        children=[Label(name="no-clip", markup=icons.clipboard, v_align="center", h_align="center", v_expand=True, h_expand=True)]))
         self.show_all()
 
-    def _run_command_async(self, args, callback, input_data=None):
-        """Запускает команду асинхронно через Gio.Subprocess."""
-        try:
-            flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-            if input_data is not None:
-                flags |= Gio.SubprocessFlags.STDIN_PIPE
-            
-            launcher = Gio.SubprocessLauncher.new(flags)
-            proc = launcher.spawnv(args)
-            
-            if input_data is not None:
-                proc.communicate_async(
-                    GLib.Bytes.new(input_data),
-                    None,
-                    lambda p, res: self._on_command_complete(p, res, callback)
-                )
-            else:
-                proc.communicate_async(
-                    None,
-                    None,
-                    lambda p, res: self._on_command_complete(p, res, callback)
-                )
-        except GLib.Error as e:
-            print(f"Error running command {args}: {e.message}")
-            callback(None, e.message)
-
-    def _on_command_complete(self, proc, result, callback):
-        """Обработчик завершения команды."""
-        try:
-            success, stdout, stderr = proc.communicate_finish(result)
-            if stdout:
-                callback(stdout.get_data(), None)
-            else:
-                callback(None, stderr.get_data().decode() if stderr else "Unknown error")
-        except GLib.Error as e:
-            callback(None, e.message)
-
-    def _run_command_sync(self, args, input_data=None):
-        """Синхронный запуск команды (для использования в потоках)."""
-        try:
-            flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-            if input_data is not None:
-                flags |= Gio.SubprocessFlags.STDIN_PIPE
-            
-            launcher = Gio.SubprocessLauncher.new(flags)
-            proc = launcher.spawnv(args)
-            
-            if input_data is not None:
-                success, stdout, stderr = proc.communicate(GLib.Bytes.new(input_data), None)
-            else:
-                success, stdout, stderr = proc.communicate(None, None)
-            
-            if success and stdout:
-                return stdout.get_data(), None
-            return None, stderr.get_data().decode() if stderr else "Unknown error"
-        except GLib.Error as e:
-            return None, e.message
+    def open(self):
+        self.ent.set_text("")
+        raw = self._run(["cliphist", "list"])
+        self._it = [(p[0], p[1]) for ln in raw.decode(errors='ignore').splitlines() if len(p := ln.split('\t', 1)) == 2] if raw else None
+        self._flt(); self.ent.grab_focus(); self.show_all()
 
     def close(self):
-        self.viewport.children = []
-        self.selected_index = -1
-        self.notch.close_notch()
-
-    def open(self):
-        if self._loading:
-            return
-        self._loading = True
-        self.search_entry.set_text("")
-        self.search_entry.grab_focus()
-
-        GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-
-    def _load_clipboard_items_thread(self, user_data):
-        try:
-            stdout, error = self._run_command_sync(["cliphist", "list"])
-            
-            if error:
-                print(f"Error loading clipboard: {error}")
-                GLib.idle_add(self._loading_finished)
-                return
-            
-            stdout_str = stdout.decode('utf-8', errors='replace')
-            lines = stdout_str.strip().split('\n')
-            new_items = []
-            for line in lines:
-                if not line or "<meta http-equiv" in line:
-                    continue
-                new_items.append(line)
-            
-            GLib.idle_add(self._update_items, new_items)
-        except Exception as e:
-            print(f"Error in clipboard loader: {e}")
-        finally:
-            GLib.idle_add(self._loading_finished)
-    
-    def _loading_finished(self):
-        self._loading = False
-        if self._pending_updates:
-            self._pending_updates = False
-            GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-        return False
-
-    def _update_items(self, new_items):
-        self.clipboard_items = new_items
-        self.display_clipboard_items()
-        return False
-
-    def display_clipboard_items(self, filter_text=""):
-        remove_handler(self._arranger_handler) if self._arranger_handler else None
-        self.viewport.children = []
-        self.selected_index = -1
-
-        filtered_items = []
-        for item in self.clipboard_items:
-            content = item.split('\t', 1)[1] if '\t' in item else item
-            if filter_text.lower() in content.lower():
-                filtered_items.append(item)
-
-        if not filtered_items:
-            container = Box(
-                name="no-clip-container",
-                orientation="v",
-                h_align="center",
-                v_align="center",
-                h_expand=True,
-                v_expand=True
-            )
-            
-            label = Label(
-                name="no-clip",
-                markup=icons.clipboard,
-                h_align="center",
-                v_align="center",
-            )
-            
-            container.add(label)
-            self.viewport.add(container)
-            return
-
-        self._display_items_batch(filtered_items, 0, 10)
-
-    def _display_items_batch(self, items, start, batch_size):
-        end = min(start + batch_size, len(items))
-        
-        for i in range(start, end):
-            item = items[i]
-            self.viewport.add(self.create_clipboard_item(item))
-
-        if end < len(items):
-            GLib.idle_add(self._display_items_batch, items, end, batch_size)
-        else:
-            if self.search_entry.get_text() and self.viewport.get_children():
-                self.update_selection(0)
-        
-        return False
-
-    def create_clipboard_item(self, item):
-        parts = item.split('\t', 1)
-        item_id = parts[0] if len(parts) > 1 else "0"
-        content = parts[1] if len(parts) > 1 else item
-
-        display_text = content.strip()
-        if len(display_text) > 100:
-            display_text = display_text[:97] + "..."
-
-        is_image = self.is_image_data(content)
-        
-        if is_image:
-            button = Button(
-                name="slot-button",
-                child=Box(
-                    name="slot-box",
-                    orientation="h",
-                    spacing=10,
-                    children=[
-                        Image(name="clip-icon", h_align="start"),
-                        Label(
-                            name="clip-label",
-                            label="[Image]",
-                            ellipsization="end",
-                            v_align="center",
-                            h_align="start",
-                            h_expand=True,
-                        ),
-                    ],
-                ),
-                tooltip_text="Image in clipboard",
-                on_clicked=lambda *_, id=item_id: self.paste_item(id),
-            )
-
-            GLib.Thread.new("image-preview", self._load_image_preview_thread, (item_id, button))
-        else:
-            button = self.create_text_item_button(item_id, display_text)
-
-        button.connect("key-press-event", lambda widget, event, id=item_id: self.on_item_key_press(widget, event, id))
-        
-        button.set_can_focus(True)
-        button.add_events(Gdk.EventMask.KEY_PRESS_MASK)
-            
-        return button
-
-    def _load_image_preview_thread(self, data):
-        item_id, button = data
-        try:
-            if item_id in self.image_cache:
-                pixbuf = self.image_cache[item_id]
-                GLib.idle_add(self._update_image_button, button, pixbuf)
-                return
-            
-            stdout, error = self._run_command_sync(["cliphist", "decode", item_id])
-            
-            if error or not stdout:
-                print(f"Error decoding image: {error}")
-                return
-            
-            loader = GdkPixbuf.PixbufLoader()
-            loader.write(stdout)
-            loader.close()
-            pixbuf = loader.get_pixbuf()
-            width, height = pixbuf.get_width(), pixbuf.get_height()
-            max_size = 72
-            if width > height:
-                new_width = max_size
-                new_height = int(height * (max_size / width))
-            else:
-                new_height = max_size
-                new_width = int(width * (max_size / height))
-            pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
-            self.image_cache[item_id] = pixbuf
-            
-            GLib.idle_add(self._update_image_button, button, pixbuf)
-        except Exception as e:
-            print(f"Error loading image preview: {e}")
-
-    def _update_image_button(self, button, pixbuf):
-        box = button.get_child()
-        if box and len(box.get_children()) > 0:
-            image_widget = box.get_children()[0]
-            if isinstance(image_widget, Image):
-                image_widget.set_from_pixbuf(pixbuf)
-        return False
-
-    def create_text_item_button(self, item_id, display_text):
-        return Button(
-            name="slot-button",
-            child=Box(
-                name="slot-box",
-                orientation="h",
-                spacing=10,
-                children=[
-                    Label(
-                        name="clip-icon",
-                        markup=icons.clip_text,
-                        h_align="start",
-                    ),
-                    Label(
-                        name="clip-label",
-                        label=display_text,
-                        ellipsization="end",
-                        v_align="center",
-                        h_align="start",
-                        h_expand=True,
-                    ),
-                ],
-            ),
-            tooltip_text=display_text,
-            on_clicked=lambda *_: self.paste_item(item_id),
-        )
-
-    def is_image_data(self, content):
-        """Проверяет, является ли контент изображением (без regex)."""
-        # Проверка magic bytes
-        if content.startswith("data:image/"):
-            return True
-        if content.startswith("\x89PNG"):
-            return True
-        if content.startswith("GIF8"):
-            return True
-        if content.startswith("\xff\xd8\xff"):
-            return True
-        
-        # Простая проверка на img тег
-        stripped = content.strip().lower()
-        if stripped.startswith("<img ") or stripped.startswith("<img>"):
-            return True
-        
-        # Проверка на binary с расширениями изображений
-        content_lower = content.lower()
-        if "binary" in content_lower:
-            image_extensions = ["jpg", "jpeg", "png", "bmp", "gif"]
-            for ext in image_extensions:
-                if ext in content_lower:
-                    return True
-        
-        return False
-
-    def paste_item(self, item_id):
-        GLib.Thread.new("paste-item", self._paste_item_thread, item_id)
-
-    def _paste_item_thread(self, item_id):
-        try:
-            stdout, error = self._run_command_sync(["cliphist", "decode", item_id])
-            
-            if error or not stdout:
-                print(f"Error decoding clipboard item: {error}")
-                return
-            
-            _, error = self._run_command_sync(["wl-copy"], stdout)
-            
-            if error:
-                print(f"Error copying to clipboard: {error}")
-                return
-            
-            GLib.idle_add(self.close)
-        except Exception as e:
-            print(f"Error pasting clipboard item: {e}")
-
-    def delete_item(self, item_id):
-        GLib.Thread.new("delete-item", self._delete_item_thread, item_id)
-
-    def _delete_item_thread(self, item_id):
-        try:
-            _, error = self._run_command_sync(["cliphist", "delete", item_id])
-            
-            if error:
-                print(f"Error deleting clipboard item: {error}")
-                return
-            
-            self._pending_updates = True
-            if not self._loading:
-                GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-        except Exception as e:
-            print(f"Error deleting clipboard item: {e}")
-
-    def clear_history(self):
-        GLib.Thread.new("clear-history", self._clear_history_thread, None)
-
-    def _clear_history_thread(self, user_data):
-        try:
-            _, error = self._run_command_sync(["cliphist", "wipe"])
-            
-            if error:
-                print(f"Error clearing clipboard history: {error}")
-                return
-            
-            self._pending_updates = True
-            if not self._loading:
-                GLib.Thread.new("cliphist-loader", self._load_clipboard_items_thread, None)
-        except Exception as e:
-            print(f"Error clearing clipboard history: {e}")
-
-    def filter_items(self, entry, *_):
-        self.display_clipboard_items(entry.get_text())
-
-    def on_search_entry_key_press(self, widget, event):
-        if event.keyval == Gdk.KEY_Down:
-            self.move_selection(1)
-            return True
-        elif event.keyval == Gdk.KEY_Up:
-            self.move_selection(-1)
-            return True
-        elif event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            self.use_selected_item()
-            return True
-        elif event.keyval == Gdk.KEY_Delete:
-            self.delete_selected_item()
-            return True
-        elif event.keyval == Gdk.KEY_Escape:
-            self.close()
-            return True
-        return False
-
-    def update_selection(self, new_index):
-        children = self.viewport.get_children()
-
-        if self.selected_index != -1 and self.selected_index < len(children):
-            current_button = children[self.selected_index]
-            current_button.get_style_context().remove_class("selected")
-
-        if new_index != -1 and new_index < len(children):
-            new_button = children[new_index]
-            new_button.get_style_context().add_class("selected")
-            self.selected_index = new_index
-            self.scroll_to_selected(new_button)
-        else:
-            self.selected_index = -1
-
-    def move_selection(self, delta):
-        children = self.viewport.get_children()
-        if not children:
-            return
-
-        if self.selected_index == -1 and delta == 1:
-            new_index = 0
-        else:
-            new_index = self.selected_index + delta
-            
-        new_index = max(0, min(new_index, len(children) - 1))
-        self.update_selection(new_index)
-
-    def scroll_to_selected(self, button):
-        def scroll():
-            adj = self.scrolled_window.get_vadjustment()
-            alloc = button.get_allocation()
-            if alloc.height == 0:
-                return False
-
-            y = alloc.y
-            height = alloc.height
-            page_size = adj.get_page_size()
-            current_value = adj.get_value()
-
-            visible_top = current_value
-            visible_bottom = current_value + page_size
-
-            if y < visible_top:
-                adj.set_value(y)
-            elif y + height > visible_bottom:
-                new_value = y + height - page_size
-                adj.set_value(new_value)
-            return False
-        GLib.idle_add(scroll)
-
-    def use_selected_item(self):
-        children = self.viewport.get_children()
-        if not children or self.selected_index == -1 or self.selected_index >= len(self.clipboard_items):
-            return
-
-        item_line = self.clipboard_items[self.selected_index]
-        item_id = item_line.split('\t', 1)[0]
-        self.paste_item(item_id)
-
-    def delete_selected_item(self):
-        children = self.viewport.get_children()
-        if not children or self.selected_index == -1:
-            return
-            
-        item_line = self.clipboard_items[self.selected_index]
-        item_id = item_line.split('\t', 1)[0]
-        self.delete_item(item_id)
-
-    def on_item_key_press(self, widget, event, item_id):
-        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            self.paste_item(item_id)
-            return True
-        return False
-
-    def __del__(self):
-        try:
-            self.image_cache.clear()
-        except Exception as e:
-            print(f"Error cleaning up: {e}")
+        self._nav_clear(); self._it = None; self.notch.close_notch()

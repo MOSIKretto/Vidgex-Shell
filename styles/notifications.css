@@ -1,3 +1,9 @@
+/* Пустое состояние: нет уведомлений */
+#no-notif {
+  font-size: 96px;
+  color: var(--surface);
+}
+
 #action-button {
   border-radius: 16px;
   background-color: var(--surface);
@@ -37,7 +43,7 @@
 #notification-stack-box {
   border-radius: 32px;
   padding: 16px;
-  border: 2px solid var(--surface);
+  border: 2px solid var(--primary);
   background-color: var(--shadow);
   margin: 8px;
   margin-bottom: 4px;
@@ -59,31 +65,21 @@
   background-color: var(--surface-bright);
 }
 
-#notif-close-button:active {
-  background-color: var(--red-dim);
-}
-
 #notif-close-label {
-  color: var(--red-dim);
+  color: var(--outline);
   font-size: 16px;
 }
 
-#notif-close-button:active #notif-close-label {
-  color: var(--shadow);
-}
 
 #nav-button {
   padding: 8px;
   border-radius: 16px;
   background: var(--shadow);
-  border: 2px solid var(--surface);
+  border: 2px solid var(--primary);
   margin-top: -12px;
 }
 
-#nav-button:hover {
-  background: var(--surface-bright);
-}
-
+#nav-button:hover,
 #nav-button:disabled #nav-button-label {
   color: var(--surface-bright);
 }
@@ -92,16 +88,10 @@
   font-size: 16px;
 }
 
-#nav-button-label.close {
-  color: var(--red-dim);
-}
 
+#nav-button:hover #nav-button-label.close,
 #nav-button:hover #nav-button-label {
   color: var(--primary);
-}
-
-#nav-button:hover #nav-button-label.close {
-  color: var(--red-dim);
 }
 
 #notification-history scrollbar {
@@ -140,7 +130,7 @@
 }
 
 #nhh-button-label {
-  color: var(--red-dim);
+  color: var(--primary);
   font-size: 20px;
 }
 

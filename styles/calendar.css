@@ -44,7 +44,7 @@
 }
 
 #day-label.current-day {
-  background-color: var(--foreground);
+  background-color: var(--primary);
   color: var(--shadow);
   border-radius: 20px;
 }

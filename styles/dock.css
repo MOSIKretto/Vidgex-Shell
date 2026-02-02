@@ -1,7 +1,10 @@
+/* ============================================
+   DOCK MAIN CONTAINER
+   ============================================ */
+
 #dock {
   background-color: var(--shadow);
   padding: 8px;
-  /* margin оставляем как есть, это внешние отступы контейнера */
   margin: 8px 8px 0 8px;
   border-radius: 20px 20px 0 0;
 }
@@ -18,11 +21,9 @@
   opacity: 1;
 }
 
-#dock-separator {
-  padding: 2px;
-  border-radius: 16px;
-  background-color: var(--surface-bright);
-}
+/* ============================================
+   DOCK APP BUTTON
+   ============================================ */
 
 #dock-app-button {
   padding: 6px;
@@ -32,11 +33,9 @@
   box-shadow: 
     0 2px 8px alpha(var(--shadow), 0.2),
     0 1px 4px alpha(var(--shadow), 0.1);
-    
-  /* --- ЗАМЕНА SPACING=4 --- */
-  /* Добавляем боковые отступы каждой кнопке */
   margin-left: 2px;
   margin-right: 2px;
+  transition: all 150ms ease-in-out;
 }
 
 #dock-app-button:first-child {
@@ -46,7 +45,16 @@
 #dock-app-button:last-child {
   margin-right: 0;
 }
-/* ------------------------ */
+
+#dock-app-button.hovered {
+  background-color: alpha(var(--surface-bright), 0.9);
+  border-radius: 12px;
+}
+
+#dock-app-button.dragging {
+  opacity: 0.5;
+  background-color: alpha(var(--primary), 0.3);
+}
 
 #dock-app-button:hover.instance {
   background-color: alpha(var(--outline), 0.5);
@@ -65,6 +73,88 @@
   border-radius: 12px;
 }
 
+#dock-app-button.active {
+  background-color: alpha(var(--primary), 0.2);
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+}
+
+#dock-app-button.active.instance {
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+}
+
+/* ============================================
+   ICON LIFT ANIMATION
+   ============================================ */
+
+#dock-icon {
+  transition: all 150ms ease-out;
+}
+
+#dock-icon-wrapper {
+  transition: all 150ms ease-out;
+}
+
+#dock-icon-box {
+  transition: all 150ms ease-out;
+  margin-bottom: 0px;
+  margin-top: 0px;
+}
+
+#dock-icon-box.lifted {
+  margin-bottom: 6px;
+  margin-top: -6px;
+}
+
+#dock-icon-image {
+  transition: all 150ms ease-out;
+}
+
+/* ============================================
+   WINDOW COUNT DOTS (VERTICAL)
+   ============================================ */
+
+#dock-dots-wrapper {
+  padding-left: 3px;
+  padding-right: 1px;
+}
+
+#dock-dots {
+  padding: 2px 0;
+}
+
+#dock-dot {
+  min-width: 5px;
+  min-height: 5px;
+  border-radius: 3px;
+  background-color: var(--primary);
+  opacity: 0.7;
+  box-shadow: 0 1px 2px alpha(var(--shadow), 0.3);
+  transition: all 150ms ease-out;
+}
+
+#dock-app-button:hover #dock-dot {
+  background-color: var(--on-primary);
+  opacity: 1;
+}
+
+#dock-app-button.active #dock-dot {
+  background-color: var(--primary);
+  opacity: 1;
+  box-shadow: 0 0 4px var(--primary);
+}
+
+/* ============================================
+   CORNERS & SEPARATOR
+   ============================================ */
+
+#dock-separator {
+  padding: 2px;
+  border-radius: 16px;
+  background-color: var(--surface-bright);
+}
+
 #dock-corner-left {
   margin: 0 -8px 0 0;
 }
@@ -79,15 +169,4 @@
 
 #dock-corner-bottom {
   margin: -8px 0 0 0;
-}
-
-#dock-app-button.active {
-  background-color: alpha(var(--primary), 0.2);
-  border: 2px solid var(--primary);
-  border-radius: 12px;
-}
-
-#dock-app-button.active.instance {
-  border: 2px solid var(--primary);
-  border-radius: 12px;
 }

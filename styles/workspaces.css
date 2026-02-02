@@ -23,7 +23,7 @@
 }
 
 #workspaces > button.urgent {
-  background-color: var(--error-dim);
+  background-color: var(--primary);
 }
 
 #workspaces > button.active {
@@ -36,6 +36,10 @@
   background-color: var(--surface-bright);
 }
 
+#workspaces > button.empty:hover {
+  background-color: var(--foreground);
+}
+
 #workspaces-num {
   padding: 8px;
 }
@@ -44,7 +48,8 @@
   border-radius: 20px;
 }
 
-#workspaces-num > button > label {
+#workspaces-num > button > label,
+#workspaces-num > button.empty:hover > label {
   color: var(--foreground);
   font-weight: bold;
   min-width: 20px;

@@ -78,6 +78,17 @@
   background-color: var(--shadow);
 }
 
+#player-btn:hover,
+#player-btn.play-pause.playing:hover {
+  background-color: var(--foreground);
+}
+
+#player-btn.play-pause.stop label,
+#player-btn.play-pause.stop:hover label,
+#player-btn:active label {
+  color: var(--foreground);
+}
+
 #player-btn:hover label {
   color: var(--shadow);
 }
@@ -115,3 +126,4 @@
   font-size: 20px;
   color: var(--foreground);
 }
+

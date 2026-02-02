@@ -65,10 +65,12 @@ htmlcov/
 *.rpm
 *.deb
 *.Z
+*.gif
 *.lz
 *.lzo
 *.tar.gz
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+*.onnx
 ```
