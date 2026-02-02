@@ -8,20 +8,33 @@ INSTALL_DIR="$HOME/.config/Vidgex-Shell"
 PACKAGES=(
   fabric-cli-git
   python-fabric-git
+
   awww-git
+
   brightnessctl
+
   cliphist
+
+  hypridle
+  hyprpicker
+  hyprshot
+
+  libnotify
+  matugen-bin
+
+  tesseract
+  tesseract-data-eng
+  tesseract-data-rus
+
+  python-setproctitle
+
+
   ddcutil
   gnome-bluetooth-3.0
   gobject-introspection
   gpu-screen-recorder
-  hypridle
-  hyprpicker
-  hyprshot
   hyprsunset
   imagemagick
-  libnotify
-  matugen-bin
   network-manager-applet
   networkmanager
   nm-connection-editor
@@ -36,13 +49,9 @@ PACKAGES=(
   python-psutil
   python-pywayland
   python-requests
-  python-setproctitle
   python-toml
   python-watchdog
   swappy
-  tesseract
-  tesseract-data-eng
-  tesseract-data-rus
   ttf-nerd-fonts-symbols-mono
   unzip
   upower

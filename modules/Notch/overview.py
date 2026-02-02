@@ -3,7 +3,6 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk
 
 from fabric.hyprland.service import Hyprland
-from fabric.utils.helpers import get_desktop_applications
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
@@ -23,20 +22,35 @@ _BS = 0.1
 _TG = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
 
 _conn = Hyprland()
-_icr = IconResolver()
+_app_resolver = IconResolver.get_default()
+
+
+def _get_monitors():
+    try:
+        return _conn.get_monitors()
+    except Exception:
+        return __import__("json").loads(_conn.send_command("j/monitors").reply)
+
+
+def _get_clients():
+    try:
+        return _conn.get_clients()
+    except Exception:
+        return __import__("json").loads(_conn.send_command("j/clients").reply)
 
 
 class HyprlandWindowButton(Button):
     __slots__ = ("addr", "_px")
 
-    def __init__(self, addr, aid, title, sz, da):
+    def __init__(self, addr, aid, title, sz):
+        app = _app_resolver.find_app(aid)
+        self._px = _app_resolver.get_icon(aid, int(min(sz) * 0.5), app)
         self.addr = addr
-        self._px = _icr.resolve_icon(aid, int(min(sz) * 0.5), da)
 
         super().__init__(
             name="overview-client-box",
             image=Image(pixbuf=self._px),
-            tooltip_text=(da.display_name or da.name if da else None) or title or aid,
+            tooltip_text=(app.display_name or app.name if app else None) or title or aid,
             size=sz,
             on_clicked=self._foc,
             on_button_press_event=self._press,
@@ -82,7 +96,7 @@ class WorkspaceEventBox(EventBox):
 
 
 class Overview(Box):
-    __slots__ = ("mid", "ws_s", "ws_e", "cli", "wsb", "_apps")
+    __slots__ = ("mid", "ws_s", "ws_e", "cli", "wsb")
 
     def __init__(self, monitor_id=0, **kwargs):
         super().__init__(name="overview", orientation="v", spacing=8, **kwargs)
@@ -92,24 +106,11 @@ class Overview(Box):
         self.ws_e = 9
         self.cli = {}
         self.wsb = {}
-        self._apps = None
 
         for ev in ("openwindow", "closewindow", "movewindow"):
             _conn.connect(f"event::{ev}", self.update)
 
         self.update()
-
-    def _find(self, aid):
-        if not aid:
-            return None
-        al = aid.lower()
-        for a in self._apps:
-            if (al == (a.window_class or "").lower() or 
-                al == (a.name or "").lower() or 
-                al == (a.display_name or "").lower() or 
-                al == (a.executable or "").rsplit("/", 1)[-1].lower()):
-                return a
-        return None
 
     def update(self, *_):
         for b in self.cli.values():
@@ -121,19 +122,11 @@ class Overview(Box):
         self.wsb.clear()
 
         self.children = []
-        self._apps = get_desktop_applications()
+        
+        _app_resolver.refresh()
 
-        try:
-            md = _conn.get_monitors()
-        except:
-            import json
-            md = json.loads(_conn.send_command("j/monitors").reply)
-
-        try:
-            cd = _conn.get_clients()
-        except:
-            import json
-            cd = json.loads(_conn.send_command("j/clients").reply)
+        md = _get_monitors()
+        cd = _get_clients()
 
         mons = {m["id"]: (m["x"], m["y"]) for m in md}
         rows = [Box(spacing=8) for _ in range(3)]
@@ -146,12 +139,12 @@ class Overview(Box):
             if not ws_s <= wid <= ws_e:
                 continue
 
-            mx, my = mons[c["monitor"]]
+            mx, my = mons.get(c["monitor"], (0, 0))
             addr = c["address"]
             aid = c["initialClass"]
             sz = (int(c["size"][0] * _BS), int(c["size"][1] * _BS))
 
-            btn = HyprlandWindowButton(addr, aid, c["title"], sz, self._find(aid))
+            btn = HyprlandWindowButton(addr, aid, c["title"], sz)
             self.cli[addr] = btn
 
             if wid not in self.wsb:
@@ -178,5 +171,4 @@ class Overview(Box):
             b.destroy()
         self.wsb.clear()
 
-        self._apps = None
         self.children = []

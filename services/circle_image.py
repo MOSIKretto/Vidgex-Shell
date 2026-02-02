@@ -1,5 +1,3 @@
-from typing import Literal
-
 from fabric.core.service import Property
 from fabric.widgets.widget import Widget
 
@@ -31,8 +29,8 @@ class CircleImage(Gtk.DrawingArea, Widget):
         style: str | None = None,
         tooltip_text: str | None = None,
         tooltip_markup: str | None = None,
-        h_align: Literal["fill", "start", "end", "center", "baseline"] | Gtk.Align | None = None,
-        v_align: Literal["fill", "start", "end", "center", "baseline"] | Gtk.Align | None = None,
+        h_align: str | Gtk.Align | None = None,
+        v_align: str | Gtk.Align | None = None,
         h_expand: bool = False,
         v_expand: bool = False,
         size: int | None = None,

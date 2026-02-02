@@ -21,10 +21,14 @@ _SCHEME_F = f"{_CACHE}/scheme"
 _SZ, _HSZ, _HALF, _SPC, _ARC_K = 180, 90.0, 3, 100, 1.875
 _EXT = frozenset((".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"))
 _SCH = (
-    ("scheme-tonal-spot", "Tonal Spot"), ("scheme-content", "Content"),
-    ("scheme-expressive", "Expressive"), ("scheme-fidelity", "Fidelity"),
-    ("scheme-fruit-salad", "Fruit Salad"), ("scheme-monochrome", "Monochrome"),
-    ("scheme-neutral", "Neutral"), ("scheme-rainbow", "Rainbow"),
+    ("scheme-tonal-spot", "Tonal Spot"), 
+    ("scheme-content", "Content"),
+    ("scheme-expressive", "Expressive"), 
+    ("scheme-fidelity", "Fidelity"),
+    ("scheme-fruit-salad", "Fruit Salad"), 
+    ("scheme-monochrome", "Monochrome"),
+    ("scheme-neutral", "Neutral"), 
+    ("scheme-rainbow", "Rainbow"),
 )
 _SCH_K = frozenset(k for k, _ in _SCH)
 _DICE = (icons.dice_1, icons.dice_2, icons.dice_3, icons.dice_4, icons.dice_5, icons.dice_6)

@@ -4,7 +4,6 @@ from gi.repository import Gdk, GLib, Gtk
 
 from fabric.hyprland.widgets import get_hyprland_connection
 from fabric.utils import exec_shell_command, exec_shell_command_async
-from fabric.utils.helpers import get_desktop_applications
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
@@ -19,7 +18,6 @@ from services.wayland import WaylandWindow as Window
 class Dock(Window):
     __gtype_name__ = "Dock"
     
-    _SUFFIXES = (".bin", ".exe", ".so", "-bin", "-gtk")
     _MAX_DOTS = 5
 
     def __init__(self, monitor_id=0, integrated_mode=False, **kwargs):
@@ -35,7 +33,6 @@ class Dock(Window):
         self._mon_x = self._mon_y = self._mon_w = self._mon_h = 0
         self.icon_size = 24
         
-        # Список для хранения порядка иконок
         self._custom_order = [] 
 
         super().__init__(
@@ -50,8 +47,7 @@ class Dock(Window):
         )
 
         self.conn = get_hyprland_connection()
-        self.icon_resolver = IconResolver()
-        self._app_map = self._build_app_map()
+        self._app_resolver = IconResolver.get_default()
 
         self._init_ui()
         self._bind_events()
@@ -166,8 +162,11 @@ class Dock(Window):
 
     def _do_full_update(self):
         self._pending_update = False
-        if self._drag_active: return False # Не обновляем во время драга
+        if self._drag_active:
+            return False
 
+        self._app_resolver.refresh()
+        
         clients = self._parse("j/clients")
         self._rebuild(clients)
         if not self.integrated_mode:
@@ -229,92 +228,122 @@ class Dock(Window):
             self._is_hidden = should_hide
             self.revealer.set_reveal_child(not should_hide)
 
-    def _build_app_map(self):
-        m = {}
-        for app in get_desktop_applications():
-            name_l = app.name.lower() if app.name else None
-            disp_l = app.display_name.lower() if app.display_name else None
-            wc_l = app.window_class.lower() if app.window_class else None
-            
-            for k in (name_l, disp_l, wc_l):
-                if k: m[k] = app
-            
-            if app.executable:
-                m[app.executable.rsplit("/", 1)[-1].lower()] = app
-            if app.command_line:
-                m[app.command_line.split()[0].rsplit("/", 1)[-1].lower()] = app
-        return m
-
-    def _norm(self, name):
-        if not name: return ""
-        n = name.lower()
-        for s in self._SUFFIXES:
-            if n.endswith(s): return n[:-len(s)]
-        return n
-
     def _rebuild(self, clients):
+        """Перестроить dock с правильным сохранением оригинальных имён."""
         wins = {}
+        
         for c in clients:
-            raw = c.get("initialClass") or c.get("class") or c.get("title", "")
-            if raw:
-                key = raw.lower().split(" - ", 1)[0].strip()
-                wins.setdefault(key, []).append(c)
+            # Сохраняем ОРИГИНАЛЬНЫЙ class (с регистром!)
+            original_class = c.get("initialClass") or c.get("class") or ""
+            title = c.get("title", "")
+            
+            if not original_class and not title:
+                continue
+            
+            # Для группировки используем lowercase ключ
+            raw = original_class or title
+            key = raw.lower().split(" - ", 1)[0].strip()
+            
+            if key not in wins:
+                wins[key] = {
+                    "original": original_class or title,  # Сохраняем оригинал!
+                    "instances": []
+                }
+            wins[key]["instances"].append(c)
 
         seen = set()
         candidates = []
-        for cls, insts in wins.items():
-            if cls in seen: continue
-            seen.add(cls)
-            norm = self._norm(cls)
-            if norm != cls: seen.add(norm)
+        app_map = self._app_resolver.app_map
+        
+        for key, data in wins.items():
+            if key in seen:
+                continue
+            seen.add(key)
             
-            app = self._app_map.get(cls) or self._app_map.get(norm)
-            # Используем ID для сортировки и DnD
-            unique_id = (app.name or app.window_class or cls) if app else cls
+            original = data["original"]  # Оригинальное имя с регистром
+            insts = data["instances"]
+            
+            norm = self._app_resolver.norm_name(key)
+            if norm != key:
+                seen.add(norm)
+            
+            # Ищем app по разным вариантам
+            app = (
+                app_map.get(key) or 
+                app_map.get(norm) or 
+                app_map.get(original.lower()) or
+                self._app_resolver.find_app(original)
+            )
+            
+            unique_id = (app.name or app.window_class or key) if app else key
             
             candidates.append({
                 "unique_id": unique_id,
                 "app": app,
                 "insts": insts,
-                "cls": cls
+                "key": key,
+                "original": original,  # Передаём оригинал для иконки
             })
 
-        # Обновляем сохраненный порядок
         existing_ids = set(c["unique_id"] for c in candidates)
         self._custom_order = [uid for uid in self._custom_order if uid in existing_ids]
         for cand in candidates:
             if cand["unique_id"] not in self._custom_order:
                 self._custom_order.append(cand["unique_id"])
 
-        # Сортируем
         candidates.sort(key=lambda x: self._custom_order.index(x["unique_id"]))
 
-        # Полная перестройка, чтобы гарантировать порядок и стили
         for c in self.view.get_children():
             c.destroy()
             
         for item in candidates:
-            # Передаем unique_id отдельно для DnD логики
-            btn = self._make_btn(item["app"], item["insts"], item["cls"], item["unique_id"])
+            btn = self._make_btn(
+                item["app"], 
+                item["insts"], 
+                item["key"],
+                item["original"],  # Передаём оригинальное имя
+                item["unique_id"]
+            )
             self.view.add(btn)
 
         self.view.show_all()
         self._sync_active()
 
-    def _make_btn(self, app, insts, cls, unique_id):
-        # --- ОРИГИНАЛЬНАЯ ЛОГИКА ОТОБРАЖЕНИЯ И ВЕРСТКИ ---
-        
-        # ID для отображения (fallback)
-        display_id = (app.name or app.window_class or cls) if app else cls
+    def _make_btn(self, app, insts, key, original_class, unique_id):
+        """Создать кнопку с правильным поиском иконки."""
         name = (app.display_name or app.name) if app else None
         
-        # Icon
+        # Пробуем разные варианты для поиска иконки
+        icon_pixbuf = None
+        
+        # 1. Сначала пробуем через app
+        if app:
+            icon_pixbuf = self._app_resolver.get_icon(original_class, self.icon_size, app)
+        
+        # 2. Если не нашли, пробуем оригинальный class
+        if not icon_pixbuf:
+            icon_pixbuf = self._app_resolver.get_icon(original_class, self.icon_size)
+        
+        # 3. Пробуем lowercase key
+        if not icon_pixbuf and key != original_class.lower():
+            icon_pixbuf = self._app_resolver.get_icon(key, self.icon_size)
+        
+        # 4. Fallback на default
+        if not icon_pixbuf:
+            try:
+                icon_pixbuf = self._app_resolver.theme.load_icon(
+                    "application-x-executable-symbolic",
+                    self.icon_size,
+                    Gtk.IconLookupFlags.FORCE_SIZE
+                )
+            except:
+                pass
+        
         icon_image = Image(
-            pixbuf=self.icon_resolver.resolve_icon(display_id, self.icon_size, app),
+            pixbuf=icon_pixbuf,
             name="dock-icon-image",
         )
         
-        # Icon wrapper box (lift animation)
         icon_box = Box(
             name="dock-icon-box",
             orientation="v",
@@ -323,7 +352,6 @@ class Dock(Window):
             children=[icon_image],
         )
         
-        # Dots
         dots_box = Box(
             name="dock-dots",
             orientation="v",
@@ -338,7 +366,6 @@ class Dock(Window):
             dot.set_size_request(5, 5)
             dots_box.add(dot)
         
-        # Main content structure (Exact copy of original structure)
         content_box = Box(
             name="dock-icon",
             orientation="h",
@@ -367,19 +394,20 @@ class Dock(Window):
             )
             content_box.add(dots_wrapper)
         
-        # Button creation with ORIGINAL TOOLTIP LOGIC
+        tooltip = name or (insts[0].get("title") if insts else None) or original_class
+        
         btn = Button(
             child=content_box,
-            tooltip_text=name or (insts[0].get("title") if insts else None) or display_id,
+            tooltip_text=tooltip,
             name="dock-app-button",
         )
         
-        # --- Свойства и сигналы ---
-        btn._cls = cls
+        btn._cls = key
+        btn._original = original_class
         btn._app = app
         btn._insts = insts
         btn._icon_box = icon_box
-        btn._unique_id = unique_id # Для DnD
+        btn._unique_id = unique_id
         
         btn.connect("clicked", self._on_btn_click)
         btn.connect("enter-notify-event", self._on_btn_hover_enter)
@@ -388,7 +416,6 @@ class Dock(Window):
         if insts:
             btn.add_style_class("instance")
 
-        # --- ПОДКЛЮЧЕНИЕ ИСПРАВЛЕННОГО DND ---
         self._setup_btn_dnd(btn)
         
         return btn
@@ -414,13 +441,10 @@ class Dock(Window):
         btn.connect("drag-data-received", self._on_drag_data_received)
         btn.connect("drag-motion", self._on_drag_motion)
 
-    # --- ОБРАБОТЧИКИ DND ---
-
     def _on_drag_begin(self, btn, context):
         self._drag_active = True
         btn.add_style_class("dragging")
         
-        # Попытка установить иконку
         try:
             if hasattr(btn, "_icon_box"):
                 img = btn._icon_box.get_children()[0]
@@ -436,12 +460,10 @@ class Dock(Window):
         GLib.idle_add(self._schedule_occlusion)
 
     def _on_drag_data_get(self, btn, context, selection_data, info, timestamp):
-        # Отправляем уникальный ID
         uid = getattr(btn, "_unique_id", "")
         selection_data.set_text(uid, -1)
 
     def _on_drag_motion(self, widget, context, x, y, time):
-        # Разрешаем дроп
         Gdk.drag_status(context, Gdk.DragAction.MOVE, time)
         return True
 
@@ -453,16 +475,13 @@ class Dock(Window):
             context.finish(False, False, timestamp)
             return
 
-        # Меняем порядок
         if source_id in self._custom_order and target_id in self._custom_order:
             old_idx = self._custom_order.index(source_id)
             new_idx = self._custom_order.index(target_id)
             
-            # Обновляем список
             self._custom_order.pop(old_idx)
             self._custom_order.insert(new_idx, source_id)
             
-            # Визуально перемещаем
             src_btn = None
             children = self.view.get_children()
             for child in children:
@@ -471,7 +490,6 @@ class Dock(Window):
                     break
             
             if src_btn:
-                # Находим индекс целевой кнопки в контейнере
                 try:
                     tgt_idx = self.view.get_children().index(btn)
                     self.view.reorder_child(src_btn, tgt_idx)
@@ -482,11 +500,10 @@ class Dock(Window):
         else:
             context.finish(False, False, timestamp)
 
-    # --- BUTTON EVENTS ---
-
     def _on_btn_hover_enter(self, btn, event):
         self._mouse_over = True
-        if self._drag_active: return False
+        if self._drag_active:
+            return False
         
         btn.add_style_class("hovered")
         if getattr(btn, "_icon_box", None):
@@ -494,7 +511,8 @@ class Dock(Window):
         return False
 
     def _on_btn_hover_leave(self, btn, event):
-        if event.detail == Gdk.NotifyType.INFERIOR: return False
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
         
         btn.remove_style_class("hovered")
         if getattr(btn, "_icon_box", None):
@@ -502,13 +520,15 @@ class Dock(Window):
         return False
 
     def _on_btn_click(self, btn):
-        if self._drag_active: return
+        if self._drag_active:
+            return
         
         app, insts = btn._app, btn._insts
         if not insts:
             if app and not app.launch():
                 cmd = app.command_line or app.executable
-                if cmd: exec_shell_command_async(f"nohup {cmd} &")
+                if cmd:
+                    exec_shell_command_async(f"nohup {cmd} &")
             return
 
         aw = self._parse("j/activewindow")
@@ -520,11 +540,11 @@ class Dock(Window):
 
     def _sync_active(self):
         aw = self._parse("j/activewindow")
-        active = self._norm(aw.get("initialClass") or aw.get("class", "")) if aw else ""
+        active = self._app_resolver.norm_name(aw.get("initialClass") or aw.get("class", "")) if aw else ""
         
         for btn in self.view.get_children():
             cls = getattr(btn, "_cls", None)
-            if cls and active and self._norm(cls) == active:
+            if cls and active and self._app_resolver.norm_name(cls) == active:
                 btn.add_style_class("active")
             else:
                 btn.remove_style_class("active")

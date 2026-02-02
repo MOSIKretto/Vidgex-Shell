@@ -37,7 +37,7 @@ class Notch(Window):
 
         self._wc = {}
         self._conn = get_hyprland_connection()
-        self._icr = IconResolver()
+        self._icr = IconResolver.get_default()
 
         self._sigs = []
         self._cw = None
@@ -296,26 +296,16 @@ class Notch(Window):
         self.stack.add_style_class("open")
         self.keyboard_mode = "exclusive"
 
-        if name == "network_applet":
-            self._showdw("network_applet")
-        elif name == "bluetooth":
-            self._showdw("bluetooth")
-        elif name == "dashboard":
-            self._showdw("notification_history")
-        elif name == "wallpapers":
-            self._showdb("wallpapers")
-        elif name == "mixer":
-            self._showdb("mixer")
-        elif name == "overview":
-            self.stack.set_visible_child(self.overview)
-        elif name == "power":
-            self.stack.set_visible_child(self.power)
-        elif name == "tools":
-            self.stack.set_visible_child(self.tools)
-        elif name == "cliphist":
-            self._showclip()
-        elif name == "launcher":
-            self._showlaunch()
+        if name == "network_applet": self._showdw("network_applet")
+        elif name == "bluetooth": self._showdw("bluetooth")
+        elif name == "dashboard": self._showdw("notification_history")
+        elif name == "wallpapers": self._showdb("wallpapers")
+        elif name == "mixer": self._showdb("mixer")
+        elif name == "overview": self.stack.set_visible_child(self.overview)
+        elif name == "power": self.stack.set_visible_child(self.power)
+        elif name == "tools": self.stack.set_visible_child(self.tools)
+        elif name == "cliphist": self._showclip()
+        elif name == "launcher": self._showlaunch()
 
         self._cw = name
         self._setbar(False)
@@ -525,12 +515,12 @@ class Notch(Window):
             self.win_ic.set_from_icon_name("application-x-executable-symbolic", 20)
 
     def _getic(self, aid: str):
+        """Получить иконку для app_id."""
         if not aid or not self._icr:
             return None
-        ic = self._icr.get_icon_pixbuf(aid, 20)
-        if not ic and "-" in aid:
-            ic = self._icr.get_icon_pixbuf(aid.split("-")[0], 20)
-        return ic
+        
+        app = self._icr.find_app(aid)
+        return self._icr.get_icon(aid, 20, app)
 
     def toggle_hidden(self):
         v = self.get_visible()

@@ -2,187 +2,264 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, GObject, GdkPixbuf
 
+from fabric.utils.helpers import get_desktop_applications
+
 
 class IconResolver(GObject.GObject):
-    __slots__ = ('default_icon', 'theme', '_desktop_dirs', '_icon_dirs')
+    __slots__ = (
+        'default_icon', 'theme', '_desktop_dirs',
+        '_icon_dirs', '_apps', '_app_map', '_initialized'
+    )
     
-    def __init__(self, default_icon: str = "application-x-executable-symbolic"):
+    _instance = None
+    _SUFFIXES = frozenset({'.bin', '.exe', '.so', '-bin', '-gtk', '-qt', '-wayland', '-x11', '-wrapped'})
+    _EXTENSIONS = ('.png', '.svg', '.xpm', '.ico')
+    _PREFIXES = ('org.', 'com.', 'net.', 'io.', 'dev.', 'app.')
+    _NAME_SUFFIXES = ('-desktop', '-client', '-browser', '-app')
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self, default_icon="application-x-executable-symbolic"):
+        if self._initialized:
+            return
+        
         super().__init__()
         self.default_icon = default_icon
         self.theme = Gtk.IconTheme.get_default()
-        
-        self._desktop_dirs = self._get_desktop_dirs()
-        self._icon_dirs = self._get_icon_dirs()
-
-    def _join(self, *args) -> str:
-        parts = [str(arg) for arg in args if arg]
-        if not parts:
-            return ""
-
-        path = parts[0]
-        for part in parts[1:]:
-            if path.endswith("/"): path = path[:-1]
-            if part.startswith("/"): part = part[1:]
-            path = path + "/" + part
-        return path
-
-    def _get_desktop_dirs(self) -> list:
-        dirs = []
-        
-        for base in GLib.get_system_data_dirs():
-            dirs.append(self._join(base, "applications"))
-        
-        user_data = GLib.get_user_data_dir()
-        if user_data:
-            dirs.append(self._join(user_data, "applications"))
-        
-        home = GLib.get_home_dir()
-        flatpak_user = self._join(home, ".local/share/flatpak/exports/share/applications")
-        flatpak_sys = "/var/lib/flatpak/exports/share/applications"
-        
-        dirs.append(flatpak_user)
-        dirs.append(flatpak_sys)
-        
-        snap_dir = "/var/lib/snapd/desktop/applications"
-        if GLib.file_test(snap_dir, GLib.FileTest.EXISTS):
-            dirs.append(snap_dir)
-        
-        return [d for d in dirs if GLib.file_test(d, GLib.FileTest.IS_DIR)]
-
-    def _get_icon_dirs(self) -> list:
-        dirs = []
-        
-        dirs.append("/usr/share/pixmaps")
-        dirs.append("/usr/local/share/pixmaps")
-        
-        for base in GLib.get_system_data_dirs():
-            dirs.append(self._join(base, "icons"))
-        
-        user_data = GLib.get_user_data_dir()
-        if user_data:
-            dirs.append(self._join(user_data, "icons"))
-        
-        return [d for d in dirs if GLib.file_test(d, GLib.FileTest.IS_DIR)]
-
-    def _normalize_name(self, name: str) -> str:
-        if not name:
-            return ""
-        
-        name = name.lower().strip()
-        
-        suffixes = ('.bin', '.exe', '.so', '-bin', '-gtk', '-qt', '-wayland', '-x11')
-        for suffix in suffixes:
-            if name.endswith(suffix):
-                name = name[:-len(suffix)]
-        
-        return name
-
-    def _camel_case_split(self, identifier: str) -> list:
-        parts = []
-        if not identifier:
-            return parts
-            
-        start = 0
-        for i in range(1, len(identifier)):
-            if identifier[i].isupper() and not identifier[i-1].isupper():
-                parts.append(identifier[start:i])
-                start = i
-            elif (identifier[i].isupper() and i + 1 < len(identifier) and not identifier[i+1].isupper()):
-                if start != i:
-                    parts.append(identifier[start:i])
-                    start = i
-                    
-        parts.append(identifier[start:])
-        return parts
-
-    def _generate_name_variants(self, app_id: str) -> list:
-        app_id = self._normalize_name(app_id)
-        if not app_id:
-            return []
-        
-        variants = set()
-        variants.add(app_id)
-        
-        variants.add(app_id.replace("-", "_"))
-        variants.add(app_id.replace("_", "-"))
-        variants.add(app_id.replace(".", "-"))
-        variants.add(app_id.replace(".", "_"))
-        
-        parts = app_id.split(".")
-        if len(parts) > 1:
-            variants.add(parts[-1])
-            if len(parts) > 2:
-                variants.add(".".join(parts[-2:]))
-                variants.add(".".join(parts[1:]))
-        
-        parts = app_id.split("-")
-        if len(parts) > 1:
-            variants.add(parts[0])
-            variants.add("-".join(parts[:2]))
-        
-        prefixes = ('org.', 'com.', 'net.', 'io.', 'dev.', 'app.')
-        for prefix in prefixes:
-            if app_id.startswith(prefix):
-                variants.add(app_id[len(prefix):])
-        
-        name_suffixes = ('-desktop', '-client', '-browser', '-app')
-        for suffix in name_suffixes:
-            if app_id.endswith(suffix):
-                variants.add(app_id[:-len(suffix)])
-        
-        camel_parts = self._camel_case_split(app_id)
-        if len(camel_parts) > 1:
-            variants.add(camel_parts[0].lower())
-            variants.add("-".join(p.lower() for p in camel_parts))
-        
-        return [v for v in variants if v and len(v) > 1]
-
-    def _listdir(self, path: str) -> list:
-        files = []
+        self._desktop_dirs = tuple(self._scan_dirs("applications"))
+        self._icon_dirs = tuple(self._scan_icon_dirs())
+        self._apps = ()
+        self._app_map = {}
+        self._initialized = True
+    
+    @classmethod
+    def get_default(cls):
+        return cls()
+    
+    @staticmethod
+    def _join(*parts):
+        return '/'.join(p.strip('/') for p in parts if p)
+    
+    @staticmethod
+    def _listdir(path):
         try:
             d = GLib.Dir.open(path, 0)
-            while True:
-                name = d.read_name()
-                if not name:
-                    break
-                files.append(name)
+            result = []
+            while (name := d.read_name()):
+                result.append(name)
+            return result
         except Exception:
-            pass
-        return files
-
-    def _find_desktop_file(self, app_id: str) -> str | None:
-        variants = self._generate_name_variants(app_id)
+            return []
+    
+    def _scan_dirs(self, subdir):
+        dirs = []
+        join, test = self._join, GLib.file_test
+        is_dir = GLib.FileTest.IS_DIR
         
-        desktop_names = set()
-        for variant in variants:
-            desktop_names.add(f"{variant}.desktop")
-            desktop_names.add(f"org.{variant}.desktop")
-            desktop_names.add(f"com.{variant}.desktop")
+        for base in GLib.get_system_data_dirs():
+            if (d := join(base, subdir)) and test(d, is_dir):
+                dirs.append(d)
+        
+        if (user := GLib.get_user_data_dir()) and (d := join(user, subdir)) and test(d, is_dir):
+            dirs.append(d)
+        
+        home = GLib.get_home_dir()
+        for extra in (
+            join(home, ".local/share/flatpak/exports/share", subdir),
+            join("/var/lib/flatpak/exports/share", subdir),
+            "/var/lib/snapd/desktop/applications" if subdir == "applications" else None
+        ):
+            if extra and test(extra, is_dir):
+                dirs.append(extra)
+        
+        return dirs
+    
+    def _scan_icon_dirs(self):
+        dirs = []
+        test = GLib.file_test
+        is_dir = GLib.FileTest.IS_DIR
+        
+        for d in ("/usr/share/pixmaps", "/usr/local/share/pixmaps"):
+            if test(d, is_dir):
+                dirs.append(d)
+        
+        dirs.extend(self._scan_dirs("icons"))
+        return dirs
+    
+    def refresh(self):
+        self._apps = tuple(get_desktop_applications())
+        self._app_map = self._build_app_map()
+    
+    def _build_app_map(self):
+        m = {}
+        norm = self.norm_name
+        
+        for app in self._apps:
+            keys = filter(None, (
+                app.name,
+                app.display_name,
+                app.window_class,
+                app.executable.rsplit("/", 1)[-1] if app.executable else None,
+                app.command_line.split(maxsplit=1)[0].rsplit("/", 1)[-1] if app.command_line else None
+            ))
             
-            parts = variant.split(".")
-            if len(parts) == 1:
-                desktop_names.add(f"org.{variant}.{variant}.desktop")
+            for raw in keys:
+                k = raw.lower()
+                if k not in m:
+                    m[k] = app
+                    nk = norm(k)
+                    if nk != k and nk not in m:
+                        m[nk] = app
+        return m
+    
+    def norm_name(self, name):
+        if not name:
+            return ""
+        n = name.lower().strip()
+        for s in self._SUFFIXES:
+            if n.endswith(s):
+                return n[:-len(s)]
+        return n
+    
+    def find_app(self, app_id):
+        if not app_id:
+            return None
         
-        for desktop_dir in self._desktop_dirs:
-            files = self._listdir(desktop_dir)
+        if not self._apps:
+            self.refresh()
+        
+        al = app_id.lower()
+        
+        if (app := self._app_map.get(al)):
+            return app
+        
+        norm = self.norm_name(al)
+        if norm != al and (app := self._app_map.get(norm)):
+            return app
+        
+        if "-" in al:
+            base = al.split("-")[0]
+            if (app := self._app_map.get(base)):
+                return app
+        
+        for a in self._apps:
+            if al in (
+                (a.window_class or "").lower(),
+                (a.name or "").lower(),
+                (a.display_name or "").lower(),
+                (a.executable or "").rsplit("/", 1)[-1].lower()
+            ):
+                return a
+        return None
+    
+    def get_icon(self, app_id, size=24, app=None):
+        return self._resolve_icon(app_id, size, app)
+    
+    @property
+    def apps(self):
+        if not self._apps:
+            self.refresh()
+        return self._apps
+    
+    @property
+    def app_map(self):
+        if not self._app_map:
+            self.refresh()
+        return self._app_map
+    
+    def _gen_variants(self, app_id):
+        if not app_id:
+            return ()
+        
+        v = {app_id, app_id.lower()}
+        al = app_id.lower()
+        v.add(self.norm_name(al))
+        
+        v.update((
+            al.replace('-', '_'),
+            al.replace('_', '-'),
+            al.replace('.', '-'),
+            al.replace('.', '_')
+        ))
+        
+        if '.' in al:
+            parts = al.split('.')
+            v.add(parts[-1])
+            if len(parts) > 2:
+                v.add('.'.join(parts[-2:]))
+                v.add('.'.join(parts[1:]))
+        
+        if '-' in al:
+            parts = al.split('-')
+            v.add(parts[0])
+            v.add(parts[-1])
+            if len(parts) > 1:
+                v.add('-'.join(parts[:2]))
+                v.add('-'.join(parts[:-1]))
+        
+        for prefix in self._PREFIXES:
+            if al.startswith(prefix):
+                v.add(al[len(prefix):])
+                break
+        
+        for suffix in self._NAME_SUFFIXES:
+            if al.endswith(suffix):
+                v.add(al[:-len(suffix)])
+                break
+        
+        parts = []
+        start = 0
+        for i in range(1, len(app_id)):
+            if app_id[i].isupper() and (not app_id[i-1].isupper() or
+                (i + 1 < len(app_id) and not app_id[i+1].isupper())):
+                parts.append(app_id[start:i])
+                start = i
+        if parts:
+            parts.append(app_id[start:])
+            v.add(parts[0].lower())
+            v.add('-'.join(p.lower() for p in parts))
+        
+        return tuple(x for x in v if x and len(x) > 1)
+    
+    def _find_desktop(self, app_id):
+        variants = self._gen_variants(app_id)
+        if not variants:
+            return None
+        
+        names = set()
+        for v in variants:
+            vl = v.lower()
+            names.update((f"{vl}.desktop", f"org.{vl}.desktop", f"com.{vl}.desktop"))
+            if '.' not in vl:
+                names.add(f"org.{vl}.{vl}.desktop")
+        
+        join = self._join
+        
+        for ddir in self._desktop_dirs:
+            files = self._listdir(ddir)
             if not files:
                 continue
             
-            files_lower = {f.lower(): f for f in files}
+            lower_map = {f.lower(): f for f in files}
             
-            for name in desktop_names:
-                name_lower = name.lower()
-                if name_lower in files_lower:
-                    return self._join(desktop_dir, files_lower[name_lower])
+            for name in names:
+                if (orig := lower_map.get(name.lower())):
+                    return join(ddir, orig)
             
-            for variant in variants:
-                for file_lower, file_orig in files_lower.items():
-                    if file_lower.endswith('.desktop') and variant in file_lower:
-                        return self._join(desktop_dir, file_orig)
+            for v in variants:
+                vl = v.lower()
+                for fl, fo in lower_map.items():
+                    if fl.endswith('.desktop') and vl in fl:
+                        return join(ddir, fo)
         
         return None
-
-    def _get_icon_from_desktop(self, path: str) -> str | None:
+    
+    @staticmethod
+    def _read_icon(path):
         try:
             kf = GLib.KeyFile.new()
             kf.load_from_file(path, GLib.KeyFileFlags.NONE)
@@ -190,139 +267,113 @@ class IconResolver(GObject.GObject):
             return icon.strip() if icon else None
         except Exception:
             return None
-
-    def _recursive_find(self, base_dir: str, target_names: set, max_depth: int = 3, current_depth: int = 0) -> str | None:
-        if current_depth > max_depth:
+    
+    def _find_icon_file(self, app_id):
+        variants = self._gen_variants(app_id)
+        if not variants:
             return None
-            
-        try:
-            d = GLib.Dir.open(base_dir, 0)
-            entries = []
-            while True:
-                name = d.read_name()
-                if not name:
-                    break
-                entries.append(name)
-        except Exception:
-            return None
-            
-        files_lower = {}
-        subdirs = []
         
-        for name in entries:
-            full_path = self._join(base_dir, name)
-            if GLib.file_test(full_path, GLib.FileTest.IS_DIR): subdirs.append(full_path)
-            else: files_lower[name.lower()] = full_path
-                
-        for target in target_names:
-            if target in files_lower:
-                return files_lower[target]
-                
-        for subdir in subdirs:
-            result = self._recursive_find(subdir, target_names, max_depth, current_depth + 1)
-            if result: return result
-                
-        return None
-
-    def _find_icon_file(self, app_id: str) -> str | None:
-        variants = self._generate_name_variants(app_id)
-        extensions = ('.png', '.svg', '.xpm', '.ico')
+        targets = frozenset(f"{v.lower()}{ext}" for v in variants for ext in self._EXTENSIONS)
+        join, test = self._join, GLib.file_test
+        is_dir = GLib.FileTest.IS_DIR
         
-        target_files = set()
-        for variant in variants:
-            for ext in extensions:
-                target_files.add(f"{variant}{ext}".lower())
-
-        for icon_dir in self._icon_dirs:
-            if 'pixmaps' in icon_dir:
-                files = self._listdir(icon_dir)
-                files_lower = {f.lower(): self._join(icon_dir, f) for f in files}
-                for target in target_files:
-                    if target in files_lower:
-                        return files_lower[target]
+        for idir in self._icon_dirs:
+            if 'pixmaps' in idir:
+                for f in self._listdir(idir):
+                    if f.lower() in targets:
+                        return join(idir, f)
             else:
-                found = self._recursive_find(icon_dir, target_files)
-                if found:
-                    return found
+                stack = [(idir, 0)]
+                while stack:
+                    cur, depth = stack.pop()
+                    if depth > 3:
+                        continue
+                    for name in self._listdir(cur):
+                        full = join(cur, name)
+                        if test(full, is_dir):
+                            stack.append((full, depth + 1))
+                        elif name.lower() in targets:
+                            return full
         
         return None
-
-    def _try_icon_theme_variants(self, app_id: str) -> str | None:
-        variants = self._generate_name_variants(app_id)
-        
-        for variant in variants:
-            if self.theme.has_icon(variant):
-                return variant
-        
-        return None
-
-    def get_icon_name(self, app_id: str) -> str:
+    
+    def _get_icon_name(self, app_id):
         if not app_id:
             return self.default_icon
         
         app_id = app_id.strip()
-        app_id_lower = app_id.lower()
+        has = self.theme.has_icon
         
-        if self.theme.has_icon(app_id_lower):
-            return app_id_lower
-        
-        if self.theme.has_icon(app_id):
+        if has(app_id):
             return app_id
         
-        icon_name = self._try_icon_theme_variants(app_id)
-        if icon_name:
-            return icon_name
+        al = app_id.lower()
+        if has(al):
+            return al
         
-        desktop_path = self._find_desktop_file(app_id)
-        if desktop_path:
-            icon = self._get_icon_from_desktop(desktop_path)
-            if icon:
-                if icon.startswith("/") and GLib.file_test(icon, GLib.FileTest.EXISTS): return icon
-                if self.theme.has_icon(icon): return icon
-                icon_file = self._find_icon_file(icon)
-                if icon_file: return icon_file
+        for v in self._gen_variants(app_id):
+            if has(v):
+                return v
         
-        icon_file = self._find_icon_file(app_id)
-        if icon_file:
-            return icon_file
+        if (desktop := self._find_desktop(app_id)):
+            if (icon := self._read_icon(desktop)):
+                if icon.startswith('/') and GLib.file_test(icon, GLib.FileTest.EXISTS):
+                    return icon
+                if has(icon):
+                    return icon
+                if has(icon.lower()):
+                    return icon.lower()
+                if (found := self._find_icon_file(icon)):
+                    return found
+        
+        if (found := self._find_icon_file(app_id)):
+            return found
         
         return self.default_icon
-
-    def get_icon_pixbuf(self, app_id: str, size: int = 32):
-        icon_name = self.get_icon_name(app_id)
-        
+    
+    def _load_pixbuf(self, icon_name, size):
         try:
-            if icon_name.startswith("/") and GLib.file_test(icon_name, GLib.FileTest.EXISTS):
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(icon_name)
-                if pixbuf.get_width() != size or pixbuf.get_height() != size:
-                    pixbuf = pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
-                return pixbuf
-            
+            if icon_name.startswith('/'):
+                return GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_name, size, size, True)
             return self.theme.load_icon(icon_name, size, Gtk.IconLookupFlags.FORCE_SIZE)
-            
         except Exception:
-            try: return self.theme.load_icon(self.default_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
-            except Exception: return None
-
-    def resolve_icon(self, app_id: str, size: int, desktop_app=None):
+            return None
+    
+    def _resolve_icon(self, app_id, size, desktop_app=None):
         pixbuf = None
-
+        
         if desktop_app:
-            try: pixbuf = desktop_app.get_icon_pixbuf(size=size)
-            except Exception: pass
-
+            try:
+                pixbuf = desktop_app.get_icon_pixbuf(size=size)
+            except Exception:
+                pass
+        
         if not pixbuf and app_id:
-            pixbuf = self.get_icon_pixbuf(app_id, size)
-
+            icon_name = self._get_icon_name(app_id)
+            pixbuf = self._load_pixbuf(icon_name, size)
+        
+        if not pixbuf and app_id and "-" in app_id:
+            for base in (app_id.split("-")[0], app_id.rsplit("-", 1)[0]):
+                if base and len(base) > 1:
+                    icon_name = self._get_icon_name(base)
+                    if (pixbuf := self._load_pixbuf(icon_name, size)):
+                        break
+        
         if not pixbuf:
-            try: pixbuf = self.theme.load_icon(self.default_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
-            except Exception: pass
-
-        if not pixbuf:
-            try: pixbuf = self.theme.load_icon("image-missing", size, Gtk.IconLookupFlags.FORCE_SIZE)
-            except Exception: pass
-
+            for name in (self.default_icon, "image-missing"):
+                if (pixbuf := self._load_pixbuf(name, size)):
+                    break
+        
         if pixbuf and (pixbuf.get_width() != size or pixbuf.get_height() != size):
             pixbuf = pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
-
+        
         return pixbuf
+    
+    def get_icon_pixbuf(self, app_id, size=32):
+        return self._resolve_icon(app_id, size)
+    
+    def get_icon_name(self, app_id):
+        return self._get_icon_name(app_id)
+    
+    def resolve_icon(self, app_id, size, desktop_app=None):
+        return self._resolve_icon(app_id, size, desktop_app)

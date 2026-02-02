@@ -15,10 +15,10 @@ from .notification_box import (
 import services.icons as icons
 from services.image import CustomImage
 
+
 _ORDINALS = {1: "st", 2: "nd", 3: "rd"}
 _TODAY = "Today"
 _YESTERDAY = "Yesterday"
-
 
 class NotificationHistory(Box):
     __slots__ = (
