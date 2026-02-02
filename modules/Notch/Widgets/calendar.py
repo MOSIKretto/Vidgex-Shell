@@ -7,11 +7,13 @@ import services.icons as icons
 
 
 class Calendar(Gtk.Box):
-    __slots__ = ('view_mode', 'first_weekday', '_c', 'ty', 'tm', 'td',
-                 'sy', 'sm', 'sd', '_pb', '_nb', '_ml', '_hdr', '_wr', '_gr')
+    __slots__ = ('view_mode', 'first_weekday', '_c', 'ty', 'tm', 'td', 'sy', 'sm', 'sd', '_pb', '_nb', '_ml', '_hdr', '_wr', '_gr')
 
-    _M = ("Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-          "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь")
+    _M = (
+        "Январь", "Февраль", "Март", "Апрель", 
+        "Май", "Июнь", "Июль", "Август", 
+        "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    )
     _D = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
     _ML = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
@@ -36,17 +38,32 @@ class Calendar(Gtk.Box):
         self.sy = self.sm = self.sd = 0
         self._rst()
 
-        self._pb = Gtk.Button(name="prev-month-button",
-                              child=Label(name="month-button-label", markup=icons.chevron_left))
-        self._nb = Gtk.Button(name="next-month-button",
-                              child=Label(name="month-button-label", markup=icons.chevron_right))
+        self._pb = Gtk.Button(
+            name="prev-month-button",
+            child=Label(
+                name="month-button-label", 
+                markup=icons.chevron_left
+            )
+        )
+        self._nb = Gtk.Button(
+            name="next-month-button",
+            child=Label(
+                name="month-button-label", 
+                markup=icons.chevron_right
+            )
+        )
         self._ml = Gtk.Label(name="month-label")
 
         self._pb.connect("clicked", self._prev)
         self._nb.connect("clicked", self._next)
 
-        self._hdr = CenterBox(spacing=4, name="header",
-                              start_children=[self._pb], center_children=[self._ml], end_children=[self._nb])
+        self._hdr = CenterBox(
+            spacing=4, 
+            name="header",
+            start_children=[self._pb], 
+            center_children=[self._ml], 
+            end_children=[self._nb]
+        )
         self.add(self._hdr)
 
         self._wr = Gtk.Box(spacing=4, name="weekday-row")
@@ -55,8 +72,7 @@ class Calendar(Gtk.Box):
             self._wr.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
         self.pack_start(self._wr, False, False, 0)
 
-        self._gr = Gtk.Grid(column_homogeneous=True, row_homogeneous=False,
-                            name="calendar-grid" if view_mode == "month" else "calendar-grid-week-view")
+        self._gr = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name="calendar-grid" if view_mode == "month" else "calendar-grid-week-view")
 
         rows = 6 if view_mode == "month" else 1
         for r in range(rows):

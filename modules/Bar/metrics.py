@@ -12,12 +12,12 @@ from services.network import NetworkClient
 from services.upower import UPowerManager
 import services.icons as icons
 
+
 _STAT, _MEM, _NET = '/proc/stat', '/proc/meminfo', '/proc/net/dev'
 _MT, _MA, _LO = b'MemTotal:', b'MemAvailable:', b'lo'
 
 _prov = None
 _subs = []
-
 
 def _sub(cb):
     global _prov
@@ -75,9 +75,7 @@ class MetricsProvider:
                 self._tp = p
                 break
         try:
-            proc = Gio.Subprocess.new(
-                ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _, out, _ = proc.communicate_utf8(None)
             if out and out.strip():
                 n = out.count('\n') + (1 if out.strip() else 0)
@@ -182,9 +180,7 @@ class MetricsProvider:
             if not self._gr:
                 self._gr = True
                 try:
-                    proc = Gio.Subprocess.new(
-                        ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
-                        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+                    proc = Gio.Subprocess.new(['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
                     proc.communicate_utf8_async(None, None, self._nv_cb)
                 except:
                     self._gr = False
@@ -270,10 +266,25 @@ class SingularMetric:
     __slots__ = ('usage', 'label', 'box')
 
     def __init__(self, id, name, icon):
-        self.usage = Scale(name=f"{id}-usage", value=0.25, orientation='v',
-                          inverted=True, v_align='fill', v_expand=True)
+        self.usage = Scale(
+            name=f"{id}-usage", 
+            value=0.25,
+            orientation='v', 
+            inverted=True, 
+            v_align='fill', 
+            v_expand=True
+        )
         self.label = Label(name=f"{id}-label", markup=icon)
-        self.box = Box(name=f"{id}-box", orientation='v', spacing=8, children=[self.usage, self.label])
+        self.box = Box(
+            name=f"{id}-box", 
+            orientation='v', 
+            spacing=8, 
+            children=[
+                self.usage, 
+                self.label
+            ]
+        )
+
         self.box.set_tooltip_markup(f"{icon} {name}")
 
 
@@ -284,12 +295,36 @@ class SingularMetricSmall:
         self.nm, self.ic, self.is_t = name, icon, is_temp
         self.icon = Label(name="metrics-icon", markup=icon)
         self.circle = CircularProgressBar(
-            name="metrics-circle", value=0, size=28, line_width=2,
-            start_angle=150, end_angle=390, style_classes=id, child=self.icon)
-        self.level = Label(name="metrics-level", style_classes=id, label="0°C" if is_temp else "0%")
-        self.rev = Revealer(name=f"metrics-{id}-revealer", transition_duration=250,
-                           transition_type="slide-left", child=self.level, child_revealed=False)
-        self.box = Box(name=f"metrics-{id}-box", orientation="h", spacing=0, children=[self.circle, self.rev])
+            name="metrics-circle", 
+            value=0, 
+            size=28, 
+            line_width=2, 
+            start_angle=150, 
+            end_angle=390, 
+            style_classes=id, 
+            child=self.icon
+        )
+        self.level = Label(
+            name="metrics-level", 
+            style_classes=id, 
+            label="0°C" if is_temp else "0%"
+        )
+        self.rev = Revealer(
+            name=f"metrics-{id}-revealer", 
+            transition_duration=250,
+            transition_type="slide-left", 
+            child=self.level, 
+            child_revealed=False
+        )
+        self.box = Box(
+            name=f"metrics-{id}-box", 
+            orientation="h", 
+            spacing=0, 
+            children=[
+                self.circle, 
+                self.rev
+            ]
+        )
 
     def markup(self):
         return f"{self.ic} {self.nm}"
@@ -407,12 +442,31 @@ class BatteryButton(Button):
         self._lv, self._lc, self._lt = -1, None, -1
         self.ic = Label(name="metrics-icon", markup=icons.battery)
         self.cir = CircularProgressBar(
-            name="metrics-circle", value=0, size=28, line_width=2,
-            start_angle=150, end_angle=390, style_classes="bat", child=self.ic)
+            name="metrics-circle", 
+            value=0, 
+            size=28, 
+            line_width=2,
+            start_angle=150, 
+            end_angle=390, 
+            style_classes="bat", 
+            child=self.ic
+        )
         self.lv = Label(name="metrics-level", style_classes="bat", label="100%")
-        self.rev = Revealer(name="metrics-bat-revealer", transition_duration=250,
-                           transition_type="slide-left", child=self.lv)
-        self.add(Box(name="metrics-bat-box", orientation="h", spacing=0, children=[self.cir, self.rev]))
+        self.rev = Revealer(
+            name="metrics-bat-revealer", 
+            transition_duration=250, 
+            transition_type="slide-left", 
+            child=self.lv
+        )
+        self.add(Box(
+            name="metrics-bat-box", 
+            orientation="h", 
+            spacing=0, 
+            children=[
+                self.cir, 
+                self.rev
+            ]
+        ))
         _sub(self._upd)
         self.connect('destroy', lambda *_: _unsub(self._upd))
 
@@ -458,8 +512,7 @@ class BatteryButton(Button):
 
 
 class Battery(Box):
-    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim',
-                 'auto', 'manual', 'last_chg', 'is_low')
+    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low')
 
     def __init__(self, **kwargs):
         super().__init__(orientation="h", spacing=0, **kwargs)
@@ -470,8 +523,10 @@ class Battery(Box):
         self.pmb = Box(name="power-mode-switcher", orientation="h", spacing=2)
         self._init_pm()
         self.btn = BatteryButton(on_battery_changed=self._on_bat)
-        self.pmr = Revealer(name="metrics-power-modes-revealer", transition_duration=250,
-                           transition_type="slide-left", child=self.pmb, child_revealed=False)
+        self.pmr = Revealer(
+            name="metrics-power-modes-revealer", transition_duration=250,
+            transition_type="slide-left", child=self.pmb, child_revealed=False
+        )
         self.add(self.btn)
         self.add(self.pmr)
         for w in (self, self.btn, self.pmb):
@@ -500,14 +555,12 @@ class Battery(Box):
     def _init_pm(self):
         profiles = ""
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'list'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['powerprofilesctl', 'list'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _, profiles, _ = proc.communicate_utf8(None)
         except:
             pass
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _, out, _ = proc.communicate_utf8(None)
             if out and (m := out.strip()) in ("power-saver", "balanced", "performance"):
                 self.mode = m
@@ -538,8 +591,7 @@ class Battery(Box):
             GLib.source_remove(self.htim)
             self.htim = None
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             proc.communicate_utf8_async(None, None, self._mode_cb)
         except:
             pass
@@ -604,11 +656,26 @@ class NetworkApplet(Button):
         self.ul = Label(name="upload-label", markup="0 B/s")
         self.wl = Label(name="network-icon-label", markup=icons.world_off)
         self.dlr = Revealer(
-            child=Box(children=[Label(name="download-icon-label", markup=icons.download), self.dl]),
-            transition_type="slide-right", child_revealed=False)
+            child=Box(
+                children=[
+                    Label(name="download-icon-label", markup=icons.download), 
+                    self.dl
+                ]
+            ),
+            transition_type="slide-right", child_revealed=False
+        )
         self.ulr = Revealer(
-            child=Box(children=[self.ul, Label(name="upload-icon-label", markup=icons.upload)]),
-            transition_type="slide-left", child_revealed=False)
+            child=Box(
+                children=[
+                    self.ul, 
+                    Label(
+                        name="upload-icon-label", 
+                        markup=icons.upload
+                    )
+                ]
+            ), 
+            transition_type="slide-left", child_revealed=False
+        )
         self.add(Box(orientation="h", children=[self.ulr, self.wl, self.dlr]))
         self.connect("enter-notify-event", self._ent)
         self.connect("leave-notify-event", self._lv)

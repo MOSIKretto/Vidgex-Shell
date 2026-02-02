@@ -118,11 +118,13 @@ class Wifi(Service):
                 "active-ap": self._ap,
                 "strength": s,
                 "frequency": ap.get_frequency(),
-                "icon-name": ("network-wireless-signal-excellent-symbolic" if s >= 80 else 
-                             "network-wireless-signal-good-symbolic" if s >= 60 else 
-                             "network-wireless-signal-ok-symbolic" if s >= 40 else 
-                             "network-wireless-signal-weak-symbolic" if s >= 20 else 
-                             "network-wireless-signal-none-symbolic")
+                "icon-name": (
+                    "network-wireless-signal-excellent-symbolic" if s >= 80 else 
+                    "network-wireless-signal-good-symbolic" if s >= 60 else 
+                    "network-wireless-signal-ok-symbolic" if s >= 40 else 
+                    "network-wireless-signal-weak-symbolic" if s >= 20 else 
+                    "network-wireless-signal-none-symbolic"
+                )
             })
         return result
 

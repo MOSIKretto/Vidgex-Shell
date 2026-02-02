@@ -8,6 +8,7 @@ from gi.repository import Gdk, GLib, Gtk
 import services.icons as icons
 from modules.Notch.Widgets.network import NetworkClient
 
+
 _TH = (25, 50, 75)
 _WI = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
 _AN = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
@@ -62,10 +63,15 @@ def _content(ic, ti, st):
         h_align="start", v_align="center", spacing=10,
         children=[
             ic,
-            Box(orientation="v", h_align="start", v_align="center", children=[
-                Box(children=[ti, Box(h_expand=True)]),
-                Box(children=[st, Box(h_expand=True)])
-            ])
+            Box(
+                orientation="v", 
+                h_align="start", 
+                v_align="center", 
+                children=[
+                    Box(children=[ti, Box(h_expand=True)]),
+                    Box(children=[st, Box(h_expand=True)])
+                ]
+            )
         ]
     )
 
@@ -92,21 +98,36 @@ class NetworkButton(Box):
         self.network_ssid = Label(name="network-ssid", justification="left")
 
         self.network_status_button = Button(
-            name="network-status-button", h_expand=True,
-            child=_content(self.network_icon, self.network_label, self.network_ssid),
-            on_clicked=self._stat_click)
+            name="network-status-button", 
+            h_expand=True,
+            child=_content(
+                self.network_icon, 
+                self.network_label, 
+                self.network_ssid
+            ),
+            on_clicked=self._stat_click
+        )
         _hover(self.network_status_button)
 
         self.network_menu_label = Label(name="network-menu-label", markup=icons.chevron_right)
-        self.network_menu_button = Button(name="network-menu-button", child=self.network_menu_label,
-                                          on_clicked=self._menu_click)
+        self.network_menu_button = Button(
+            name="network-menu-button", 
+            child=self.network_menu_label,
+            on_clicked=self._menu_click
+        )
         _hover(self.network_menu_button)
 
         self.add(self.network_status_button)
         self.add(self.network_menu_button)
 
-        self._sw = (self, self.network_icon, self.network_label, self.network_ssid,
-                    self.network_status_button, self.network_menu_button, self.network_menu_label)
+        self._sw = (
+            self, self.network_icon, 
+            self.network_label, 
+            self.network_ssid,
+            self.network_status_button, 
+            self.network_menu_button, 
+            self.network_menu_label
+        )
 
     def _stat_click(self, *_):
         wifi = self._cl.wifi_device
@@ -217,14 +238,23 @@ class BluetoothButton(Box):
         self.bluetooth_status_text = Label(name="bluetooth-status", justification="left")
 
         self.bluetooth_status_button = Button(
-            name="bluetooth-status-button", h_expand=True,
-            child=_content(self.bluetooth_icon, self.bluetooth_label, self.bluetooth_status_text),
-            on_clicked=lambda *_: _async(self._toggle, self._upd_ui))
+            name="bluetooth-status-button",
+            h_expand=True,
+            child=_content(
+                self.bluetooth_icon, 
+                self.bluetooth_label, 
+                self.bluetooth_status_text
+            ),
+            on_clicked=lambda *_: _async(self._toggle, self._upd_ui)
+        )
         _hover(self.bluetooth_status_button)
 
         self.bluetooth_menu_label = Label(name="bluetooth-menu-label", markup=icons.chevron_right)
-        self.bluetooth_menu_button = Button(name="bluetooth-menu-button", child=self.bluetooth_menu_label,
-                                            on_clicked=lambda *_: self._open_menu())
+        self.bluetooth_menu_button = Button(
+            name="bluetooth-menu-button", 
+            child=self.bluetooth_menu_label,
+            on_clicked=lambda *_: self._open_menu()
+        )
         _hover(self.bluetooth_menu_button)
 
         self.add(self.bluetooth_status_button)
@@ -307,8 +337,7 @@ class _ToggleBtn(Button):
         self._ti = Label(name=f"{self.NAME}-label", label=self.TEXT, justification="left")
         self._st = Label(name=f"{self.NAME}-status", label=_OFF, justification="left")
 
-        super().__init__(name=f"{self.NAME}-button", h_expand=True,
-                        child=_content(self._ic, self._ti, self._st), on_clicked=self._click)
+        super().__init__(name=f"{self.NAME}-button", h_expand=True, child=_content(self._ic, self._ti, self._st), on_clicked=self._click)
 
         _hover(self)
         self._sw = (self, self._ic, self._ti, self._st)

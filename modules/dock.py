@@ -82,11 +82,25 @@ class Dock(Window):
             h_expand=True,
             h_align="fill",
             children=[
-                Box(name="dock-corner-left", orientation=Gtk.Orientation.VERTICAL, h_align="start",
-                    children=[Box(v_expand=True, v_align="fill"), MyCorner("bottom-right")]),
+                Box(
+                    name="dock-corner-left", 
+                    orientation=Gtk.Orientation.VERTICAL, 
+                    h_align="start", 
+                    children=[
+                        Box(v_expand=True, v_align="fill"), 
+                        MyCorner("bottom-right")
+                    ]
+                ),
                 self.dock_eb,
-                Box(name="dock-corner-right", orientation=Gtk.Orientation.VERTICAL, h_align="end",
-                    children=[Box(v_expand=True, v_align="fill"), MyCorner("bottom-left")]),
+                Box(
+                    name="dock-corner-right", 
+                    orientation=Gtk.Orientation.VERTICAL, 
+                    h_align="end", 
+                    children=[
+                        Box(v_expand=True, v_align="fill"), 
+                        MyCorner("bottom-left")
+                    ]
+                ),
             ],
         )
 

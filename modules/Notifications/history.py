@@ -62,28 +62,48 @@ class NotificationHistory(Box):
         )
 
         self.notifications_list = Box(
-            name="notifications-list", orientation="v", spacing=4,
-            h_expand=True, v_expand=True, h_align="fill", v_align="fill",
+            name="notifications-list", 
+            orientation="v", 
+            spacing=4,
+            h_expand=True, 
+            v_expand=True, 
+            h_align="fill", 
+            v_align="fill",
         )
 
         self.no_notifications_label = Label(
-            name="no-notif", markup=icons.notifications_clear,
-            v_align="fill", h_align="fill", v_expand=True, h_expand=True, justification="center",
+            name="no-notif", 
+            markup=icons.notifications_clear,
+            v_align="fill", 
+            h_align="fill", 
+            v_expand=True, 
+            h_expand=True, 
+            justification="center",
         )
 
         self.no_notifications_box = Box(
-            name="no-notifications-box", v_align="fill", h_align="fill",
-            v_expand=True, h_expand=True, children=[self.no_notifications_label],
+            name="no-notifications-box", 
+            v_align="fill", 
+            h_align="fill",
+            v_expand=True, 
+            h_expand=True, 
+            children=[self.no_notifications_label],
         )
 
         self.scrolled_window = ScrolledWindow(
-            name="notification-history-scrolled-window", orientation="v",
-            h_expand=True, v_expand=True, h_align="fill", v_align="fill",
-            propagate_width=False, propagate_height=False,
+            name="notification-history-scrolled-window", 
+            orientation="v",
+            h_expand=True, 
+            v_expand=True, 
+            h_align="fill", 
+            v_align="fill",
+            propagate_width=False, 
+            propagate_height=False,
         )
 
         self.scrolled_window_viewport_box = Box(
-            orientation="v", children=[self.notifications_list, self.no_notifications_box]
+            orientation="v", 
+            children=[self.notifications_list, self.no_notifications_box]
         )
         self.scrolled_window.add_with_viewport(self.scrolled_window_viewport_box)
 
@@ -133,7 +153,12 @@ class NotificationHistory(Box):
     def _create_date_separator(self, date_header):
         return Box(
             name="notif-date-sep",
-            children=[Label(name="notif-date-sep-label", label=date_header, h_align="center", h_expand=True)],
+            children=[Label(
+                name="notif-date-sep-label", 
+                label=date_header, 
+                h_align="center", 
+                h_expand=True
+            )],
         )
 
     def _rebuild_with_separators(self):

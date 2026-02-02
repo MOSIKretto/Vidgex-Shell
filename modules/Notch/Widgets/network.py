@@ -238,31 +238,64 @@ class NetworkConnections(Box):
         self.saved_box = Box(name="saved-box", spacing=2, orientation="vertical")
         self.avail_box = Box(name="available-box", spacing=2, orientation="vertical")
 
-        content = Box(spacing=4, orientation="vertical", children=[
-            Label(name="network-section", label="Сохраненные сети"),
-            self.saved_box,
-            Label(name="network-section", label="Доступные сети"),
-            self.avail_box
-        ])
+        content = Box(
+            spacing=4, 
+            orientation="vertical", 
+            children=[
+                Label(name="network-section", label="Сохраненные сети"),
+                self.saved_box,
+                Label(name="network-section", label="Доступные сети"),
+                self.avail_box
+            ]
+        )
 
         center = Box(
             orientation="horizontal", spacing=12, h_align="center",
             children=[
-                Box(orientation="horizontal", spacing=4, v_align="center",
-                    children=[self.ul_lbl, Label(name="upload-icon-label", markup=icons.upload)]),
+                Box(
+                    orientation="horizontal", 
+                    spacing=4, 
+                    v_align="center", 
+                    children=[
+                        self.ul_lbl, 
+                        Label(
+                            name="upload-icon-label", 
+                            markup=icons.upload
+                        )
+                    ]
+                ),
                 Label(name="network-text", label="Wi-Fi", v_align="center"),
-                Box(orientation="horizontal", spacing=4, v_align="center",
-                    children=[Label(name="download-icon-label", markup=icons.download), self.dl_lbl]),
+                Box(
+                    orientation="horizontal", 
+                    spacing=4, 
+                    v_align="center",
+                    children=[
+                        Label(
+                            name="download-icon-label", 
+                            markup=icons.download
+                        ), 
+                    self.dl_lbl
+                    ]
+                ),
             ]
         )
 
         self.scroll = ScrolledWindow(
-            name="bluetooth-devices", min_content_size=(-1, -1),
-            child=content, v_expand=True, propagate_width=False, propagate_height=False
+            name="bluetooth-devices", 
+            min_content_size=(-1, -1),
+            child=content, 
+            v_expand=True, 
+            propagate_width=False, 
+            propagate_height=False
         )
 
         self.children = [
-            CenterBox(name="network-header", start_children=back, center_children=center, end_children=self.scan_btn),
+            CenterBox(
+                name="network-header", 
+                start_children=back, 
+                center_children=center, 
+                end_children=self.scan_btn
+            ),
             self.scroll
         ]
 

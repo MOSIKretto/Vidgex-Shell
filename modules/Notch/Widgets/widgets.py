@@ -58,8 +58,12 @@ class Widgets(Box):
         c2 = mkbox(name="container-2", orientation="v", spacing=8,
                    children=[self.buttons, self.controls, c1])
 
-        self.add(mkbox(name="container-3", orientation="h", spacing=8,
-                       children=[self.player, c2]))
+        self.add(mkbox(
+            name="container-3", 
+            orientation="h", 
+            spacing=8, 
+            children=[self.player, c2]
+        ))
 
     def show_bt(self):
         self.applet_stack.set_visible_child(self.bluetooth)

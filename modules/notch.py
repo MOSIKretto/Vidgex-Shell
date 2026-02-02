@@ -122,8 +122,15 @@ class Notch(Window):
 
         self.ctrl = ControlSmall()
         self.ctrl_rev = Revealer(
-            name="control-revealer", transition_type="slide-down", transition_duration=200,
-            child_revealed=False, child=Box(name="control-revealer-box", h_align="center", children=[self.ctrl]),
+            name="control-revealer", 
+            transition_type="slide-down", 
+            transition_duration=200,
+            child_revealed=False, 
+            child=Box(
+                name="control-revealer-box", 
+                h_align="center", 
+                children=[self.ctrl]
+            ),
         )
 
         self.cc = Box(name="compact-content", orientation="v", children=[self.cs, self.ctrl_rev])
@@ -144,10 +151,25 @@ class Notch(Window):
         if hasattr(self.stack, 'set_homogeneous'):
             self.stack.set_homogeneous(False)
 
-        self.cl = Box(name="notch-corner-left", orientation="v", h_align="start", children=[MyCorner("top-right")])
-        self.cr = Box(name="notch-corner-right", orientation="v", h_align="end", children=[MyCorner("top-left")])
+        self.cl = Box(
+            name="notch-corner-left", 
+            orientation="v", 
+            h_align="start", 
+            children=[MyCorner("top-right")]
+        )
+        self.cr = Box(
+            name="notch-corner-right", 
+            orientation="v", 
+            h_align="end", 
+            children=[MyCorner("top-left")]
+        )
 
-        self.nb = CenterBox(name="notch-box", start_children=self.cl, center_children=self.stack, end_children=self.cr)
+        self.nb = CenterBox(
+            name="notch-box", 
+            start_children=self.cl, 
+            center_children=self.stack, 
+            end_children=self.cr
+        )
         self.nb.add_style_class("notch")
 
         self.nr = Revealer(name="notch-revealer", child_revealed=True, child=self.nb)

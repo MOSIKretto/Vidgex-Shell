@@ -31,8 +31,12 @@ class Toolbox(HorizontalNavigationMixin, Box):
         for item in items:
             if item is None: self.add(Box(name="tool-sep")); continue
             ic, script, tip, typ = item
-            btn = Button(name="toolbox-button", tooltip_markup=tip, can_focus=True,
-                         child=Label(name="button-label", markup=ic))
+            btn = Button(
+                name="toolbox-button", 
+                tooltip_markup=tip, 
+                can_focus=True,
+                child=Label(name="button-label", markup=ic)
+            )
             cmd = f"bash {self._path}/{script}"
             btn.connect("clicked", (lambda c: lambda *_: self._toggle(c))(cmd) if typ else (lambda c: lambda *_: self._run(c))(cmd))
             self._nav_items.append(btn); self.add(btn)
@@ -54,6 +58,8 @@ class Toolbox(HorizontalNavigationMixin, Box):
         self.btn_rec.get_child().set_markup(icons.stop if is_rec else icons.screenrecord)
         ctx = self.btn_rec.get_style_context()
         ctx.add_class("recording") if is_rec else ctx.remove_class("recording")
-        exec_shell_command_async(f"bash {self._path}/gamemode.sh check",
-            lambda o: self.btn_game.get_child().set_markup(icons.gamemode_off if 't' in str(o) else icons.gamemode))
+        exec_shell_command_async(
+            f"bash {self._path}/gamemode.sh check",
+            lambda o: self.btn_game.get_child().set_markup(icons.gamemode_off if 't' in str(o) else icons.gamemode)
+        )
         return False

@@ -52,8 +52,13 @@ class Bar(Window):
 
     def _build(self):
         self.ws = Workspaces(
-            name="workspaces", invert_scroll=True, empty_scroll=True,
-            v_align="fill", orientation="h", spacing=8, buttons=list(_WB),
+            name="workspaces", 
+            invert_scroll=True, 
+            empty_scroll=True,
+            v_align="fill", 
+            orientation="h", 
+            spacing=8, 
+            buttons=list(_WB),
         )
         self.ws.add_events(_SM)
         self.ws.connect("scroll-event", self._scr)
@@ -64,15 +69,28 @@ class Bar(Window):
         self.met = MetricsSmall()
 
         self.rl = Revealer(
-            name="bar-revealer", transition_type="slide-right", child_revealed=True,
-            child=Box(name="bar-revealer-box", spacing=4, children=[
-                self.tray, Box(name="network-container", children=[self.net]),
-            ]),
+            name="bar-revealer", 
+            transition_type="slide-right", 
+            child_revealed=True,
+            child=Box(
+                name="bar-revealer-box", 
+                spacing=4, 
+                children=[
+                    self.tray, 
+                    Box(name="network-container", children=[self.net]),
+                ]
+            ),
         )
 
         self.rr = Revealer(
-            name="bar-revealer", transition_type="slide-left", child_revealed=True,
-            child=Box(name="bar-revealer-box", spacing=4, children=[self.met]),
+            name="bar-revealer", 
+            transition_type="slide-left", 
+            child_revealed=True,
+            child=Box(
+                name="bar-revealer-box", 
+                spacing=4, 
+                children=[self.met]
+            ),
         )
 
         self.ll = Label(name="lang-label")
@@ -80,22 +98,39 @@ class Bar(Window):
         self.bat = Battery()
 
         self.bp = Button(
-            name="button-bar", tooltip_markup="<b>Меню питания</b>",
-            on_clicked=self._pwr, child=Label(name="button-bar-label", markup=icons.shutdown),
+            name="button-bar", 
+            tooltip_markup="<b>Меню питания</b>",
+            on_clicked=self._pwr, 
+            child=Label(name="button-bar-label", markup=icons.shutdown),
         )
         self._hov(self.bp)
 
         self.add(CenterBox(
             name="bar-inner",
-            start_children=Box(name="start-container", spacing=4, children=[
-                self.wsc, Box(name="boxed-revealer", children=[self.rl]),
-            ]),
-            end_children=Box(name="end-container", spacing=4, children=[
-                Box(name="boxed-revealer", children=[self.rr]),
-                Box(name="power-battery-container", children=[
-                    self.dt, Box(name="language-indicator", children=[self.ll]), self.bat, self.bp,
-                ]),
-            ]),
+            start_children=Box(
+                name="start-container", 
+                spacing=4, 
+                children=[
+                    self.wsc, 
+                    Box(name="boxed-revealer", children=[self.rl]),
+                ]
+            ),
+            end_children=Box(
+                name="end-container", 
+                spacing=4, 
+                children=[
+                    Box(name="boxed-revealer", children=[self.rr]),
+                    Box(
+                        name="power-battery-container", 
+                        children=[
+                            self.dt, 
+                            Box(name="language-indicator", children=[self.ll]), 
+                            self.bat, 
+                            self.bp,
+                        ]
+                    ),
+                ]
+            ),
         ))
 
     def _scr(self, _, e):

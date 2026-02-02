@@ -12,6 +12,7 @@ import services.icons as icons
 from services.mpris import MprisPlayer, MprisPlayerManager
 from services.circle_image import CircleImage
 
+
 _WALL = GLib.build_filenamev([GLib.get_home_dir(), ".current.wall"])
 
 
@@ -57,17 +58,60 @@ class PlayerBox(Box):
         self._upd = False
         self._dcancel = None
 
-        self.cover = CircleImage(name="player-cover", image_file=_WALL, size=162, h_align="center", v_align="center")
-        self.cover_placeholder = CircleImage(name="player-cover", size=198, h_align="center", v_align="center")
-        self.title = Label(name="player-title", h_expand=True, h_align="fill", ellipsization="end", max_chars_width=1)
-        self.album = Label(name="player-album", h_expand=True, h_align="fill", ellipsization="end", max_chars_width=1)
-        self.artist = Label(name="player-artist", h_expand=True, h_align="fill", ellipsization="end", max_chars_width=1)
-        self.progressbar = CircularProgressBar(name="player-progress", size=198, h_align="center", v_align="center", start_angle=180, end_angle=360)
+        self.cover = CircleImage(
+            name="player-cover", 
+            image_file=_WALL, 
+            size=162, 
+            h_align="center", 
+            v_align="center"
+        )
+        self.cover_placeholder = CircleImage(
+            name="player-cover", 
+            size=198, 
+            h_align="center", 
+            v_align="center"
+        )
+        self.title = Label(
+            name="player-title", 
+            h_expand=True, 
+            h_align="fill", 
+            ellipsization="end", 
+            max_chars_width=1
+        )
+        self.album = Label(
+            name="player-album", 
+            h_expand=True, 
+            h_align="fill", 
+            ellipsization="end", 
+            max_chars_width=1
+        )
+        self.artist = Label(
+            name="player-artist", 
+            h_expand=True, 
+            h_align="fill", 
+            ellipsization="end", 
+            max_chars_width=1
+        )
+        self.progressbar = CircularProgressBar(
+            name="player-progress", 
+            size=198, 
+            h_align="center", 
+            v_align="center", 
+            start_angle=180, 
+            end_angle=360
+        )
+
         self.time = Label(name="player-time", label="--:-- / --:--")
 
-        self.overlay_container = CenterBox(name="player-overlay", center_children=[
-            Overlay(child=self.cover_placeholder, overlays=[self.progressbar, self.cover])
-        ])
+        self.overlay_container = CenterBox(
+            name="player-overlay", 
+            center_children=[
+                Overlay(
+                    child=self.cover_placeholder, 
+                    overlays=[self.progressbar, self.cover]
+                )
+            ]
+        )
 
         self.title.set_label("Nothing Playing")
         self.album.set_label("Enjoy the silence")
@@ -79,14 +123,40 @@ class PlayerBox(Box):
         self.forward = self._mkbtn(icons.skip_forward)
         self.next = self._mkbtn(icons.next)
 
-        self.btn_box = CenterBox(name="player-btn-box", orientation="h", center_children=[
-            Box(orientation="h", spacing=8, h_expand=True, h_align="fill",
-                children=[self.prev, self.backward, self.play_pause, self.forward, self.next])
-        ])
+        self.btn_box = CenterBox(
+            name="player-btn-box", 
+            orientation="h", 
+            center_children=[
+                Box(
+                    orientation="h", 
+                    spacing=8, 
+                    h_expand=True, 
+                    h_align="fill",
+                    children=[
+                        self.prev, 
+                        self.backward, 
+                        self.play_pause, 
+                        self.forward, 
+                        self.next
+                    ]
+                )
+            ]
+        )
 
-        self.player_box = Box(name="player-box", orientation="v", v_align="center", spacing=4, children=[
-            self.overlay_container, self.title, self.album, self.artist, self.btn_box, self.time
-        ])
+        self.player_box = Box(
+            name="player-box", 
+            orientation="v", 
+            v_align="center", 
+            spacing=4, 
+            children=[
+                self.overlay_container, 
+                self.title, 
+                self.album, 
+                self.artist, 
+                self.btn_box, 
+                self.time
+            ]
+        )
         self.add(self.player_box)
 
         if mpris_player:
@@ -95,8 +165,19 @@ class PlayerBox(Box):
             self._setup_empty()
 
     def _mkbtn(self, icon, sc=None):
-        btn = Button(name="player-btn", child=Label(name="player-btn-label", markup=icon, style_classes=sc or []),
-                     style_classes=sc or [], h_expand=False, v_expand=False, h_align="center", v_align="center")
+        btn = Button(
+            name="player-btn", 
+            child=Label(
+                name="player-btn-label", 
+                markup=icon, 
+                style_classes=sc or []
+            ),
+            style_classes=sc or [], 
+            h_expand=False, 
+            v_expand=False, 
+            h_align="center", 
+            v_align="center"
+        )
         _hover(btn)
         return btn
 
@@ -277,8 +358,13 @@ class Player(Box):
     def __init__(self):
         super().__init__(name="player", orientation="v", h_align="fill", spacing=0, h_expand=False, v_expand=True)
 
-        self.player_stack = Stack(name="player-stack", transition_type="slide-left-right",
-                                  transition_duration=500, v_align="center", v_expand=True)
+        self.player_stack = Stack(
+            name="player-stack", 
+            transition_type="slide-left-right",
+            transition_duration=500, 
+            v_align="center", 
+            v_expand=True
+        )
         self.switcher = Gtk.StackSwitcher(name="player-switcher", spacing=8)
         self.switcher.set_stack(self.player_stack)
         self.switcher.set_halign(Gtk.Align.CENTER)
@@ -337,8 +423,7 @@ class Player(Box):
 
 
 class PlayerSmall(CenterBox):
-    __slots__ = ('_dopts', '_didx', '_rtimer', 'mpris_icon', 'mpris_label',
-                 'mpris_button', 'center_stack', 'mpris_manager', 'mpris_player', 'current_index')
+    __slots__ = ('_dopts', '_didx', '_rtimer', 'mpris_icon', 'mpris_label', 'mpris_button', 'center_stack', 'mpris_manager', 'mpris_player', 'current_index')
 
     def __init__(self):
         super().__init__(name="player-small", orientation="h", h_align="fill", v_align="center")
@@ -347,27 +432,60 @@ class PlayerSmall(CenterBox):
         self._didx = 0
         self._rtimer = None
 
-        self.mpris_icon = Button(name="compact-mpris-icon", h_align="center", v_align="center",
-                                 child=Label(name="compact-mpris-icon-label", markup=icons.disc))
+        self.mpris_icon = Button(
+            name="compact-mpris-icon", 
+            h_align="center", 
+            v_align="center",
+            child=Label(
+                name="compact-mpris-icon-label", 
+                markup=icons.disc
+            )
+        )
         self.mpris_icon.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.mpris_icon.connect("button-press-event", self._on_icon)
         _hover(self.mpris_icon)
 
-        self.mpris_label = Label(name="compact-mpris-label", label="Nothing Playing",
-                                 ellipsization="end", max_chars_width=26, h_align="center")
+        self.mpris_label = Label(
+            name="compact-mpris-label", 
+            label="Nothing Playing", 
+            ellipsization="end", 
+            max_chars_width=26, 
+            h_align="center"
+        )
 
-        self.mpris_button = Button(name="compact-mpris-button", h_align="center", v_align="center",
-                                   child=Label(name="compact-mpris-button-label", markup=icons.play))
+        self.mpris_button = Button(
+            name="compact-mpris-button", 
+            h_align="center", 
+            v_align="center",
+            child=Label(
+                name="compact-mpris-button-label", 
+                markup=icons.play
+            )
+        )
         self.mpris_button.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.mpris_button.connect("button-press-event", self._on_pp)
         _hover(self.mpris_button)
 
-        self.center_stack = Stack(name="compact-mpris", transition_type="crossfade", transition_duration=100,
-                                  v_align="center", v_expand=False, children=[self.mpris_label])
+        self.center_stack = Stack(
+            name="compact-mpris", 
+            transition_type="crossfade", 
+            transition_duration=100,
+            v_align="center", 
+            v_expand=False, 
+            children=[self.mpris_label]
+        )
 
-        self.add(CenterBox(name="compact-mpris", orientation="h", h_expand=True, h_align="fill",
-                           v_align="center", v_expand=False, start_children=self.mpris_icon,
-                           center_children=self.center_stack, end_children=self.mpris_button))
+        self.add(CenterBox(
+            name="compact-mpris", 
+            orientation="h", 
+            h_expand=True, 
+            h_align="fill",
+            v_align="center", 
+            v_expand=False, 
+            start_children=self.mpris_icon,
+            center_children=self.center_stack, 
+            end_children=self.mpris_button
+        ))
 
         self.mpris_manager = MprisPlayerManager()
         self.mpris_player = None

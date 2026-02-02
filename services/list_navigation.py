@@ -1,5 +1,6 @@
 from gi.repository import Gdk, GLib
 
+
 class ListNavigationMixin:
     """Миксин для вертикальной навигации по списку."""
     

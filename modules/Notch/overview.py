@@ -13,6 +13,7 @@ from fabric.widgets.label import Label
 import services.icons as icons
 from services.icon_resolver import IconResolver
 
+
 _scr = Gdk.Screen.get_default()
 _CW, _CH = _scr.get_width(), _scr.get_height()
 _SW, _SH = int(_CW * 0.1), int(_CH * 0.1)
@@ -65,7 +66,12 @@ class WorkspaceEventBox(EventBox):
         super().__init__(
             name="overview-workspace-bg",
             size=(_SW, _SH),
-            child=fixed or Label(name="overview-add-label", markup=icons.circle_plus, h_expand=True, v_expand=True),
+            child=fixed or Label(
+                name="overview-add-label", 
+                markup=icons.circle_plus, 
+                h_expand=True, 
+                v_expand=True
+            ),
             on_drag_data_received=lambda *a: _conn.send_command(
                 f"/dispatch movetoworkspacesilent {wid},address:{a[4].get_data().decode()}"
             ),

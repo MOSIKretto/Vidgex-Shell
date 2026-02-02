@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import cairo
 import services.icons as icons
 
+
 _HOME = GLib.get_home_dir()
 _WALLS = f"{_HOME}/.config/Vidgex-Shell/wallpapers/"
 _CURRENT = f"{_HOME}/.current.wall"
@@ -395,7 +396,14 @@ class WallpaperSelector(Box):
         self._dd.set_active_id(self._ldsch())
         self._dd.connect("changed", self._schch)
 
-        self._rb = Button(name="random-wall-button", child=Label(name="random-wall-label", markup=_DICE[0]), tooltip_text="Random Wallpaper")
+        self._rb = Button(
+            name="random-wall-button", 
+            child=Label(
+                name="random-wall-label", 
+                markup=_DICE[0]
+            ), 
+            tooltip_text="Random Wallpaper"
+        )
         self._rb.connect("clicked", self.random_wall)
         self._lbl = Label(name="wallpaper-name-label", label="Select a wallpaper")
 

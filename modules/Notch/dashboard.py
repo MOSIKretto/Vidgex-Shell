@@ -50,9 +50,7 @@ class Dashboard(Box):
             self.wallpapers._ent.grab_focus()
 
     def go_to_section(self, name):
-        self.stack.set_visible_child(
-            self.widgets if name == "widgets" else (self.wallpapers if name == "wallpapers" else self.mixer)
-        )
+        self.stack.set_visible_child(self.widgets if name == "widgets" else (self.wallpapers if name == "wallpapers" else self.mixer))
 
     def cleanup(self):
         for w in (self.widgets, self.wallpapers, self.mixer):

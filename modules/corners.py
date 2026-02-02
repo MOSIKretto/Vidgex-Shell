@@ -27,13 +27,21 @@ class Corners(Window):
                 Box(
                     name="top-corners",
                     orientation="h",
-                    children=[MyCorner("top-left"), Box(h_expand=True), MyCorner("top-right")],
+                    children=[
+                        MyCorner("top-left"), 
+                        Box(h_expand=True), 
+                        MyCorner("top-right")
+                    ],
                 ),
                 Box(v_expand=True),
                 Box(
                     name="bottom-corners",
                     orientation="h",
-                    children=[MyCorner("bottom-left"), Box(h_expand=True), MyCorner("bottom-right")],
+                    children=[
+                        MyCorner("bottom-left"), 
+                        Box(h_expand=True), 
+                        MyCorner("bottom-right")
+                    ],
                 ),
             ],
         ))

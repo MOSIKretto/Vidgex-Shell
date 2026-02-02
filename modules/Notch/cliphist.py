@@ -17,17 +17,53 @@ class ClipHistory(ListNavigationMixin, Box):
         super().__init__(name="clip-history", visible=False, all_visible=False, **kw)
         self.notch, self.sel, self._it = notch, -1, None
         self.vp = Box(name="viewport", spacing=4, orientation="v")
-        self.ent = Entry(name="search-entry", placeholder="Поиск в истории буфера...", h_expand=True,
-                         notify_text=lambda e, *_: self._flt(e.get_text().lower()),
-                         on_activate=lambda *_: self._nav_activate(), on_key_press_event=self._nav_key)
+        self.ent = Entry(
+            name="search-entry", 
+            placeholder="Поиск в истории буфера...", 
+            h_expand=True,
+            notify_text=lambda e, *_: self._flt(e.get_text().lower()),
+            on_activate=lambda *_: self._nav_activate(), 
+            on_key_press_event=self._nav_key
+        )
         self.ent.props.xalign = 0.5
-        self.sw = ScrolledWindow(name="scrolled-window", v_expand=True, child=self.vp, propagate_height=False)
-        self.add(Box(name="launcher-box", spacing=10, h_expand=True, orientation="v", children=[
-            Box(name="header_box", spacing=10, children=[
-                Button(name="clear-button", child=Label(name="clear-label", markup=icons.trash), on_clicked=lambda *_: self._wipe()),
-                self.ent,
-                Button(name="close-button", child=Label(name="close-label", markup=icons.cancel), on_clicked=lambda *_: self.close())]),
-            self.sw]))
+        self.sw = ScrolledWindow(
+            name="scrolled-window", 
+            v_expand=True, 
+            child=self.vp, 
+            propagate_height=False
+        )
+        self.add(Box(
+            name="launcher-box", 
+            spacing=10, 
+            h_expand=True, 
+            orientation="v", 
+            children=[
+                Box(
+                    name="header_box", 
+                    spacing=10, 
+                    children=[
+                        Button(
+                            name="clear-button", 
+                            child=Label(
+                                name="clear-label", 
+                                markup=icons.trash
+                            ), 
+                            on_clicked=lambda *_: self._wipe()
+                        ),
+                        self.ent,
+                        Button(
+                            name="close-button", 
+                            child=Label(
+                                name="close-label", 
+                                markup=icons.cancel
+                            ), 
+                            on_clicked=lambda *_: self.close()
+                        )
+                    ]
+                ),
+                self.sw
+            ]
+        ))
 
     def _run(self, args, inp=None):
         try:
@@ -52,9 +88,26 @@ class ClipHistory(ListNavigationMixin, Box):
         ic = Image(name="clip-icon") if img else Label(name="clip-icon", markup=icons.clip_text)
         txt = "[Изображение]" if img else cnt[:100].strip()
         if img: GLib.idle_add(lambda i=idx: self._thumb(ic, i) or False)
-        return Button(name="slot-button", on_clicked=lambda *_, i=idx: self._paste(i),
-                      child=Box(name="slot-box", orientation="h", spacing=10, children=[
-                          ic, Label(name="clip-label", label=txt, ellipsization="end", h_align="start", h_expand=True)]))
+        return Button(
+            name="slot-button", 
+            on_clicked=lambda *_, 
+            i=idx: self._paste(i),
+            child=Box(
+                name="slot-box", 
+                orientation="h", 
+                spacing=10, 
+                children=[
+                    ic, 
+                    Label(
+                        name="clip-label", 
+                        label=txt, 
+                        ellipsization="end", 
+                        h_align="start", 
+                        h_expand=True
+                    )
+                ]
+            )
+        )
 
     def _thumb(self, w, idx):
         if not (d := self._run(["cliphist", "decode", idx])): return
@@ -74,8 +127,22 @@ class ClipHistory(ListNavigationMixin, Box):
 
     def _empty(self):
         self._nav_clear()
-        self.vp.add(Box(name="no-clip-container", v_expand=True, h_expand=True, orientation="v",
-                        children=[Label(name="no-clip", markup=icons.clipboard, v_align="center", h_align="center", v_expand=True, h_expand=True)]))
+        self.vp.add(Box(
+            name="no-clip-container", 
+            v_expand=True, 
+            h_expand=True, 
+            orientation="v", 
+            children=[
+                Label(
+                    name="no-clip", 
+                    markup=icons.clipboard, 
+                    v_align="center", 
+                    h_align="center", 
+                    v_expand=True, 
+                    h_expand=True
+                )
+            ]
+        ))
         self.show_all()
 
     def open(self):

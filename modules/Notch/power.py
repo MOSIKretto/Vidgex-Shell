@@ -21,9 +21,12 @@ class PowerMenu(HorizontalNavigationMixin, Box):
         super().__init__(name="power-menu", spacing=4, **kw)
         self.notch, self._nav_items, self._nav_idx = notch, [], 0
         for tip, ic, cmd in self._ITEMS:
-            btn = Button(name="power-menu-button", tooltip_markup=tip,
-                         child=Label(name="button-label", markup=ic),
-                         on_clicked=(lambda c: lambda *_: (exec_shell_command_async(c), self._hnav_close()))(cmd))
+            btn = Button(
+                name="power-menu-button", 
+                tooltip_markup=tip,
+                child=Label(name="button-label", markup=ic),
+                on_clicked=(lambda c: lambda *_: (exec_shell_command_async(c), self._hnav_close()))(cmd)
+            )
             self._nav_items.append(btn); self.add(btn)
         self.connect("key-press-event", self._hnav_key)
         self.connect("map", lambda *_: self._hnav_focus_first())

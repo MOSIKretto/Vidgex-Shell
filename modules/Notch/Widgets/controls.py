@@ -11,6 +11,7 @@ from gi.repository import GLib
 from services.brightness import Brightness
 import services.icons as icons
 
+
 _audio = None
 
 def _get_audio():
@@ -36,8 +37,7 @@ class VolumeSlider(Scale):
     __slots__ = ('audio', '_upd', '_s', '_hid')
 
     def __init__(self, **kwargs):
-        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill",
-                        has_origin=True, increments=(0.01, 0.1), **kwargs)
+        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.audio = _get_audio()
         self._upd = False
         self._s = None
@@ -96,8 +96,7 @@ class MicSlider(Scale):
     __slots__ = ('audio', '_upd', '_s', '_hid')
 
     def __init__(self, **kwargs):
-        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill",
-                        has_origin=True, increments=(0.01, 0.1), **kwargs)
+        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.audio = _get_audio()
         self._upd = False
         self._s = None
@@ -156,8 +155,7 @@ class BrightnessSlider(Scale):
     __slots__ = ('client', '_upd', '_tid', '_target')
 
     def __init__(self, **kwargs):
-        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill",
-                        has_origin=True, increments=(0.01, 0.1), **kwargs)
+        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.client = Brightness.get_initial()
         self._upd = False
         self._tid = None
@@ -224,8 +222,13 @@ class BrightnessSmall(Box):
         if self.brightness.screen_brightness == -1:
             return
 
-        self.progress_bar = CircularProgressBar(name="button-brightness", size=28, line_width=2,
-                                                 start_angle=150, end_angle=390)
+        self.progress_bar = CircularProgressBar(
+            name="button-brightness", 
+            size=28, 
+            line_width=2,
+            start_angle=150, 
+            end_angle=390
+        )
         self.brightness_label = Label(name="brightness-label", markup=icons.brightness_high)
         self.add(Overlay(child=self.progress_bar, overlays=self.brightness_label))
 
@@ -253,8 +256,13 @@ class VolumeSmall(Box):
         self._s = None
         self._hid = None
 
-        self.progress_bar = CircularProgressBar(name="button-volume", size=28, line_width=2,
-                                                 start_angle=150, end_angle=390)
+        self.progress_bar = CircularProgressBar(
+            name="button-volume", 
+            size=28, 
+            line_width=2,
+            start_angle=150, 
+            end_angle=390
+        )
         self.vol_label = Label(name="vol-label", markup=icons.vol_high)
         self.add(Overlay(child=self.progress_bar, overlays=self.vol_label))
 
@@ -313,8 +321,13 @@ class MicSmall(Box):
         self._s = None
         self._hid = None
 
-        self.progress_bar = CircularProgressBar(name="button-mic", size=28, line_width=2,
-                                                 start_angle=150, end_angle=390)
+        self.progress_bar = CircularProgressBar(
+            name="button-mic", 
+            size=28, 
+            line_width=2,
+            start_angle=150, 
+            end_angle=390
+        )
         self.mic_label = Label(name="mic-label", markup=icons.mic)
         self.add(Overlay(child=self.progress_bar, overlays=self.mic_label))
 

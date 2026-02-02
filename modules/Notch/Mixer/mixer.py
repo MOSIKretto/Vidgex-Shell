@@ -6,8 +6,8 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import Gtk
 
-_SL_H, _LBL_H, _SEC_H, _MAX_CH = 30, 20, 150, 45
 
+_SL_H, _LBL_H, _SEC_H, _MAX_CH = 30, 20, 150, 45
 
 class MixerSlider(Scale):
     __slots__ = ('stream', '_upd', '_sig')
@@ -76,8 +76,19 @@ class MixerSection(Box):
             h_expand=True,
             v_expand=False,
         )
-        self._tl = Label(name="mixer-section-title", label=title, h_expand=True, h_align="fill")
-        self._cb = Box(name="mixer-content", orientation="v", spacing=8, h_expand=True, v_expand=False)
+        self._tl = Label(
+            name="mixer-section-title", 
+            label=title, 
+            h_expand=True, 
+            h_align="fill"
+        )
+        self._cb = Box(
+            name="mixer-content", 
+            orientation="v", 
+            spacing=8, 
+            h_expand=True, 
+            v_expand=False
+        )
         self._sw = {}
         self.add(self._tl)
         self.add(self._cb)
@@ -153,7 +164,13 @@ class Mixer(Box):
         try:
             self.audio = Audio()
         except Exception as e:
-            self.add(Label(label=f"Audio service unavailable: {e}", h_align="center", v_align="center", h_expand=True, v_expand=True))
+            self.add(Label(
+                label=f"Audio service unavailable: {e}", 
+                h_align="center", 
+                v_align="center", 
+                h_expand=True, 
+                v_expand=True
+            ))
             self.audio = None
             return
 

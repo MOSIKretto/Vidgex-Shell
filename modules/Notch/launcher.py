@@ -18,17 +18,52 @@ class AppLauncher(ListNavigationMixin, Box):
         super().__init__(name="app-launcher", visible=False, all_visible=False, **kw)
         self.notch, self.sel, self._hnd, self._apps = kw["notch"], -1, 0, None
         self.vp = Box(name="viewport", spacing=4, orientation="v")
-        self.ent = Entry(name="search-entry", placeholder="Search Applications...", h_expand=True,
-                         notify_text=lambda e, *_: self._arr(e.get_text()),
-                         on_activate=lambda *_: self._nav_activate(), on_key_press_event=self._nav_key)
+        self.ent = Entry(
+            name="search-entry", 
+            placeholder="Search Applications...", 
+            h_expand=True,
+            notify_text=lambda e, *_: self._arr(e.get_text()), 
+            on_activate=lambda *_: self._nav_activate(), 
+            on_key_press_event=self._nav_key
+        )
         self.ent.props.xalign = 0.5
-        self.sw = ScrolledWindow(name="scrolled-window", spacing=10, h_expand=True, v_expand=True,
-                                  h_align="fill", v_align="fill", child=self.vp, propagate_width=False, propagate_height=False)
-        self.add(Box(name="launcher-box", spacing=10, h_expand=True, orientation="v", children=[
-            Box(name="header_box", spacing=10, orientation="h", children=[
-                self.ent, Button(name="close-button", tooltip_markup="<b>Close</b>",
-                                 child=Label(name="close-label", markup=icons.cancel), on_clicked=lambda *_: self.close())]),
-            self.sw]))
+        self.sw = ScrolledWindow(
+            name="scrolled-window", 
+            spacing=10, 
+            h_expand=True, 
+            v_expand=True,
+            h_align="fill", 
+            v_align="fill", 
+            child=self.vp, 
+            propagate_width=False, 
+            propagate_height=False
+        )
+        self.add(Box(
+            name="launcher-box", 
+            spacing=10, 
+            h_expand=True, 
+            orientation="v", 
+            children=[
+                Box(
+                    name="header_box", 
+                    spacing=10, 
+                    orientation="h", 
+                    children=[
+                        self.ent, 
+                        Button(
+                            name="close-button", 
+                            tooltip_markup="<b>Close</b>", 
+                            child=Label(
+                                name="close-label", 
+                                markup=icons.cancel
+                            ), 
+                            on_clicked=lambda *_: self.close()
+                        )
+                    ]
+                ),
+                self.sw
+            ]
+        ))
         self.show_all()
 
     def open(self):
@@ -54,8 +89,35 @@ class AppLauncher(ListNavigationMixin, Box):
         self.vp.add(self._mk(app)); return True
 
     def _mk(self, a: DesktopApp) -> Button:
-        return Button(name="slot-button", tooltip_text=a.description, on_clicked=lambda *_: (a.launch(), self.close()),
-                      child=Box(name="slot-box", orientation="h", spacing=10, children=[
-                          Image(name="app-icon", pixbuf=a.get_icon_pixbuf(size=24), h_align="start"),
-                          Label(name="app-label", label=a.display_name or "Unknown", ellipsization="end", v_align="center", h_align="center"),
-                          Label(name="app-desc", label=a.description or "", ellipsization="end", v_align="center", h_align="start", h_expand=True)]))
+        return Button(
+            name="slot-button", 
+            tooltip_text=a.description, 
+            on_clicked=lambda *_: (a.launch(), self.close()),
+            child=Box(
+                name="slot-box", 
+                orientation="h", 
+                spacing=10, 
+                children=[
+                    Image(
+                        name="app-icon", 
+                        pixbuf=a.get_icon_pixbuf(size=24), 
+                        h_align="start"
+                    ),
+                    Label(
+                        name="app-label", 
+                        label=a.display_name or "Unknown", 
+                        ellipsization="end", 
+                        v_align="center", 
+                        h_align="center"
+                    ),
+                    Label(
+                        name="app-desc", 
+                        label=a.description or "", 
+                        ellipsization="end", 
+                        v_align="center", 
+                        h_align="start", 
+                        h_expand=True
+                    )
+                ]
+            )
+        )

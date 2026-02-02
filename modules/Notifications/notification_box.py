@@ -215,13 +215,19 @@ class NotificationBox(Box):
         )
 
         summary = Label(
-            name="notification-summary", markup=notif.summary,
-            h_align="start", max_chars_width=16, ellipsization="end",
+            name="notification-summary", 
+            markup=notif.summary,
+            h_align="start", 
+            max_chars_width=16, 
+            ellipsization="end",
         )
 
         app_name = Label(
-            name="notification-app-name", markup=notif.app_name,
-            h_align="start", max_chars_width=16, ellipsization="end",
+            name="notification-app-name", 
+            markup=notif.app_name,
+            h_align="start", 
+            max_chars_width=16, 
+            ellipsization="end",
         )
 
         if notif.body:
@@ -231,7 +237,10 @@ class NotificationBox(Box):
             body = Box()
 
         text_box = Box(
-            name="notification-text", orientation="v", v_align="center", h_expand=True,
+            name="notification-text", 
+            orientation="v", 
+            v_align="center", 
+            h_expand=True,
             children=[
                 Box(name="notification-summary-box", orientation="h", children=[summary, Box(name="notif-sep"), app_name]),
                 body,

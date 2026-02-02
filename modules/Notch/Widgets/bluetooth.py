@@ -25,7 +25,12 @@ class BluetoothDeviceSlot(CenterBox):
             spacing=8,
             children=[
                 Image(icon_name=device.icon_name + "-symbolic", size=16),
-                Label(label=device.name, h_expand=True, h_align="start", ellipsization="end"),
+                Label(
+                    label=device.name, 
+                    h_expand=True, 
+                    h_align="start", 
+                    ellipsization="end"
+                ),
                 self._lbl,
             ]
         )
@@ -139,8 +144,12 @@ class BluetoothConnections(Box):
         b = self._btns
         m = "remove_style_class" if en else "add_style_class"
 
-        for w in (b.bluetooth_status_text, b.bluetooth_status_button, b.bluetooth_icon,
-                  b.bluetooth_label, b.bluetooth_menu_button, b.bluetooth_menu_label):
+        for w in (b.bluetooth_status_text, 
+                  b.bluetooth_status_button, 
+                  b.bluetooth_icon,
+                  b.bluetooth_label, 
+                  b.bluetooth_menu_button, 
+                  b.bluetooth_menu_label):
             getattr(w, m)("disabled")
 
         b.bluetooth_status_text.set_label("Enabled" if en else "Disabled")
