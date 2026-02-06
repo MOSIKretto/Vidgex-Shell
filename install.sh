@@ -310,7 +310,7 @@ EOF
   echo ""
   echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║               ю${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
+  echo -e "${WHITE}${BOLD}                  ║               ${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
   echo -e "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
