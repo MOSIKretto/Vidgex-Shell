@@ -53,7 +53,7 @@ PACKAGES=(
   brightnessctl
   cliphist
   libnotify
-  matugen-bin
+  matugen
   swappy
   gpu-screen-recorder
   tesseract
@@ -63,7 +63,7 @@ PACKAGES=(
   playerctl
   power-profiles-daemon
   upower
-  kitty
+  gray-git 
 
   # Python зависимости
   python-setproctitle
@@ -73,7 +73,9 @@ PACKAGES=(
   python-pillow
   python-opencv
   python-pywayland
-  
+  python-onnxruntime-cpu
+
+  nvidia-utils
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -307,7 +309,7 @@ EOF
   echo ""
   echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║               ${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
+  echo -e "${WHITE}${BOLD}                  ║               ю${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
   echo -e "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
@@ -693,20 +695,20 @@ print_separator
 echo ""
 echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}${BOLD}║                                                                ║${NC}"
-echo -e "${GREEN}${BOLD}║                    $(msg "install_complete")                   ║${NC}"
+echo -e "${GREEN}${BOLD}║                    $(msg "install_complete")                                           ║${NC}"
 echo -e "${GREEN}${BOLD}║                                                                ║${NC}"
 echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${GRAY}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                         ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                   ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                              ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                        ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                       ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                 ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                            ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                      ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}             ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                              ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""

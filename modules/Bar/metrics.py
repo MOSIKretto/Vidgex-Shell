@@ -70,12 +70,19 @@ class MetricsProvider:
 
     def _detect_hw(self):
         ft, fe = GLib.file_test, GLib.FileTest.EXISTS
+        
+        # Температура
         for p in ('/sys/class/thermal/thermal_zone0/temp', '/sys/class/hwmon/hwmon0/temp1_input'):
             if ft(p, fe):
                 self._tp = p
                 break
+        
+        # NVIDIA
         try:
-            proc = Gio.Subprocess.new(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(
+                ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            )
             _, out, _ = proc.communicate_utf8(None)
             if out and out.strip():
                 n = out.count('\n') + (1 if out.strip() else 0)
@@ -84,6 +91,8 @@ class MetricsProvider:
                 return
         except:
             pass
+        
+        # AMD - gpu_busy_percent
         gp = self._gp
         for i in range(10):
             p = f'/sys/class/drm/card{i}/device/gpu_busy_percent'
@@ -93,13 +102,28 @@ class MetricsProvider:
             self._gt, self._gc = 2, len(gp)
             self.gpu = [0.0] * self._gc
             return
-        for base in ('/sys/class/drm/card0/gt/gt0/rps_', '/sys/class/drm/card0/gt_'):
-            cur, mx = base + 'cur_freq_mhz', base + 'max_freq_mhz'
-            if ft(cur, fe) and ft(mx, fe):
-                self._gp = [cur, mx]
-                self._gt, self._gc = 3, 1
-                self.gpu = [0.0]
-                return
+        
+        # Intel - проверяем ВСЕ карты (card0, card1, card2...)
+        for card_num in range(10):
+            # Новый путь Intel (ядро 5.11+, Alder Lake и новее)
+            for gt_num in range(4):
+                base = f'/sys/class/drm/card{card_num}/gt/gt{gt_num}/rps_'
+                cur, mx = base + 'cur_freq_mhz', base + 'max_freq_mhz'
+                if ft(cur, fe) and ft(mx, fe):
+                    self._gp = [cur, mx]
+                    self._gt, self._gc = 3, 1
+                    self.gpu = [0.0]
+                    return
+            
+            # Старый путь Intel
+            for suffix in ('gt_cur_freq_mhz', 'gt/gt_cur_freq_mhz'):
+                cur = f'/sys/class/drm/card{card_num}/{suffix}'
+                mx = cur.replace('cur', 'max')
+                if ft(cur, fe) and ft(mx, fe):
+                    self._gp = [cur, mx]
+                    self._gt, self._gc = 3, 1
+                    self.gpu = [0.0]
+                    return
 
     def _init_net(self):
         try:
