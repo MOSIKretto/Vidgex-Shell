@@ -9,6 +9,7 @@ from modules.notch import Notch
 from modules.bar import Bar
 from modules.corners import Corners
 from modules.dock import Dock
+from modules.explorer import Explorer
 
 
 def run():
@@ -18,6 +19,7 @@ def run():
     notch = Notch()
     dock = Dock()
     corners = Corners()
+    explorer = Explorer()
     
     bar.notch = notch
     notch.bar = bar
@@ -25,7 +27,7 @@ def run():
     widgets = getattr(getattr(notch, 'dashboard', None), 'widgets', None)
     notification = NotificationPopup(widgets=widgets)
 
-    app_widgets = [bar, notch, dock, corners, notification]
+    app_widgets = [bar, notch, dock, corners, notification, explorer]
 
     app = Application("vidgex-shell", *app_widgets)
     css_path = get_relative_path("main.css")
@@ -38,6 +40,7 @@ def run():
     import __main__ as main_module
     main_module.app = app
     main_module.notch = notch
+    main_module.explorer = explorer
 
     return app.run()
 

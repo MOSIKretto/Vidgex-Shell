@@ -15,6 +15,8 @@
 @import url("./styles/wallpapers.css");
 @import url("./styles/notifications.css");
 @import url("./styles/overview.css");
+@import url("./styles/explorer.css");
+
 
 * {
   all: unset;
