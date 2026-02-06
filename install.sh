@@ -39,6 +39,7 @@ PACKAGES=(
   hypridle
   hyprpicker
   hyprshot
+  hyprsunset
 
   # Fabric
   fabric-cli-git
