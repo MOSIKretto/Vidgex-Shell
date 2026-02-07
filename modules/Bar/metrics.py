@@ -109,28 +109,12 @@ class MetricsProvider:
         
         # Intel - проверяем ВСЕ карты (card0, card1, card2...)
         for card_num in range(10):
+            # Новый путь Intel (ядро 5.11+, Alder Lake и новее)
             for gt_num in range(4):
-                base = f'/sys/class/drm/card{card_num}/gt/gt{gt_num}/'
-                rc6_path = base + 'rc6_residency_ms'
-                freq_cur = base + 'rps_cur_freq_mhz'
-                freq_max = base + 'rps_max_freq_mhz'
-                
-                # Приоритет: rc6_residency (точная нагрузка)
-                if ft(rc6_path, fe):
-                    self._gp = [rc6_path]
-                    self._gt, self._gc = 4, 1
-                    try:
-                        with open(rc6_path, 'rb') as f:
-                            self._rc6_last = int(f.read().strip())
-                    except:
-                        self._rc6_last = 0
-                    self._rc6_time = GLib.get_monotonic_time()
-                    self.gpu = [0.0]
-                    return
-                
-                # Fallback: частота
-                if ft(freq_cur, fe) and ft(freq_max, fe):
-                    self._gp = [freq_cur, freq_max]
+                base = f'/sys/class/drm/card{card_num}/gt/gt{gt_num}/rps_'
+                cur, mx = base + 'cur_freq_mhz', base + 'max_freq_mhz'
+                if ft(cur, fe) and ft(mx, fe):
+                    self._gp = [cur, mx]
                     self._gt, self._gc = 3, 1
                     self.gpu = [0.0]
                     return

@@ -122,6 +122,8 @@ declare -A MSG_RU=(
   ["hyprland_no_backup"]="Старый конфиг не найден, бэкап не требуется."
   ["hyprland_creating"]="Применение конфигурации Vidgex-Shell..."
   ["hyprland_created"]="Конфигурация Hyprland применена!"
+  ["hyprland_already_configured"]="Vidgex-Shell уже настроен в hyprland.conf"
+  ["hyprland_skip"]="Пропуск перезаписи конфигурации."
   ["starting_shell"]="Запуск Vidgex-Shell..."
   ["install_complete"]="Установка завершена!"
   ["press_continue"]="Нажмите Enter для продолжения..."
@@ -168,6 +170,8 @@ declare -A MSG_EN=(
   ["hyprland_no_backup"]="No old config found, backup not needed."
   ["hyprland_creating"]="Applying Vidgex-Shell configuration..."
   ["hyprland_created"]="Hyprland configuration applied!"
+  ["hyprland_already_configured"]="Vidgex-Shell already configured in hyprland.conf"
+  ["hyprland_skip"]="Skipping configuration overwrite."
   ["starting_shell"]="Starting Vidgex-Shell..."
   ["install_complete"]="Installation complete!"
   ["press_continue"]="Press Enter to continue..."
@@ -320,13 +324,13 @@ EOF
 select_language() {
   echo -e "${WHITE}${BOLD}┌───────────────────────────────────────────┐${NC}"
   echo -e "${WHITE}${BOLD}│                                           │${NC}"
-  echo -e "${WHITE}${BOLD}│   ${CYAN}Выберите язык / Select language:${WHITE}        │${NC}"
+  echo -e "${WHITE}${BOLD}│   ${CYAN}Выберите язык / Select language:${WHITE}      │${NC}"
   echo -e "${WHITE}${BOLD}│                                           │${NC}"
   echo -e "${WHITE}${BOLD}├───────────────────────────────────────────┤${NC}"
   echo -e "${WHITE}${BOLD}│                                           │${NC}"
-  echo -e "${WHITE}${BOLD}│      ${GREEN}[1]${WHITE} 🇷🇺  Русский                      │${NC}"
+  echo -e "${WHITE}${BOLD}│      ${GREEN}[1]${WHITE} 🇷🇺  Русский                    │${NC}"
   echo -e "${WHITE}${BOLD}│                                           │${NC}"
-  echo -e "${WHITE}${BOLD}│      ${GREEN}[2]${WHITE} 🇬🇧  English                      │${NC}"
+  echo -e "${WHITE}${BOLD}│      ${GREEN}[2]${WHITE} 🇬🇧  English                     │${NC}"
   echo -e "${WHITE}${BOLD}│                                           │${NC}"
   echo -e "${WHITE}${BOLD}└───────────────────────────────────────────┘${NC}"
   echo ""
@@ -378,7 +382,7 @@ copy_matugen_config() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# НАСТРОЙКА HYPRLAND (всегда перезаписываем с бэкапом)
+# НАСТРОЙКА HYPRLAND (с проверкой на существующую конфигурацию)
 # ═══════════════════════════════════════════════════════════════════════════════
 configure_hyprland() {
   print_step "$(msg "config_hyprland")"
@@ -387,6 +391,17 @@ configure_hyprland() {
   if [ ! -d "$HOME/.config/hypr" ]; then
     mkdir -p "$HOME/.config/hypr"
     print_info "Created ~/.config/hypr directory"
+  fi
+  
+  # Проверяем, есть ли уже Vidgex-Shell в конфиге
+  if [ -f "$HYPRLAND_CONF" ]; then
+    if grep -q "Vidgex-Shell" "$HYPRLAND_CONF" 2>/dev/null || \
+       grep -q "vidgex-shell.conf" "$HYPRLAND_CONF" 2>/dev/null; then
+      print_success "$(msg "hyprland_already_configured")"
+      print_info "$(msg "hyprland_skip")"
+      echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
+      return 0
+    fi
   fi
   
   # Создаём бэкап если старый конфиг существует
@@ -702,14 +717,14 @@ echo -e "${GREEN}${BOLD}╚═════════════════�
 echo ""
 echo -e "${GRAY}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                               ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                         ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                       ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                 ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                            ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                      ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                      ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                              ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
