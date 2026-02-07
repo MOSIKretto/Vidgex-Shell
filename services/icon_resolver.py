@@ -40,6 +40,8 @@ class IconResolver(GObject.GObject):
     def get_default(cls):
         return cls()
     
+    # ==================== HELPERS ====================
+    
     @staticmethod
     def _join(*parts):
         return '/'.join(p.strip('/') for p in parts if p)
@@ -138,13 +140,7 @@ class IconResolver(GObject.GObject):
             return app
         
         norm = self.norm_name(al)
-        if norm != al and (app := self._app_map.get(norm)):
-            return app
-        
-        if "-" in al:
-            base = al.split("-")[0]
-            if (app := self._app_map.get(base)):
-                return app
+        if norm != al and (app := self._app_map.get(norm)): return app
         
         for a in self._apps:
             if al in (
@@ -157,7 +153,7 @@ class IconResolver(GObject.GObject):
         return None
     
     def get_icon(self, app_id, size=24, app=None):
-        return self._resolve_icon(app_id, size, app)
+        return self.resolve_icon(app_id, size, app)
     
     @property
     def apps(self):
@@ -172,45 +168,42 @@ class IconResolver(GObject.GObject):
         return self._app_map
     
     def _gen_variants(self, app_id):
+        app_id = self.norm_name(app_id)
         if not app_id:
             return ()
         
-        v = {app_id, app_id.lower()}
-        al = app_id.lower()
-        v.add(self.norm_name(al))
+        v = {
+            app_id,
+            app_id.replace('-', '_'),
+            app_id.replace('_', '-'),
+            app_id.replace('.', '-'),
+            app_id.replace('.', '_')
+        }
         
-        v.update((
-            al.replace('-', '_'),
-            al.replace('_', '-'),
-            al.replace('.', '-'),
-            al.replace('.', '_')
-        ))
-        
-        if '.' in al:
-            parts = al.split('.')
+        if '.' in app_id:
+            parts = app_id.split('.')
             v.add(parts[-1])
             if len(parts) > 2:
                 v.add('.'.join(parts[-2:]))
                 v.add('.'.join(parts[1:]))
         
-        if '-' in al:
-            parts = al.split('-')
+        if '-' in app_id:
+            parts = app_id.split('-')
             v.add(parts[0])
-            v.add(parts[-1])
             if len(parts) > 1:
                 v.add('-'.join(parts[:2]))
-                v.add('-'.join(parts[:-1]))
         
         for prefix in self._PREFIXES:
-            if al.startswith(prefix):
-                v.add(al[len(prefix):])
+            if app_id.startswith(prefix):
+                v.add(app_id[len(prefix):])
                 break
         
         for suffix in self._NAME_SUFFIXES:
-            if al.endswith(suffix):
-                v.add(al[:-len(suffix)])
+            if app_id.endswith(suffix):
+                v.add(app_id[:-len(suffix)])
                 break
         
+        # CamelCase
         parts = []
         start = 0
         for i in range(1, len(app_id)):
@@ -225,6 +218,8 @@ class IconResolver(GObject.GObject):
         
         return tuple(x for x in v if x and len(x) > 1)
     
+    # ==================== DESKTOP FILE ====================
+    
     def _find_desktop(self, app_id):
         variants = self._gen_variants(app_id)
         if not variants:
@@ -232,10 +227,9 @@ class IconResolver(GObject.GObject):
         
         names = set()
         for v in variants:
-            vl = v.lower()
-            names.update((f"{vl}.desktop", f"org.{vl}.desktop", f"com.{vl}.desktop"))
-            if '.' not in vl:
-                names.add(f"org.{vl}.{vl}.desktop")
+            names.update((f"{v}.desktop", f"org.{v}.desktop", f"com.{v}.desktop"))
+            if '.' not in v:
+                names.add(f"org.{v}.{v}.desktop")
         
         join = self._join
         
@@ -251,9 +245,8 @@ class IconResolver(GObject.GObject):
                     return join(ddir, orig)
             
             for v in variants:
-                vl = v.lower()
                 for fl, fo in lower_map.items():
-                    if fl.endswith('.desktop') and vl in fl:
+                    if fl.endswith('.desktop') and v in fl:
                         return join(ddir, fo)
         
         return None
@@ -268,12 +261,14 @@ class IconResolver(GObject.GObject):
         except Exception:
             return None
     
+    # ==================== ICON FILE ====================
+    
     def _find_icon_file(self, app_id):
         variants = self._gen_variants(app_id)
         if not variants:
             return None
         
-        targets = frozenset(f"{v.lower()}{ext}" for v in variants for ext in self._EXTENSIONS)
+        targets = frozenset(f"{v}{ext}" for v in variants for ext in self._EXTENSIONS)
         join, test = self._join, GLib.file_test
         is_dir = GLib.FileTest.IS_DIR
         
@@ -283,6 +278,7 @@ class IconResolver(GObject.GObject):
                     if f.lower() in targets:
                         return join(idir, f)
             else:
+                # Итеративный обход
                 stack = [(idir, 0)]
                 while stack:
                     cur, depth = stack.pop()
@@ -297,19 +293,20 @@ class IconResolver(GObject.GObject):
         
         return None
     
-    def _get_icon_name(self, app_id):
+    # ==================== ICON RESOLUTION ====================
+    
+    def get_icon_name(self, app_id):
         if not app_id:
             return self.default_icon
         
         app_id = app_id.strip()
+        al = app_id.lower()
         has = self.theme.has_icon
         
-        if has(app_id):
-            return app_id
-        
-        al = app_id.lower()
         if has(al):
             return al
+        if al != app_id and has(app_id):
+            return app_id
         
         for v in self._gen_variants(app_id):
             if has(v):
@@ -321,8 +318,6 @@ class IconResolver(GObject.GObject):
                     return icon
                 if has(icon):
                     return icon
-                if has(icon.lower()):
-                    return icon.lower()
                 if (found := self._find_icon_file(icon)):
                     return found
         
@@ -331,15 +326,20 @@ class IconResolver(GObject.GObject):
         
         return self.default_icon
     
-    def _load_pixbuf(self, icon_name, size):
+    def get_icon_pixbuf(self, app_id, size=32):
+        icon_name = self.get_icon_name(app_id)
+        
         try:
             if icon_name.startswith('/'):
                 return GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_name, size, size, True)
             return self.theme.load_icon(icon_name, size, Gtk.IconLookupFlags.FORCE_SIZE)
         except Exception:
-            return None
+            try:
+                return self.theme.load_icon(self.default_icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
+            except Exception:
+                return None
     
-    def _resolve_icon(self, app_id, size, desktop_app=None):
+    def resolve_icon(self, app_id, size, desktop_app=None):
         pixbuf = None
         
         if desktop_app:
@@ -349,31 +349,17 @@ class IconResolver(GObject.GObject):
                 pass
         
         if not pixbuf and app_id:
-            icon_name = self._get_icon_name(app_id)
-            pixbuf = self._load_pixbuf(icon_name, size)
-        
-        if not pixbuf and app_id and "-" in app_id:
-            for base in (app_id.split("-")[0], app_id.rsplit("-", 1)[0]):
-                if base and len(base) > 1:
-                    icon_name = self._get_icon_name(base)
-                    if (pixbuf := self._load_pixbuf(icon_name, size)):
-                        break
+            pixbuf = self.get_icon_pixbuf(app_id, size)
         
         if not pixbuf:
             for name in (self.default_icon, "image-missing"):
-                if (pixbuf := self._load_pixbuf(name, size)):
+                try:
+                    pixbuf = self.theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
                     break
+                except Exception:
+                    pass
         
         if pixbuf and (pixbuf.get_width() != size or pixbuf.get_height() != size):
             pixbuf = pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
         
         return pixbuf
-    
-    def get_icon_pixbuf(self, app_id, size=32):
-        return self._resolve_icon(app_id, size)
-    
-    def get_icon_name(self, app_id):
-        return self._get_icon_name(app_id)
-    
-    def resolve_icon(self, app_id, size, desktop_app=None):
-        return self._resolve_icon(app_id, size, desktop_app)
