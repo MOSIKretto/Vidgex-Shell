@@ -1,4 +1,5 @@
 import os
+import json
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.circularprogressbar import CircularProgressBar
@@ -39,7 +40,6 @@ class MetricsProvider:
         '_ci', '_ct', '_nr', '_ns', '_nt',
         '_gt', '_gp', '_tp', '_gb',
         '_up', '_dd', '_tid',
-        '_rc6_last', '_rc6_time',  # Для Intel RC6
     )
 
     def __init__(self):
@@ -50,7 +50,6 @@ class MetricsProvider:
         self._ci = self._ct = self._nr = self._ns = 0
         self._nt = GLib.get_monotonic_time()
         self._gt, self._gp, self._tp, self._gb = 0, [], None, False
-        self._rc6_last = self._rc6_time = 0
         self._up = UPowerManager()
         self._dd = self._up.get_display_device()
         self._detect_hw()
@@ -65,7 +64,7 @@ class MetricsProvider:
                 break
 
         # === GPU Detection ===
-        # Приоритет: NVIDIA > AMD дискретная > AMD встроенная > Intel (через intel_gpu_top)
+        # Приоритет: NVIDIA > AMD > Intel
 
         # 1) NVIDIA
         try:
@@ -76,85 +75,29 @@ class MetricsProvider:
         except:
             pass
 
-        # 2) Сканируем DRM для AMD
-        amd_discrete = amd_integrated = None
-
+        # 2) AMD gpu_busy_percent
         for i in range(8):
-            dev = f'/sys/class/drm/card{i}/device'
-            if not os.path.isdir(dev):
-                continue
-
-            # boot_vga: 1 = встроенная, 0 = дискретная
-            try:
-                with open(f'{dev}/boot_vga') as f:
-                    is_igpu = f.read().strip() == '1'
-            except:
-                is_igpu = False
-
-            # AMD gpu_busy_percent - самый точный метод
-            amd_path = f'{dev}/gpu_busy_percent'
+            amd_path = f'/sys/class/drm/card{i}/device/gpu_busy_percent'
             if os.path.exists(amd_path):
                 try:
                     with open(amd_path) as f:
-                        int(f.read().strip())  # Проверяем что читается
-                    if is_igpu:
-                        amd_integrated = amd_integrated or amd_path
-                    else:
-                        amd_discrete = amd_discrete or amd_path
+                        int(f.read().strip())
+                    self._gt, self._gp, self.gpu = 2, [amd_path], [0.0]
+                    return
                 except:
                     pass
 
-        # Выбираем AMD (дискретная приоритетнее)
-        if amd_discrete:
-            self._gt, self._gp, self.gpu = 2, [amd_discrete], [0.0]
-            return
-        if amd_integrated:
-            self._gt, self._gp, self.gpu = 2, [amd_integrated], [0.0]
-            return
-
-        # 3) Intel - используем intel_gpu_top (самый точный способ)
+        # 3) Intel через intel_gpu_top (самый точный)
         try:
-            # Проверяем доступность intel_gpu_top
             result = os.popen('which intel_gpu_top 2>/dev/null').read().strip()
             if result:
-                self._gt, self.gpu = 4, [0.0]
-                return
+                # Проверим что работает
+                test = os.popen('timeout 0.2 intel_gpu_top -J -s 100 2>/dev/null').read()
+                if '"rc6"' in test:
+                    self._gt, self.gpu = 3, [0.0]
+                    return
         except:
             pass
-
-        # 4) Intel fallback - RC6 residency (показывает % времени простоя)
-        for i in range(8):
-            rc6_path = f'/sys/class/drm/card{i}/gt/gt0/rc6_residency_ms'
-            if os.path.exists(rc6_path):
-                self._gt, self._gp, self.gpu = 5, [rc6_path], [0.0]
-                try:
-                    with open(rc6_path) as f:
-                        self._rc6_last = int(f.read().strip())
-                    self._rc6_time = GLib.get_monotonic_time()
-                except:
-                    pass
-                return
-
-        # 5) Старый Intel fallback - частоты (наименее точный)
-        for i in range(8):
-            base = f'/sys/class/drm/card{i}'
-            # Пробуем act_freq (actual) - точнее чем cur_freq
-            for gt in range(4):
-                act = f'{base}/gt/gt{gt}/rps_act_freq_mhz'
-                mx = f'{base}/gt/gt{gt}/rps_max_freq_mhz'
-                mn = f'{base}/gt/gt{gt}/rps_min_freq_mhz'
-                if os.path.exists(act) and os.path.exists(mx) and os.path.exists(mn):
-                    self._gt, self._gp, self.gpu = 3, [act, mx, mn], [0.0]
-                    return
-
-            # Fallback на cur_freq
-            for gt in range(4):
-                cur = f'{base}/gt/gt{gt}/rps_cur_freq_mhz'
-                mx = f'{base}/gt/gt{gt}/rps_max_freq_mhz'
-                mn = f'{base}/gt/gt{gt}/rps_min_freq_mhz'
-                if os.path.exists(cur) and os.path.exists(mx) and os.path.exists(mn):
-                    self._gt, self._gp, self.gpu = 3, [cur, mx, mn], [0.0]
-                    return
 
     def _init_net(self):
         try:
@@ -272,48 +215,16 @@ class MetricsProvider:
             except:
                 pass
 
-        elif gt == 3:  # Intel частоты (fallback, неточный)
-            try:
-                with open(self._gp[0]) as f:
-                    cur = int(f.read().strip())
-                with open(self._gp[1]) as f:
-                    mx = int(f.read().strip())
-                with open(self._gp[2]) as f:
-                    mn = int(f.read().strip())
-                # Нормализуем между min и max
-                if mx > mn:
-                    self.gpu[0] = min(100.0, max(0.0, (cur - mn) / (mx - mn) * 100.0))
-            except:
-                pass
-
-        elif gt == 4:  # Intel через intel_gpu_top
+        elif gt == 3:  # Intel через intel_gpu_top
             if not self._gb:
                 self._gb = True
                 try:
                     Gio.Subprocess.new(
-                        ['intel_gpu_top', '-J', '-s', '100', '-o', '-'],
+                        ['timeout', '0.3', 'intel_gpu_top', '-J', '-s', '200'],
                         Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
                     ).communicate_utf8_async(None, None, self._intel_cb)
                 except:
                     self._gb = False
-
-        elif gt == 5:  # Intel RC6 residency
-            try:
-                now = GLib.get_monotonic_time()
-                with open(self._gp[0]) as f:
-                    rc6_now = int(f.read().strip())
-                dt_us = now - self._rc6_time
-                dt_ms = dt_us / 1000.0
-                if dt_ms > 0 and self._rc6_time > 0:
-                    rc6_delta = rc6_now - self._rc6_last
-                    # RC6 показывает время простоя в мс
-                    # Загрузка = 100% - (время_простоя / общее_время * 100)
-                    idle_pct = (rc6_delta / dt_ms) * 100.0
-                    self.gpu[0] = max(0.0, min(100.0, 100.0 - idle_pct))
-                self._rc6_last = rc6_now
-                self._rc6_time = now
-            except:
-                pass
 
     def _nv_cb(self, proc, res):
         try:
@@ -328,28 +239,22 @@ class MetricsProvider:
         try:
             _, out, _ = proc.communicate_utf8_finish(res)
             if out:
-                # intel_gpu_top JSON output содержит "Render/3D" или "engines"
-                import json
+                # Ищем последний полный JSON объект с rc6
+                # Формат: { "period": {...}, "rc6": {"value": 73.93, ...}, ...}
                 lines = out.strip().split('\n')
-                for line in lines:
-                    if line.startswith('{'):
+                for line in reversed(lines):
+                    line = line.strip().rstrip(',')
+                    if line.startswith('{') and '"rc6"' in line:
                         try:
+                            # Закрываем JSON если нужно
+                            if not line.endswith('}'):
+                                line = line.rstrip(',') + '}'
                             data = json.loads(line)
-                            # Пробуем разные форматы вывода
-                            if 'engines' in data:
-                                engines = data['engines']
-                                # Суммируем Render/3D и Video
-                                total = 0.0
-                                count = 0
-                                for name, vals in engines.items():
-                                    if 'busy' in vals:
-                                        total += vals['busy']
-                                        count += 1
-                                if count > 0:
-                                    self.gpu[0] = min(100.0, total / count)
-                            elif 'Render/3D' in data:
-                                self.gpu[0] = min(100.0, data['Render/3D'].get('busy', 0))
-                            break
+                            if 'rc6' in data and 'value' in data['rc6']:
+                                rc6 = data['rc6']['value']
+                                # rc6 - это % простоя, загрузка = 100 - rc6
+                                self.gpu[0] = max(0.0, min(100.0, 100.0 - rc6))
+                                break
                         except json.JSONDecodeError:
                             continue
         except:
