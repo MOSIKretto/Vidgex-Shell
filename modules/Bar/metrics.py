@@ -19,6 +19,7 @@ _MT, _MA, _LO = b'MemTotal:', b'MemAvailable:', b'lo'
 _prov = None
 _subs = []
 
+
 def _sub(cb):
     global _prov
     if cb not in _subs:
@@ -45,7 +46,8 @@ class MetricsProvider:
         'net_dl', 'net_ul',
         '_pi', '_pt', '_nr', '_ns', '_nt',
         '_gt', '_gc', '_gp', '_tp',
-        '_up', '_dd', '_gr', '_tid'
+        '_up', '_dd', '_gr', '_tid',
+        '_rc6_last', '_rc6_time'
     )
 
     def __init__(self):
@@ -62,6 +64,8 @@ class MetricsProvider:
         self._gp = []
         self._tp = None
         self._gr = False
+        self._rc6_last = 0
+        self._rc6_time = GLib.get_monotonic_time()
         self._up = UPowerManager()
         self._dd = self._up.get_display_device()
         self._detect_hw()
@@ -105,12 +109,28 @@ class MetricsProvider:
         
         # Intel - проверяем ВСЕ карты (card0, card1, card2...)
         for card_num in range(10):
-            # Новый путь Intel (ядро 5.11+, Alder Lake и новее)
             for gt_num in range(4):
-                base = f'/sys/class/drm/card{card_num}/gt/gt{gt_num}/rps_'
-                cur, mx = base + 'cur_freq_mhz', base + 'max_freq_mhz'
-                if ft(cur, fe) and ft(mx, fe):
-                    self._gp = [cur, mx]
+                base = f'/sys/class/drm/card{card_num}/gt/gt{gt_num}/'
+                rc6_path = base + 'rc6_residency_ms'
+                freq_cur = base + 'rps_cur_freq_mhz'
+                freq_max = base + 'rps_max_freq_mhz'
+                
+                # Приоритет: rc6_residency (точная нагрузка)
+                if ft(rc6_path, fe):
+                    self._gp = [rc6_path]
+                    self._gt, self._gc = 4, 1
+                    try:
+                        with open(rc6_path, 'rb') as f:
+                            self._rc6_last = int(f.read().strip())
+                    except:
+                        self._rc6_last = 0
+                    self._rc6_time = GLib.get_monotonic_time()
+                    self.gpu = [0.0]
+                    return
+                
+                # Fallback: частота
+                if ft(freq_cur, fe) and ft(freq_max, fe):
+                    self._gp = [freq_cur, freq_max]
                     self._gt, self._gc = 3, 1
                     self.gpu = [0.0]
                     return
@@ -128,12 +148,14 @@ class MetricsProvider:
     def _init_net(self):
         try:
             with open(_NET, 'rb') as f:
-                f.readline(); f.readline()
+                f.readline()
+                f.readline()
                 nr = ns = 0
                 for ln in f:
                     p = ln.split()
                     if not p[0].rstrip(b':').endswith(_LO):
-                        nr += int(p[1]); ns += int(p[9])
+                        nr += int(p[1])
+                        ns += int(p[9])
                 self._nr, self._ns = nr, ns
         except:
             pass
@@ -183,7 +205,9 @@ class MetricsProvider:
 
     def _read_disk(self):
         try:
-            info = Gio.File.new_for_path("/").query_filesystem_info("filesystem::size,filesystem::free", None)
+            info = Gio.File.new_for_path("/").query_filesystem_info(
+                "filesystem::size,filesystem::free", None
+            )
             t = info.get_attribute_uint64("filesystem::size")
             fr = info.get_attribute_uint64("filesystem::free")
             self.disk[0] = (1.0 - fr / t) * 100.0 if t else 0.0
@@ -200,15 +224,18 @@ class MetricsProvider:
 
     def _read_gpu(self):
         gt = self._gt
-        if gt == 1:
+        if gt == 1:  # NVIDIA
             if not self._gr:
                 self._gr = True
                 try:
-                    proc = Gio.Subprocess.new(['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+                    proc = Gio.Subprocess.new(
+                        ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
+                        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+                    )
                     proc.communicate_utf8_async(None, None, self._nv_cb)
                 except:
                     self._gr = False
-        elif gt == 2:
+        elif gt == 2:  # AMD
             gpu = self.gpu
             for i, p in enumerate(self._gp):
                 try:
@@ -217,13 +244,30 @@ class MetricsProvider:
                         gpu[i] = max(0.0, min(100.0, v))
                 except:
                     pass
-        elif gt == 3 and len(self._gp) == 2:
+        elif gt == 3 and len(self._gp) == 2:  # Intel (частота)
             try:
                 with open(self._gp[0], 'rb') as f:
                     cur = int(f.read().strip())
                 with open(self._gp[1], 'rb') as f:
                     mx = int(f.read().strip())
                 self.gpu[0] = min(100.0, (cur / mx) * 100.0) if mx else 0.0
+            except:
+                pass
+        elif gt == 4:  # Intel (rc6 residency - точная нагрузка)
+            try:
+                with open(self._gp[0], 'rb') as f:
+                    rc6_now = int(f.read().strip())
+                
+                now = GLib.get_monotonic_time()
+                dt_ms = (now - self._rc6_time) / 1000.0
+                
+                if dt_ms > 0:
+                    rc6_delta = rc6_now - self._rc6_last
+                    idle_percent = (rc6_delta / dt_ms) * 100.0
+                    self.gpu[0] = max(0.0, min(100.0, 100.0 - idle_percent))
+                
+                self._rc6_last = rc6_now
+                self._rc6_time = now
             except:
                 pass
 
@@ -262,11 +306,13 @@ class MetricsProvider:
         recv = sent = 0
         try:
             with open(_NET, 'rb') as f:
-                f.readline(); f.readline()
+                f.readline()
+                f.readline()
                 for ln in f:
                     p = ln.split()
                     if not p[0].rstrip(b':').endswith(_LO):
-                        recv += int(p[1]); sent += int(p[9])
+                        recv += int(p[1])
+                        sent += int(p[9])
         except:
             pass
         self.net_dl = (recv - self._nr) / dt
@@ -291,24 +337,20 @@ class SingularMetric:
 
     def __init__(self, id, name, icon):
         self.usage = Scale(
-            name=f"{id}-usage", 
+            name=f"{id}-usage",
             value=0.25,
-            orientation='v', 
-            inverted=True, 
-            v_align='fill', 
+            orientation='v',
+            inverted=True,
+            v_align='fill',
             v_expand=True
         )
         self.label = Label(name=f"{id}-label", markup=icon)
         self.box = Box(
-            name=f"{id}-box", 
-            orientation='v', 
-            spacing=8, 
-            children=[
-                self.usage, 
-                self.label
-            ]
+            name=f"{id}-box",
+            orientation='v',
+            spacing=8,
+            children=[self.usage, self.label]
         )
-
         self.box.set_tooltip_markup(f"{icon} {name}")
 
 
@@ -319,35 +361,32 @@ class SingularMetricSmall:
         self.nm, self.ic, self.is_t = name, icon, is_temp
         self.icon = Label(name="metrics-icon", markup=icon)
         self.circle = CircularProgressBar(
-            name="metrics-circle", 
-            value=0, 
-            size=28, 
-            line_width=2, 
-            start_angle=150, 
-            end_angle=390, 
-            style_classes=id, 
+            name="metrics-circle",
+            value=0,
+            size=28,
+            line_width=2,
+            start_angle=150,
+            end_angle=390,
+            style_classes=id,
             child=self.icon
         )
         self.level = Label(
-            name="metrics-level", 
-            style_classes=id, 
+            name="metrics-level",
+            style_classes=id,
             label="0°C" if is_temp else "0%"
         )
         self.rev = Revealer(
-            name=f"metrics-{id}-revealer", 
+            name=f"metrics-{id}-revealer",
             transition_duration=250,
-            transition_type="slide-left", 
-            child=self.level, 
+            transition_type="slide-left",
+            child=self.level,
             child_revealed=False
         )
         self.box = Box(
-            name=f"metrics-{id}-box", 
-            orientation="h", 
-            spacing=0, 
-            children=[
-                self.circle, 
-                self.rev
-            ]
+            name=f"metrics-{id}-box",
+            orientation="h",
+            spacing=0,
+            children=[self.circle, self.rev]
         )
 
     def markup(self):
@@ -358,7 +397,14 @@ class Metrics(Box):
     __slots__ = ('temp', 'disk', 'ram', 'cpu', 'gpu')
 
     def __init__(self, **kwargs):
-        super().__init__(name="metrics", spacing=8, h_align="center", v_align="fill", visible=True, all_visible=True)
+        super().__init__(
+            name="metrics",
+            spacing=8,
+            h_align="center",
+            v_align="fill",
+            visible=True,
+            all_visible=True
+        )
         _sub(self._upd)
         self.temp = SingularMetric("temp", "ТЕМП", icons.temp)
         self.disk = [SingularMetric("disk", "ДИСК", icons.disk)]
@@ -466,30 +512,27 @@ class BatteryButton(Button):
         self._lv, self._lc, self._lt = -1, None, -1
         self.ic = Label(name="metrics-icon", markup=icons.battery)
         self.cir = CircularProgressBar(
-            name="metrics-circle", 
-            value=0, 
-            size=28, 
+            name="metrics-circle",
+            value=0,
+            size=28,
             line_width=2,
-            start_angle=150, 
-            end_angle=390, 
-            style_classes="bat", 
+            start_angle=150,
+            end_angle=390,
+            style_classes="bat",
             child=self.ic
         )
         self.lv = Label(name="metrics-level", style_classes="bat", label="100%")
         self.rev = Revealer(
-            name="metrics-bat-revealer", 
-            transition_duration=250, 
-            transition_type="slide-left", 
+            name="metrics-bat-revealer",
+            transition_duration=250,
+            transition_type="slide-left",
             child=self.lv
         )
         self.add(Box(
-            name="metrics-bat-box", 
-            orientation="h", 
-            spacing=0, 
-            children=[
-                self.cir, 
-                self.rev
-            ]
+            name="metrics-bat-box",
+            orientation="h",
+            spacing=0,
+            children=[self.cir, self.rev]
         ))
         _sub(self._upd)
         self.connect('destroy', lambda *_: _unsub(self._upd))
@@ -548,8 +591,11 @@ class Battery(Box):
         self._init_pm()
         self.btn = BatteryButton(on_battery_changed=self._on_bat)
         self.pmr = Revealer(
-            name="metrics-power-modes-revealer", transition_duration=250,
-            transition_type="slide-left", child=self.pmb, child_revealed=False
+            name="metrics-power-modes-revealer",
+            transition_duration=250,
+            transition_type="slide-left",
+            child=self.pmb,
+            child_revealed=False
         )
         self.add(self.btn)
         self.add(self.pmr)
@@ -579,12 +625,18 @@ class Battery(Box):
     def _init_pm(self):
         profiles = ""
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'list'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(
+                ['powerprofilesctl', 'list'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            )
             _, profiles, _ = proc.communicate_utf8(None)
         except:
             pass
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(
+                ['powerprofilesctl', 'get'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            )
             _, out, _ = proc.communicate_utf8(None)
             if out and (m := out.strip()) in ("power-saver", "balanced", "performance"):
                 self.mode = m
@@ -597,7 +649,11 @@ class Battery(Box):
         )
         for mode, name, icon, tip in modes:
             if mode in profiles:
-                btn = Button(name=name, child=Label(name=f"{name}-label", markup=icon), tooltip_text=tip)
+                btn = Button(
+                    name=name,
+                    child=Label(name=f"{name}-label", markup=icon),
+                    tooltip_text=tip
+                )
                 btn.connect("clicked", lambda _, m=mode: self._set(m))
                 btn.connect("enter-notify-event", self._ent)
                 btn.connect("leave-notify-event", self._lv)
@@ -615,7 +671,10 @@ class Battery(Box):
             GLib.source_remove(self.htim)
             self.htim = None
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(
+                ['powerprofilesctl', 'get'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            )
             proc.communicate_utf8_async(None, None, self._mode_cb)
         except:
             pass
@@ -682,23 +741,22 @@ class NetworkApplet(Button):
         self.dlr = Revealer(
             child=Box(
                 children=[
-                    Label(name="download-icon-label", markup=icons.download), 
+                    Label(name="download-icon-label", markup=icons.download),
                     self.dl
                 ]
             ),
-            transition_type="slide-right", child_revealed=False
+            transition_type="slide-right",
+            child_revealed=False
         )
         self.ulr = Revealer(
             child=Box(
                 children=[
-                    self.ul, 
-                    Label(
-                        name="upload-icon-label", 
-                        markup=icons.upload
-                    )
+                    self.ul,
+                    Label(name="upload-icon-label", markup=icons.upload)
                 ]
-            ), 
-            transition_type="slide-left", child_revealed=False
+            ),
+            transition_type="slide-left",
+            child_revealed=False
         )
         self.add(Box(orientation="h", children=[self.ulr, self.wl, self.dlr]))
         self.connect("enter-notify-event", self._ent)
@@ -742,9 +800,16 @@ class NetworkApplet(Button):
             self.set_tooltip_text("Disconnected")
             return
         s = wd.strength
-        self.wl.set_markup(icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0)
+        self.wl.set_markup(
+            icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0
+        )
         self.set_tooltip_text(ssid)
 
     @staticmethod
     def _fmt(sp):
-        return f"{sp:.0f} B/s" if sp < 1024 else (f"{sp * 0.0009765625:.1f} KB/s" if sp < 1048576 else f"{sp * 9.5367431640625e-07:.1f} MB/s")
+        if sp < 1024:
+            return f"{sp:.0f} B/s"
+        elif sp < 1048576:
+            return f"{sp * 0.0009765625:.1f} KB/s"
+        else:
+            return f"{sp * 9.5367431640625e-07:.1f} MB/s"
