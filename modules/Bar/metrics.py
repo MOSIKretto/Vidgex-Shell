@@ -39,6 +39,7 @@ class MetricsProvider:
         '_ci', '_ct', '_nr', '_ns', '_nt',
         '_gt', '_gp', '_tp', '_gb',
         '_up', '_dd', '_tid',
+        '_rc6_last', '_rc6_time',  # Для Intel RC6
     )
 
     def __init__(self):
@@ -49,6 +50,7 @@ class MetricsProvider:
         self._ci = self._ct = self._nr = self._ns = 0
         self._nt = GLib.get_monotonic_time()
         self._gt, self._gp, self._tp, self._gb = 0, [], None, False
+        self._rc6_last = self._rc6_time = 0
         self._up = UPowerManager()
         self._dd = self._up.get_display_device()
         self._detect_hw()
@@ -61,65 +63,98 @@ class MetricsProvider:
             if os.path.exists(p):
                 self._tp = p
                 break
-        
-        # NVIDIA
+
+        # === GPU Detection ===
+        # Приоритет: NVIDIA > AMD дискретная > AMD встроенная > Intel (через intel_gpu_top)
+
+        # 1) NVIDIA
         try:
-            if 'GPU' in os.popen('nvidia-smi -L 2>/dev/null').read():
+            result = os.popen('nvidia-smi -L 2>/dev/null').read()
+            if 'GPU' in result:
                 self._gt, self.gpu = 1, [0.0]
                 return
         except:
             pass
-        
-        # Scan DRM
-        amd_d = amd_i = intel_d = intel_i = None
+
+        # 2) Сканируем DRM для AMD
+        amd_discrete = amd_integrated = None
+
         for i in range(8):
-            base, dev = f'/sys/class/drm/card{i}', f'/sys/class/drm/card{i}/device'
+            dev = f'/sys/class/drm/card{i}/device'
             if not os.path.isdir(dev):
                 continue
+
+            # boot_vga: 1 = встроенная, 0 = дискретная
             try:
                 with open(f'{dev}/boot_vga') as f:
-                    igpu = f.read().strip() == '1'
+                    is_igpu = f.read().strip() == '1'
             except:
-                igpu = False
-            
-            # AMD
-            amd = f'{dev}/gpu_busy_percent'
-            if os.path.exists(amd):
-                if igpu:
-                    amd_i = amd_i or amd
-                else:
-                    amd_d = amd_d or amd
-                continue
-            
-            # Intel
-            found = None
+                is_igpu = False
+
+            # AMD gpu_busy_percent - самый точный метод
+            amd_path = f'{dev}/gpu_busy_percent'
+            if os.path.exists(amd_path):
+                try:
+                    with open(amd_path) as f:
+                        int(f.read().strip())  # Проверяем что читается
+                    if is_igpu:
+                        amd_integrated = amd_integrated or amd_path
+                    else:
+                        amd_discrete = amd_discrete or amd_path
+                except:
+                    pass
+
+        # Выбираем AMD (дискретная приоритетнее)
+        if amd_discrete:
+            self._gt, self._gp, self.gpu = 2, [amd_discrete], [0.0]
+            return
+        if amd_integrated:
+            self._gt, self._gp, self.gpu = 2, [amd_integrated], [0.0]
+            return
+
+        # 3) Intel - используем intel_gpu_top (самый точный способ)
+        try:
+            # Проверяем доступность intel_gpu_top
+            result = os.popen('which intel_gpu_top 2>/dev/null').read().strip()
+            if result:
+                self._gt, self.gpu = 4, [0.0]
+                return
+        except:
+            pass
+
+        # 4) Intel fallback - RC6 residency (показывает % времени простоя)
+        for i in range(8):
+            rc6_path = f'/sys/class/drm/card{i}/gt/gt0/rc6_residency_ms'
+            if os.path.exists(rc6_path):
+                self._gt, self._gp, self.gpu = 5, [rc6_path], [0.0]
+                try:
+                    with open(rc6_path) as f:
+                        self._rc6_last = int(f.read().strip())
+                    self._rc6_time = GLib.get_monotonic_time()
+                except:
+                    pass
+                return
+
+        # 5) Старый Intel fallback - частоты (наименее точный)
+        for i in range(8):
+            base = f'/sys/class/drm/card{i}'
+            # Пробуем act_freq (actual) - точнее чем cur_freq
             for gt in range(4):
-                cur, mx = f'{base}/gt/gt{gt}/rps_cur_freq_mhz', f'{base}/gt/gt{gt}/rps_max_freq_mhz'
-                if os.path.exists(cur) and os.path.exists(mx):
-                    found = [cur, mx]
-                    break
-            if not found:
-                for sfx in ('gt_cur_freq_mhz', 'gt/gt_cur_freq_mhz'):
-                    cur, mx = f'{base}/{sfx}', f'{base}/{sfx}'.replace('cur', 'max')
-                    if os.path.exists(cur) and os.path.exists(mx):
-                        found = [cur, mx]
-                        break
-            if found:
-                if igpu:
-                    intel_i = intel_i or found
-                else:
-                    intel_d = intel_d or found
-        
-        if amd_d:
-            self._gt, self._gp = 2, [amd_d]
-        elif intel_d:
-            self._gt, self._gp = 3, intel_d
-        elif amd_i:
-            self._gt, self._gp = 2, [amd_i]
-        elif intel_i:
-            self._gt, self._gp = 3, intel_i
-        if self._gt:
-            self.gpu = [0.0]
+                act = f'{base}/gt/gt{gt}/rps_act_freq_mhz'
+                mx = f'{base}/gt/gt{gt}/rps_max_freq_mhz'
+                mn = f'{base}/gt/gt{gt}/rps_min_freq_mhz'
+                if os.path.exists(act) and os.path.exists(mx) and os.path.exists(mn):
+                    self._gt, self._gp, self.gpu = 3, [act, mx, mn], [0.0]
+                    return
+
+            # Fallback на cur_freq
+            for gt in range(4):
+                cur = f'{base}/gt/gt{gt}/rps_cur_freq_mhz'
+                mx = f'{base}/gt/gt{gt}/rps_max_freq_mhz'
+                mn = f'{base}/gt/gt{gt}/rps_min_freq_mhz'
+                if os.path.exists(cur) and os.path.exists(mx) and os.path.exists(mn):
+                    self._gt, self._gp, self.gpu = 3, [cur, mx, mn], [0.0]
+                    return
 
     def _init_net(self):
         try:
@@ -146,7 +181,7 @@ class MetricsProvider:
             self.cpu = (1.0 - di / dt) * 100.0 if dt else 0.0
         except:
             pass
-        
+
         # MEM
         try:
             mt = ma = 0
@@ -160,7 +195,7 @@ class MetricsProvider:
             self.mem = (1.0 - ma / mt) * 100.0 if mt else 0.0
         except:
             pass
-        
+
         # DISK
         try:
             st = os.statvfs('/')
@@ -168,7 +203,7 @@ class MetricsProvider:
             self.disk[0] = (1.0 - fr / t) * 100.0 if t else 0.0
         except:
             pass
-        
+
         # TEMP
         if self._tp:
             try:
@@ -176,34 +211,10 @@ class MetricsProvider:
                     self.temp = int(f.read()) * 0.001
             except:
                 pass
-        
+
         # GPU
-        gt = self._gt
-        if gt == 1 and not self._gb:
-            self._gb = True
-            try:
-                Gio.Subprocess.new(
-                    ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits', '-i', '0'],
-                    Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-                ).communicate_utf8_async(None, None, self._nv_cb)
-            except:
-                self._gb = False
-        elif gt == 2:
-            try:
-                with open(self._gp[0], 'rb') as f:
-                    self.gpu[0] = max(0.0, min(100.0, float(f.read())))
-            except:
-                pass
-        elif gt == 3:
-            try:
-                with open(self._gp[0], 'rb') as f:
-                    cur = int(f.read())
-                with open(self._gp[1], 'rb') as f:
-                    mx = int(f.read())
-                self.gpu[0] = min(100.0, cur / mx * 100.0) if mx else 0.0
-            except:
-                pass
-        
+        self._read_gpu()
+
         # BAT
         bat = self._up.get_full_device_information(self._dd)
         if bat:
@@ -213,7 +224,7 @@ class MetricsProvider:
         else:
             self.bat_pct = self.bat_time = 0.0
             self.bat_chg = None
-        
+
         # NET
         now = GLib.get_monotonic_time()
         dt = (now - self._nt) * 1e-6
@@ -230,7 +241,7 @@ class MetricsProvider:
                 self._nr, self._ns, self._nt = r, s, now
             except:
                 pass
-        
+
         for cb in _subs[:]:
             try:
                 cb()
@@ -239,11 +250,108 @@ class MetricsProvider:
                     _subs.remove(cb)
         return True
 
+    def _read_gpu(self):
+        gt = self._gt
+
+        if gt == 1:  # NVIDIA
+            if not self._gb:
+                self._gb = True
+                try:
+                    Gio.Subprocess.new(
+                        ['nvidia-smi', '--query-gpu=utilization.gpu',
+                         '--format=csv,noheader,nounits', '-i', '0'],
+                        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+                    ).communicate_utf8_async(None, None, self._nv_cb)
+                except:
+                    self._gb = False
+
+        elif gt == 2:  # AMD gpu_busy_percent
+            try:
+                with open(self._gp[0]) as f:
+                    self.gpu[0] = max(0.0, min(100.0, float(f.read().strip())))
+            except:
+                pass
+
+        elif gt == 3:  # Intel частоты (fallback, неточный)
+            try:
+                with open(self._gp[0]) as f:
+                    cur = int(f.read().strip())
+                with open(self._gp[1]) as f:
+                    mx = int(f.read().strip())
+                with open(self._gp[2]) as f:
+                    mn = int(f.read().strip())
+                # Нормализуем между min и max
+                if mx > mn:
+                    self.gpu[0] = min(100.0, max(0.0, (cur - mn) / (mx - mn) * 100.0))
+            except:
+                pass
+
+        elif gt == 4:  # Intel через intel_gpu_top
+            if not self._gb:
+                self._gb = True
+                try:
+                    Gio.Subprocess.new(
+                        ['intel_gpu_top', '-J', '-s', '100', '-o', '-'],
+                        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+                    ).communicate_utf8_async(None, None, self._intel_cb)
+                except:
+                    self._gb = False
+
+        elif gt == 5:  # Intel RC6 residency
+            try:
+                now = GLib.get_monotonic_time()
+                with open(self._gp[0]) as f:
+                    rc6_now = int(f.read().strip())
+                dt_us = now - self._rc6_time
+                dt_ms = dt_us / 1000.0
+                if dt_ms > 0 and self._rc6_time > 0:
+                    rc6_delta = rc6_now - self._rc6_last
+                    # RC6 показывает время простоя в мс
+                    # Загрузка = 100% - (время_простоя / общее_время * 100)
+                    idle_pct = (rc6_delta / dt_ms) * 100.0
+                    self.gpu[0] = max(0.0, min(100.0, 100.0 - idle_pct))
+                self._rc6_last = rc6_now
+                self._rc6_time = now
+            except:
+                pass
+
     def _nv_cb(self, proc, res):
         try:
             _, out, _ = proc.communicate_utf8_finish(res)
             if out:
                 self.gpu[0] = max(0.0, min(100.0, float(out.strip())))
+        except:
+            pass
+        self._gb = False
+
+    def _intel_cb(self, proc, res):
+        try:
+            _, out, _ = proc.communicate_utf8_finish(res)
+            if out:
+                # intel_gpu_top JSON output содержит "Render/3D" или "engines"
+                import json
+                lines = out.strip().split('\n')
+                for line in lines:
+                    if line.startswith('{'):
+                        try:
+                            data = json.loads(line)
+                            # Пробуем разные форматы вывода
+                            if 'engines' in data:
+                                engines = data['engines']
+                                # Суммируем Render/3D и Video
+                                total = 0.0
+                                count = 0
+                                for name, vals in engines.items():
+                                    if 'busy' in vals:
+                                        total += vals['busy']
+                                        count += 1
+                                if count > 0:
+                                    self.gpu[0] = min(100.0, total / count)
+                            elif 'Render/3D' in data:
+                                self.gpu[0] = min(100.0, data['Render/3D'].get('busy', 0))
+                            break
+                        except json.JSONDecodeError:
+                            continue
         except:
             pass
         self._gb = False
@@ -263,9 +371,11 @@ class SingularMetric:
     __slots__ = ('usage', 'label', 'box')
 
     def __init__(self, id, name, icon):
-        self.usage = Scale(name=f'{id}-usage', value=0.25, orientation='v', inverted=True, v_align='fill', v_expand=True)
+        self.usage = Scale(name=f'{id}-usage', value=0.25, orientation='v',
+                          inverted=True, v_align='fill', v_expand=True)
         self.label = Label(name=f'{id}-label', markup=icon)
-        self.box = Box(name=f'{id}-box', orientation='v', spacing=8, children=[self.usage, self.label])
+        self.box = Box(name=f'{id}-box', orientation='v', spacing=8,
+                      children=[self.usage, self.label])
         self.box.set_tooltip_markup(f'{icon} {name}')
 
 
@@ -275,10 +385,15 @@ class SingularMetricSmall:
     def __init__(self, id, name, icon, is_temp=False):
         self.nm, self.ic, self.is_t = name, icon, is_temp
         self.icon = Label(name='metrics-icon', markup=icon)
-        self.circle = CircularProgressBar(name='metrics-circle', value=0, size=28, line_width=2, start_angle=150, end_angle=390, style_classes=id, child=self.icon)
-        self.level = Label(name='metrics-level', style_classes=id, label='0°C' if is_temp else '0%')
-        self.rev = Revealer(name=f'metrics-{id}-revealer', transition_duration=250, transition_type='slide-left', child=self.level, child_revealed=False)
-        self.box = Box(name=f'metrics-{id}-box', orientation='h', spacing=0, children=[self.circle, self.rev])
+        self.circle = CircularProgressBar(
+            name='metrics-circle', value=0, size=28, line_width=2,
+            start_angle=150, end_angle=390, style_classes=id, child=self.icon)
+        self.level = Label(name='metrics-level', style_classes=id,
+                          label='0°C' if is_temp else '0%')
+        self.rev = Revealer(name=f'metrics-{id}-revealer', transition_duration=250,
+                           transition_type='slide-left', child=self.level, child_revealed=False)
+        self.box = Box(name=f'metrics-{id}-box', orientation='h', spacing=0,
+                      children=[self.circle, self.rev])
 
     def markup(self):
         return f'{self.ic} {self.nm}'
@@ -288,13 +403,15 @@ class Metrics(Box):
     __slots__ = ('temp', 'disk', 'ram', 'cpu', 'gpu')
 
     def __init__(self, **kwargs):
-        super().__init__(name='metrics', spacing=8, h_align='center', v_align='fill', visible=True, all_visible=True)
+        super().__init__(name='metrics', spacing=8, h_align='center',
+                        v_align='fill', visible=True, all_visible=True)
         _sub(self._upd)
         self.temp = SingularMetric('temp', 'ТЕМП', icons.temp)
         self.disk = [SingularMetric('disk', 'ДИСК', icons.disk)]
         self.ram = SingularMetric('ram', 'ОЗУ', icons.memory)
         self.cpu = SingularMetric('cpu', 'ЦП', icons.cpu)
-        self.gpu = [SingularMetric('gpu', 'GPU', icons.gpu) for _ in (_prov.get_gpu_info() if _prov else [])]
+        self.gpu = [SingularMetric('gpu', 'GPU', icons.gpu)
+                   for _ in (_prov.get_gpu_info() if _prov else [])]
         for m in (self.temp,) + tuple(self.disk) + (self.ram, self.cpu) + tuple(self.gpu):
             m.usage.set_sensitive(False)
             self.add(m.box)
@@ -325,7 +442,8 @@ class MetricsSmall(Button):
         self.disk = [SingularMetricSmall('disk', 'ДИСК', icons.disk)]
         self.cpu = SingularMetricSmall('cpu', 'ЦП', icons.cpu)
         self.ram = SingularMetricSmall('ram', 'ОЗУ', icons.memory)
-        self.gpu = [SingularMetricSmall('gpu', 'GPU', icons.gpu) for _ in (_prov.get_gpu_info() if _prov else [])]
+        self.gpu = [SingularMetricSmall('gpu', 'GPU', icons.gpu)
+                   for _ in (_prov.get_gpu_info() if _prov else [])]
         self._all = [self.temp] + self.disk + [self.ram, self.cpu] + self.gpu
         for w in self._all:
             box.add(w.box)
@@ -385,10 +503,14 @@ class BatteryButton(Button):
         super().__init__(name='metrics-small', **kwargs)
         self._obc, self._lv, self._lc, self._lt = on_battery_changed, -1, None, -1
         self.ic = Label(name='metrics-icon', markup=icons.battery)
-        self.cir = CircularProgressBar(name='metrics-circle', value=0, size=28, line_width=2, start_angle=150, end_angle=390, style_classes='bat', child=self.ic)
+        self.cir = CircularProgressBar(
+            name='metrics-circle', value=0, size=28, line_width=2,
+            start_angle=150, end_angle=390, style_classes='bat', child=self.ic)
         self.lv = Label(name='metrics-level', style_classes='bat', label='100%')
-        self.rev = Revealer(name='metrics-bat-revealer', transition_duration=250, transition_type='slide-left', child=self.lv)
-        self.add(Box(name='metrics-bat-box', orientation='h', spacing=0, children=[self.cir, self.rev]))
+        self.rev = Revealer(name='metrics-bat-revealer', transition_duration=250,
+                           transition_type='slide-left', child=self.lv)
+        self.add(Box(name='metrics-bat-box', orientation='h', spacing=0,
+                    children=[self.cir, self.rev]))
         _sub(self._upd)
         self.connect('destroy', lambda *_: _unsub(self._upd))
 
@@ -413,7 +535,7 @@ class BatteryButton(Button):
             self.ic.set_style('color: #d3d3d3;')
             self.cir.add_style_class('battery-normal')
             self.cir.remove_style_class('battery-low')
-        t = f'{int(bt)}сек' if bt < 60 else f'{int(bt / 60)}мин' if bt < 3600 else f'{int(bt / 3600)}ч'
+        t = f'{int(bt)}сек' if bt < 60 else f'{int(bt/60)}мин' if bt < 3600 else f'{int(bt/3600)}ч'
         if pct == 100:
             self.ic.set_markup(icons.battery)
             tip = f'{icons.bat_full} Полностью заряжено' + ('' if chg else f' - осталось {t}')
@@ -432,17 +554,20 @@ class BatteryButton(Button):
 
 
 class Battery(Box):
-    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low')
+    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp',
+                'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low')
 
     def __init__(self, **kwargs):
         super().__init__(orientation='h', spacing=0, **kwargs)
         self.set_name('battery-container')
-        self.auto, self.manual, self.last_chg, self.is_low, self.mode, self.htim = True, False, None, False, 'balanced', None
+        self.auto, self.manual, self.last_chg, self.is_low = True, False, None, False
+        self.mode, self.htim = 'balanced', None
         self.bs = self.bb = self.bp = None
         self.pmb = Box(name='power-mode-switcher', orientation='h', spacing=2)
         self._init_pm()
         self.btn = BatteryButton(on_battery_changed=self._on_bat)
-        self.pmr = Revealer(name='metrics-power-modes-revealer', transition_duration=250, transition_type='slide-left', child=self.pmb, child_revealed=False)
+        self.pmr = Revealer(name='metrics-power-modes-revealer', transition_duration=250,
+                           transition_type='slide-left', child=self.pmb, child_revealed=False)
         self.add(self.btn)
         self.add(self.pmr)
         for w in (self, self.btn, self.pmb):
@@ -457,32 +582,41 @@ class Battery(Box):
         self.is_low = lvl <= 30
         if self.manual:
             return
-        tgt = ('performance' if self.bp else 'balanced') if chg else (('power-saver' if self.bs else 'balanced') if self.is_low else 'balanced')
+        tgt = ('performance' if self.bp else 'balanced') if chg else \
+              (('power-saver' if self.bs else 'balanced') if self.is_low else 'balanced')
         if tgt != self.mode:
             self._apply(tgt)
 
     def _init_pm(self):
         profiles = ''
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'list'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['powerprofilesctl', 'list'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _, profiles, _ = proc.communicate_utf8(None)
         except:
             pass
         try:
-            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new(['powerprofilesctl', 'get'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _, out, _ = proc.communicate_utf8(None)
             if out and out.strip() in ('power-saver', 'balanced', 'performance'):
                 self.mode = out.strip()
         except:
             pass
-        for mode, name, icon, tip in (('power-saver', 'battery-save', icons.power_saving, 'Энергосбережение'), ('balanced', 'battery-balanced', icons.power_balanced, 'Сбалансированный'), ('performance', 'battery-performance', icons.power_performance, 'Производительный')):
+        for mode, name, icon, tip in (
+            ('power-saver', 'battery-save', icons.power_saving, 'Энергосбережение'),
+            ('balanced', 'battery-balanced', icons.power_balanced, 'Сбалансированный'),
+            ('performance', 'battery-performance', icons.power_performance, 'Производительный')
+        ):
             if mode in profiles:
-                btn = Button(name=name, child=Label(name=f'{name}-label', markup=icon), tooltip_text=tip)
+                btn = Button(name=name, child=Label(name=f'{name}-label', markup=icon),
+                            tooltip_text=tip)
                 btn.connect('clicked', lambda _, m=mode: self._set(m))
                 btn.connect('enter-notify-event', self._ent)
                 btn.connect('leave-notify-event', self._lv)
                 self.pmb.add(btn)
-                setattr(self, 'bs' if mode == 'power-saver' else 'bb' if mode == 'balanced' else 'bp', btn)
+                setattr(self, 'bs' if mode == 'power-saver' else
+                              'bb' if mode == 'balanced' else 'bp', btn)
         self._upd_styles()
 
     def _ent(self, *_):
@@ -490,7 +624,9 @@ class Battery(Box):
             GLib.source_remove(self.htim)
             self.htim = None
         try:
-            Gio.Subprocess.new(['powerprofilesctl', 'get'], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE).communicate_utf8_async(None, None, self._mode_cb)
+            Gio.Subprocess.new(['powerprofilesctl', 'get'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            ).communicate_utf8_async(None, None, self._mode_cb)
         except:
             pass
         self.btn.rev.set_reveal_child(True)
@@ -500,9 +636,10 @@ class Battery(Box):
     def _mode_cb(self, proc, res):
         try:
             _, out, _ = proc.communicate_utf8_finish(res)
-            if out and out.strip() in ('power-saver', 'balanced', 'performance') and self.mode != out.strip():
-                self.mode = out.strip()
-                self._upd_styles()
+            if out and out.strip() in ('power-saver', 'balanced', 'performance'):
+                if self.mode != out.strip():
+                    self.mode = out.strip()
+                    self._upd_styles()
         except:
             pass
 
@@ -531,7 +668,8 @@ class Battery(Box):
         for btn in (self.bs, self.bb, self.bp):
             if btn:
                 btn.remove_style_class('active')
-        tb = self.bs if self.mode == 'power-saver' else self.bb if self.mode == 'balanced' else self.bp
+        tb = self.bs if self.mode == 'power-saver' else \
+             self.bb if self.mode == 'balanced' else self.bp
         if tb:
             tb.add_style_class('active')
 
@@ -550,8 +688,12 @@ class NetworkApplet(Button):
         self.dl = Label(name='download-label', markup='0 B/s')
         self.ul = Label(name='upload-label', markup='0 B/s')
         self.wl = Label(name='network-icon-label', markup=icons.world_off)
-        self.dlr = Revealer(child=Box(children=[Label(name='download-icon-label', markup=icons.download), self.dl]), transition_type='slide-right', child_revealed=False)
-        self.ulr = Revealer(child=Box(children=[self.ul, Label(name='upload-icon-label', markup=icons.upload)]), transition_type='slide-left', child_revealed=False)
+        self.dlr = Revealer(
+            child=Box(children=[Label(name='download-icon-label', markup=icons.download), self.dl]),
+            transition_type='slide-right', child_revealed=False)
+        self.ulr = Revealer(
+            child=Box(children=[self.ul, Label(name='upload-icon-label', markup=icons.upload)]),
+            transition_type='slide-left', child_revealed=False)
         self.add(Box(orientation='h', children=[self.ulr, self.wl, self.dlr]))
         self.connect('enter-notify-event', self._ent)
         self.connect('leave-notify-event', self._lv)
@@ -587,9 +729,14 @@ class NetworkApplet(Button):
                 self.set_tooltip_text('Disconnected')
             else:
                 s = wd.strength
-                self.wl.set_markup(icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0)
+                self.wl.set_markup(
+                    icons.wifi_3 if s >= 75 else
+                    icons.wifi_2 if s >= 50 else
+                    icons.wifi_1 if s >= 25 else icons.wifi_0)
                 self.set_tooltip_text(ssid)
 
     @staticmethod
     def _fmt(sp):
-        return f'{sp:.0f} B/s' if sp < 1024 else f'{sp * 0.0009765625:.1f} KB/s' if sp < 1048576 else f'{sp * 9.5367431640625e-07:.1f} MB/s'
+        return (f'{sp:.0f} B/s' if sp < 1024 else
+                f'{sp * 0.0009765625:.1f} KB/s' if sp < 1048576 else
+                f'{sp * 9.5367431640625e-07:.1f} MB/s')
