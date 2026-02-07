@@ -437,6 +437,7 @@ class WallpaperSelector(Box):
 
     def _ulbl(self):
         n = self._car.cur()
+        n = n.rsplit('.', 1)[0] if n else None  # Удаляем расширение если файл есть
         self._lbl.set_label(n[:47] + "..." if n and len(n) > 50 else n or "No wallpapers available")
 
     def _srch(self, t):
