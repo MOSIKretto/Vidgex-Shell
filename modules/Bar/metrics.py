@@ -1,5 +1,5 @@
 import os
-import json
+import re
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.circularprogressbar import CircularProgressBar
@@ -33,6 +33,11 @@ def _unsub(cb):
             _prov = None
 
 
+# Regex для парсинга intel_gpu_top JSON
+_RE_RC6 = re.compile(r'"rc6":\s*\{\s*"value":\s*([\d.]+)')
+_RE_RENDER = re.compile(r'"Render/3D":\s*\{\s*"busy":\s*([\d.]+)')
+
+
 class MetricsProvider:
     __slots__ = (
         'cpu', 'mem', 'disk', 'gpu', 'temp',
@@ -64,7 +69,6 @@ class MetricsProvider:
                 break
 
         # === GPU Detection ===
-        # Приоритет: NVIDIA > AMD > Intel
 
         # 1) NVIDIA
         try:
@@ -87,13 +91,12 @@ class MetricsProvider:
                 except:
                     pass
 
-        # 3) Intel через intel_gpu_top (самый точный)
+        # 3) Intel через intel_gpu_top
         try:
             result = os.popen('which intel_gpu_top 2>/dev/null').read().strip()
             if result:
-                # Проверим что работает
-                test = os.popen('timeout 0.2 intel_gpu_top -J -s 100 2>/dev/null').read()
-                if '"rc6"' in test:
+                test = os.popen('timeout 0.3 intel_gpu_top -J -s 100 2>/dev/null').read()
+                if '"rc6"' in test or '"Render/3D"' in test:
                     self._gt, self.gpu = 3, [0.0]
                     return
         except:
@@ -208,19 +211,19 @@ class MetricsProvider:
                 except:
                     self._gb = False
 
-        elif gt == 2:  # AMD gpu_busy_percent
+        elif gt == 2:  # AMD
             try:
                 with open(self._gp[0]) as f:
                     self.gpu[0] = max(0.0, min(100.0, float(f.read().strip())))
             except:
                 pass
 
-        elif gt == 3:  # Intel через intel_gpu_top
+        elif gt == 3:  # Intel
             if not self._gb:
                 self._gb = True
                 try:
                     Gio.Subprocess.new(
-                        ['timeout', '0.3', 'intel_gpu_top', '-J', '-s', '200'],
+                        ['timeout', '0.3', 'intel_gpu_top', '-J', '-s', '100'],
                         Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
                     ).communicate_utf8_async(None, None, self._intel_cb)
                 except:
@@ -239,24 +242,18 @@ class MetricsProvider:
         try:
             _, out, _ = proc.communicate_utf8_finish(res)
             if out:
-                # Ищем последний полный JSON объект с rc6
-                # Формат: { "period": {...}, "rc6": {"value": 73.93, ...}, ...}
-                lines = out.strip().split('\n')
-                for line in reversed(lines):
-                    line = line.strip().rstrip(',')
-                    if line.startswith('{') and '"rc6"' in line:
-                        try:
-                            # Закрываем JSON если нужно
-                            if not line.endswith('}'):
-                                line = line.rstrip(',') + '}'
-                            data = json.loads(line)
-                            if 'rc6' in data and 'value' in data['rc6']:
-                                rc6 = data['rc6']['value']
-                                # rc6 - это % простоя, загрузка = 100 - rc6
-                                self.gpu[0] = max(0.0, min(100.0, 100.0 - rc6))
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                # Ищем последнее значение Render/3D busy или rc6
+                # Приоритет: Render/3D.busy (прямая загрузка)
+                render_matches = _RE_RENDER.findall(out)
+                if render_matches:
+                    # Берём последнее значение
+                    self.gpu[0] = max(0.0, min(100.0, float(render_matches[-1])))
+                else:
+                    # Fallback на rc6 (100 - idle%)
+                    rc6_matches = _RE_RC6.findall(out)
+                    if rc6_matches:
+                        rc6 = float(rc6_matches[-1])
+                        self.gpu[0] = max(0.0, min(100.0, 100.0 - rc6))
         except:
             pass
         self._gb = False
