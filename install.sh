@@ -724,7 +724,7 @@ echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}        
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                     ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                      ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
