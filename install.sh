@@ -634,6 +634,17 @@ FONT_DIR="$HOME/.fonts/zed-sans"
 TEMP_ZIP="/tmp/zed-sans-1.2.0.zip"
 
 if [ ! -d "$FONT_DIR" ]; then
+  # Гарантируем наличие необходимых инструментов
+  if ! command -v curl &>/dev/null; then
+    print_info "Installing curl..."
+    sudo pacman -S --noconfirm curl
+  fi
+  
+  if ! command -v ouch &>/dev/null; then
+    print_info "Installing ouch..."
+    $aur_helper -S --noconfirm ouch
+  fi
+
   print_info "$(msg "downloading_fonts")"
   curl -L -o "$TEMP_ZIP" "$FONT_URL"
   
@@ -642,22 +653,11 @@ if [ ! -d "$FONT_DIR" ]; then
   ouch decompress "$TEMP_ZIP" --dir "$FONT_DIR"
 
   print_info "$(msg "cleanup")"
-  rm "$TEMP_ZIP"
+  rm -f "$TEMP_ZIP"
   print_success "Zed Sans ✓"
 else
   print_success "$(msg "fonts_exist")"
 fi
-
-if [ ! -d "$HOME/.fonts/tabler-icons" ]; then
-  print_info "$(msg "copying_local_fonts")"
-  mkdir -p "$HOME/.fonts/tabler-icons"
-  cp -r "$INSTALL_DIR/helper-folder/tabler-icons"* "$HOME/.fonts" 2>/dev/null || true
-  print_success "Tabler Icons ✓"
-else
-  print_success "$(msg "local_fonts_exist")"
-fi
-
-fc-cache -fv >/dev/null 2>&1 || true
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 8. 📁 КОПИРОВАНИЕ MATUGEN КОНФИГА
