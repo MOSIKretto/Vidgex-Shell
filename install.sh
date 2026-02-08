@@ -394,10 +394,9 @@ configure_hyprland() {
     print_info "Created ~/.config/hypr directory"
   fi
   
-  # Проверяем, есть ли уже Vidgex-Shell в конфиге
+  # Проверяем, есть ли уже строка source в конфиге (точное совпадение)
   if [ -f "$HYPRLAND_CONF" ]; then
-    if grep -q "Vidgex-Shell" "$HYPRLAND_CONF" 2>/dev/null || \
-       grep -q "vidgex-shell.conf" "$HYPRLAND_CONF" 2>/dev/null; then
+    if grep -qF "source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf" "$HYPRLAND_CONF" 2>/dev/null; then
       print_success "$(msg "hyprland_already_configured")"
       print_info "$(msg "hyprland_skip")"
       echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
@@ -419,14 +418,7 @@ configure_hyprland() {
   # Создаём новый конфиг Vidgex-Shell
   print_info "$(msg "hyprland_creating")"
   
-  cat > "$HYPRLAND_CONF" << 'HYPRCONF'
-##################################
-### LAZARETTO HYPERLAND CONFIG ###
-##################################
-
-################
-### МОНИТОРЫ ###
-################
+  cat > "$HYPRLAND_CONF" <<'EOF'
 monitor = ,preferred,auto,1
 
 ########################
@@ -518,7 +510,7 @@ debug {
 
 # Vidgex Shell
 source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf
-HYPRCONF
+EOF
 
   print_success "$(msg "hyprland_created")"
   echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
