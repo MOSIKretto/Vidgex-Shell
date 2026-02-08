@@ -65,6 +65,7 @@ PACKAGES=(
   power-profiles-daemon
   upower
   gray-git 
+  ouch
 
   # Python зависимости
   python-setproctitle
@@ -638,8 +639,8 @@ if [ ! -d "$FONT_DIR" ]; then
   
   print_info "$(msg "extracting_fonts")"
   mkdir -p "$FONT_DIR"
-  unzip -o "$TEMP_ZIP" -d "$FONT_DIR"
-  
+  ouch decompress "$TEMP_ZIP" --dir "$FONT_DIR"
+
   print_info "$(msg "cleanup")"
   rm "$TEMP_ZIP"
   print_success "Zed Sans ✓"
