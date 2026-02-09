@@ -744,7 +744,7 @@ echo -e "${GRAY}╠════════════════════�
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                      ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${CYAN}► $(msg "restart_prompt")${NC}                        ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${CYAN}► $(msg "restart_prompt")${NC}                           ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
