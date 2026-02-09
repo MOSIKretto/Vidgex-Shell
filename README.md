@@ -74,9 +74,8 @@
 
 Мы предлагаем **матричное расположение 3×3**, которое позволяет мгновенно ориентироваться в пространстве задач и держать под контролем сразу несколько контекстов.
 
-> [!NOTE]
-> Это не просто красивая надстройка.
-> Это **лёгкий**, **умный** и **продуманный** инструмент, делающий Hyprland комфортным для ежедневной работы.
+
+> Это не просто красивая надстройка. Это **лёгкий**, **умный** и **продуманный** инструмент, делающий Hyprland комфортным для ежедневной работы.
 
 <br/>
 
@@ -103,23 +102,23 @@
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/screenshots/control_panel.png" width="100%" style="border-radius: 12px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex1.png" width="100%" style="border-radius: 12px;"/>
       <br/>
     </td>
     <td width="50%" align="center">
-      <img src="docs/screenshots/overview.png" width="100%" style="border-radius: 12px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex2.png" width="100%" style="border-radius: 12px;"/>
       <br/>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <br/>
-      <img src="docs/screenshots/launcher.png" width="100%" style="border-radius: 12px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex3.png" width="100%" style="border-radius: 12px;"/>
       <br/>
     </td>
     <td width="50%" align="center">
       <br/>
-      <img src="docs/screenshots/theme.png" width="100%" style="border-radius: 12px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex4.png" width="100%" style="border-radius: 12px;"/>
       <br/>
     </td>
   </tr>
@@ -311,8 +310,6 @@ cd Vidgex-Shell
 <br/>
 
 <div align="center">
-
-<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Telegram-Animated-Emojis/main/Smileys/Red%20Heart.webp" alt="Heart" width="30" height="30"/>
 
 <br/>
 
