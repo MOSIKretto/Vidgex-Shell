@@ -3,7 +3,7 @@
 # <sub><sup><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Telegram-Animated-Emojis/main/Activity/Sparkles.webp" alt="Sparkles" width="25" height="25"/></sup></sub>Vidgex-Shell<sub><sup><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Telegram-Animated-Emojis/main/Activity/Sparkles.webp" alt="Sparkles" width="25" height="25"/></sup></sub>
 
 
-<img src="https://github.com/MOSIKretto/Vidgex-Shell/tree/develop/helper-folder/Vidgexlogo.png">
+<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.png" width="650">
 
 ### Революционная среда для Hyprland
 
@@ -27,9 +27,6 @@
 
 <br/>
 <br/>
-
-<br/>
-
 <p align="center">
   <b>Vidgex-Shell</b> — это первый шаг к по-настоящему продуктивной работе в Hyprland.<br>
   Единственная оболочка с матричным воркспейсом 3×3 и уникальной системой управления.
