@@ -217,7 +217,7 @@ print_step() {
 }
 
 print_separator() {
-  echo -e "${GRAY}════════════════════════════════════════════════════════════════${NC}"
+  echo -e "${GRAY}══════════════════════════════════════════════════════════════════${NC}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -282,7 +282,7 @@ show_animated_banner() {
   
   echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║               ${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
+  echo -e "${WHITE}${BOLD}                  ║                ${PURPLE}V I D G E X  -  S H E L L${WHITE}                      ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
   echo -e "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
@@ -318,7 +318,7 @@ EOF
   echo ""
   echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║               ${PURPLE}V I D G E X  -  S H E L L${WHITE}                       ║${NC}"
+  echo -e "${WHITE}${BOLD}                  ║                ${PURPLE}V I D G E X  -  S H E L L${WHITE}                      ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
   echo -e "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
