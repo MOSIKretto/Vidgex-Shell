@@ -65,7 +65,6 @@ PACKAGES=(
   power-profiles-daemon
   upower
   gray-git 
-  ouch
 
   # Python зависимости
   python-setproctitle
@@ -621,35 +620,46 @@ print_success "$(msg "installing_packages")"
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "installing_fonts")"
 
+# Проверяем наличие ouch и устанавливаем если нужно
+if ! command -v ouch &>/dev/null; then
+  print_info "Installing ouch for archive extraction..."
+  $aur_helper -S --needed --noconfirm ouch
+  # Обновляем PATH для текущей сессии
+  export PATH="$HOME/.local/bin:$PATH"
+  hash -r  # Обновляем кэш команд bash
+fi
+
 FONT_URL="https://github.com/zed-industries/zed-fonts/releases/download/1.2.0/zed-sans-1.2.0.zip"
 FONT_DIR="$HOME/.fonts/zed-sans"
 TEMP_ZIP="/tmp/zed-sans-1.2.0.zip"
 
 if [ ! -d "$FONT_DIR" ]; then
-  # Гарантируем наличие необходимых инструментов
-  if ! command -v curl &>/dev/null; then
-    print_info "Installing curl..."
-    sudo pacman -S --noconfirm curl
-  fi
-  
-  if ! command -v ouch &>/dev/null; then
-    print_info "Installing ouch..."
-    $aur_helper -S --noconfirm ouch
-  fi
-
   print_info "$(msg "downloading_fonts")"
   curl -L -o "$TEMP_ZIP" "$FONT_URL"
   
   print_info "$(msg "extracting_fonts")"
   mkdir -p "$FONT_DIR"
+  
+  # Используем ouch для распаковки
   ouch decompress "$TEMP_ZIP" --dir "$FONT_DIR"
 
   print_info "$(msg "cleanup")"
-  rm -f "$TEMP_ZIP"
+  rm "$TEMP_ZIP"
   print_success "Zed Sans ✓"
 else
   print_success "$(msg "fonts_exist")"
 fi
+
+if [ ! -d "$HOME/.fonts/tabler-icons" ]; then
+  print_info "$(msg "copying_local_fonts")"
+  mkdir -p "$HOME/.fonts/tabler-icons"
+  cp -r "$INSTALL_DIR/helper-folder/tabler-icons"* "$HOME/.fonts" 2>/dev/null || true
+  print_success "Tabler Icons ✓"
+else
+  print_success "$(msg "local_fonts_exist")"
+fi
+
+fc-cache -fv >/dev/null 2>&1 || true
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 8. 📁 КОПИРОВАНИЕ MATUGEN КОНФИГА
