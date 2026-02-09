@@ -315,10 +315,6 @@ cd Vidgex-Shell
 
 **Made with ❤️ for Hyprland users**
 
-<sub>Copyright © 2025 Vidgex-Shell Contributors</sub>
-
-<br/>
-
 <a href="#"><img src="https://img.shields.io/badge/⬆%20Back%20to-Top-302D41?style=for-the-badge" alt="Back to Top"/></a>
 
 </div>
