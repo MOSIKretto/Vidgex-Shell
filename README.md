@@ -3,7 +3,7 @@
 # <sub><sup><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Telegram-Animated-Emojis/main/Activity/Sparkles.webp" alt="Sparkles" width="25" height="25"/></sup></sub>Vidgex-Shell<sub><sup><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Telegram-Animated-Emojis/main/Activity/Sparkles.webp" alt="Sparkles" width="25" height="25"/></sup></sub>
 
 
-<img src="https://github.com/MOSIKretto/Vidgex-Shell/tree/develop/helper-folder/Vidgexlogo.png" alt="Vidgex Shell" width="100%" style="border-radius: 12px; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+<img src="https://github.com/MOSIKretto/Vidgex-Shell/tree/develop/helper-folder/Vidgexlogo.png">
 
 ### Революционная среда для Hyprland
 
