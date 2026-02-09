@@ -197,7 +197,10 @@
   <tr>
     <td align="center">☕</td>
     <td colspan="3"><b>Caffeine</b> — предотвращение засыпания системы</td>
+    <td align="center">👁️</td>
+    <td colspan="3"><b>Eyes-Hands</b> — управление системой с камеры</td>
   </tr>
+  
 </table>
 
 </details>
