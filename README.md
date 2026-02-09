@@ -265,9 +265,6 @@
 
 ## 📥 Установка
 
-> [!IMPORTANT]
-> Убедитесь, что у вас установлен [Hyprland](https://github.com/hyprwm/Hyprland) и [Fabric](https://github.com/Fabric-Development/fabric/) перед началом.
-
 <br/>
 
 ```bash
