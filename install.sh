@@ -97,7 +97,7 @@ declare -A MSG_RU=(
   ["repo_skipped"]="Обновление пропущено."
   ["repo_cloned"]="Репозиторий успешно клонирован!"
   ["checking_aur"]="Проверка AUR-хелпера..."
-  ["installing_paru"]="Установка paru-bin..."
+  ["installing_yay"]="Установка yay-bin..."
   ["using_helper"]="Используется AUR-хелпер:"
   ["installing_packages"]="Установка пакетов (Hyprland + зависимости)..."
   ["installing_fonts"]="Установка шрифтов..."
@@ -129,6 +129,8 @@ declare -A MSG_RU=(
   ["press_continue"]="Нажмите Enter для продолжения..."
   ["cleanup"]="Очистка временных файлов..."
   ["relogin_hint"]="Перезайдите в Hyprland для применения"
+  ["restart_prompt"]="Для перезагрузки ПК нажмите Enter"
+  ["restarting"]="Перезагрузка..."
 )
 
 declare -A MSG_EN=(
@@ -145,7 +147,7 @@ declare -A MSG_EN=(
   ["repo_skipped"]="Update skipped."
   ["repo_cloned"]="Repository cloned successfully!"
   ["checking_aur"]="Checking AUR helper..."
-  ["installing_paru"]="Installing paru-bin..."
+  ["installing_yay"]="Installing yay-bin..."
   ["using_helper"]="Using AUR helper:"
   ["installing_packages"]="Installing packages (Hyprland + dependencies)..."
   ["installing_fonts"]="Installing fonts..."
@@ -177,6 +179,8 @@ declare -A MSG_EN=(
   ["press_continue"]="Press Enter to continue..."
   ["cleanup"]="Cleaning up temporary files..."
   ["relogin_hint"]="Re-login to Hyprland to apply"
+  ["restart_prompt"]="Press Enter to reboot PC"
+  ["restarting"]="Rebooting..."
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -506,6 +510,11 @@ debug {
     damage_tracking = 2
 }
 
+# Базовые бинды
+bind = SUPER SHIFT, Q, killactive # Закрыть окно
+bind = SUPER ALT, T, exec, kitty # Терминал
+
+bind = SUPER, F, exec, firefox # Браузер
 
 # Vidgex Shell
 source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf
@@ -550,7 +559,7 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. 📦 КЛОНИРОВАНИЕ РЕПОЗИТОРИЯ (ветка develop)
+# 4. 📦 КЛОНИРОВАНИЕ РЕПОЗИТОРИЯ
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "cloning_repo")"
 echo -e "         ${GRAY}$REPO_URL${NC}"
@@ -585,26 +594,32 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 5. 🔧 УСТАНОВКА AUR-ХЕЛПЕРА (paru по умолчанию)
+# 5. 🔧 УСТАНОВКА AUR-ХЕЛПЕРА (yay по умолчанию, paru если есть)
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "checking_aur")"
 
-aur_helper="paru"
+aur_helper="yay"
 
 if command -v paru &>/dev/null; then
   aur_helper="paru"
   print_success "$(msg "using_helper") ${CYAN}paru${NC}"
 elif command -v yay &>/dev/null; then
-  aur_helper="yay"
-  print_warning "$(msg "using_helper") ${YELLOW}yay${NC} (paru not found)"
+  print_success "$(msg "using_helper") ${CYAN}yay${NC}"
 else
-  print_info "$(msg "installing_paru")"
+  print_info "$(msg "installing_yay")"
+  
+  # Проверяем base-devel
+  if ! pacman -Qq base-devel &>/dev/null 2>&1; then
+    print_info "Installing base-devel..."
+    sudo pacman -S --needed --noconfirm base-devel
+  fi
+  
   tmpdir=$(mktemp -d)
-  git clone --depth=1 https://aur.archlinux.org/paru-bin.git "$tmpdir/paru-bin"
-  (cd "$tmpdir/paru-bin" && makepkg -si --noconfirm)
+  git clone --depth=1 https://aur.archlinux.org/yay-bin.git "$tmpdir/yay-bin"
+  (cd "$tmpdir/yay-bin" && makepkg -si --noconfirm)
   rm -rf "$tmpdir"
-  aur_helper="paru"
-  print_success "$(msg "using_helper") ${CYAN}paru${NC}"
+  
+  print_success "$(msg "using_helper") ${CYAN}yay${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -729,5 +744,11 @@ echo -e "${GRAY}╠════════════════════�
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}║${NC}  ${YELLOW}💡 $(msg "relogin_hint")${NC}                      ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
+echo -e "${GRAY}║${NC}  ${CYAN}► $(msg "restart_prompt")${NC}                        ${GRAY}║${NC}"
+echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
+read -r
+
+print_info "$(msg "restarting")"
+systemctl reboot
