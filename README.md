@@ -359,9 +359,26 @@
 <br/>
 
 ## ⌨️ Горячие клавиши 
+
+### Горячие клавиши для базовой работы с Shell
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard.png" width="350"/>
+  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard1.png" width="600"/>
 </p>
+
+### Дополнительные горячие клавиши для работы с Shell. 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard2.png" width="600"/>
+</p>
+
+### Управление рабочими столами
+
+> CTRL + ALT + клавиши вверх/вниз/вправо/влево - перемещение по матрице рабочих столов
+
+> CTRL + ALT + {номер рабочего стола} - перемещение на конкретный рабочий стол
+
+> CTRL + ALT + SHIFT + клавиши вверх/вниз/вправо/влево - перемещение активного окна по матрице рабочих столов
+
+> CTRL + ALT + SHIFT + {номер рабочего стола} - перемещение активного окна по матрице рабочих столов
 
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" alt="rainbow line" width="100%"/>
 
