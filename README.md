@@ -17,11 +17,9 @@
 <a href="https://github.com/hyprwm/Hyprland">
   <img src="https://img.shields.io/badge/Shell%20for-Hyprland-0092CD?style=for-the-badge&logo=linux&logoColor=D9E0EE&labelColor=11111b" alt="Hyprland"/>
 </a>
-<img src="https://img.shields.io/badge/-%E2%80%A2-302D41?style=for-the-badge&labelColor=302D41" alt="dot"/>
 <a href="https://github.com/Fabric-Development/fabric/">
   <img src="https://img.shields.io/badge/Powered%20by-Fabric-A6E3A1?style=for-the-badge&logo=python&logoColor=D9E0EE&labelColor=11111b" alt="Fabric"/>
 </a>
-<img src="https://img.shields.io/badge/-%E2%80%A2-302D41?style=for-the-badge&labelColor=302D41" alt="dot"/>
 <a href="https://github.com/MOSIKretto/Vidgex-Shell/blob/main/LICENSE">
   <img src="https://img.shields.io/github/license/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=unlicense&color=CBA6F7&logoColor=D9E0EE&labelColor=11111b&label=License" alt="License"/>
 </a>
@@ -48,15 +46,12 @@
 <br/>
 <br/>
 
-```
-Vidgex-Shell — первый шаг к по-настоящему продуктивной работе в Hyprland. Единственная оболочка с матричным воркспейсом 3×3 и уникальной системой управления.
-```
+## Vidgex-Shell — первый шаг к по-настоящему продуктивной работе в Hyprland. Единственная оболочка с матричным воркспейсом 3×3 и уникальной системой управления.
 
 </div>
 
 <br/>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
 
 <div align="center">
 
