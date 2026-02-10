@@ -1,7 +1,7 @@
 <div align="center">
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="600" alt="Vidgex Logo"/>
+  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="350" alt="Vidgex Logo"/>
 </p>
 <br/>
 
