@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.png" width="600"/>
+<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="600"/>
 
 <br/>
 <br/>
@@ -161,12 +161,10 @@
 
 <br/>
 
-<!-- ─────────── УПРАВЛЕНИЕ И НАВИГАЦИЯ ─────────── -->
-
 <details open>
 <summary>
 
-### 🎮 &ensp;Управление и навигация
+### ℹ️&ensp;Ключевые особенности
 
 </summary>
 
@@ -192,6 +190,11 @@
     <td align="center"><h2>🖥️</h2></td>
     <td><b>Современный Dock</b></td>
     <td>Панель задач, вдохновлённая лучшими решениями macOS и Ubuntu</td>
+  </tr>
+  <tr>
+    <td align="center"><h2>♻️</h2></td>
+    <td><b>Сохранение и востановление сессий</b></td>
+  <td>Автоматически сохраняет ваш прогресс сессии и при следущем запуске устройства полностью востанавливает её</td>
   </tr>
 </table>
 

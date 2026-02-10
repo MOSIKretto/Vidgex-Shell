@@ -1,19 +1,16 @@
-#!/usr/bin/env python3
-
 import json
 import os
 import re
 import subprocess
-import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+
 SESSION_DIR = Path.home() / ".cache" / "vidgex-shell"
 SESSION_FILE = SESSION_DIR / "session.json"
-
 
 @dataclass
 class ProcessInfo:
@@ -202,6 +199,23 @@ class SessionManager:
     def __init__(self):
         SESSION_DIR.mkdir(parents=True, exist_ok=True)
         self.terminal_pid = get_current_terminal_pid()
+        self._autosave_id: Optional[int] = None
+    
+    def start_autosave(self, interval_seconds: int = 60):
+        """Запуск автосохранения"""
+        from gi.repository import GLib
+        self._autosave_id = GLib.timeout_add_seconds(interval_seconds, self._autosave_tick)
+    
+    def stop_autosave(self):
+        """Остановка автосохранения"""
+        if self._autosave_id:
+            from gi.repository import GLib
+            GLib.source_remove(self._autosave_id)
+            self._autosave_id = None
+    
+    def _autosave_tick(self) -> bool:
+        self.save()
+        return True
     
     def _get_launch_cmd(self, desktop: Optional[DesktopEntry], wm_class: str) -> str:
         if desktop:
@@ -239,94 +253,79 @@ class SessionManager:
         return ""
     
     def save(self):
-        print("💾 Сохранение сессии...\n")
-        
-        clients = hyprctl("clients") or []
-        ws_info = hyprctl("activeworkspace") or {}
-        
-        windows_data = []
-        
-        for client in clients:
-            wm_class = client.get("class", "")
-            pid = client.get("pid", 0)
-            ws_id = client.get("workspace", {}).get("id", 1)
+        try:
+            clients = hyprctl("clients") or []
+            ws_info = hyprctl("activeworkspace") or {}
             
-            if not wm_class or ws_id < 0 or pid <= 0:
-                continue
+            windows_data = []
             
-            proc = ProcessInfo.from_pid(pid)
-            if not proc:
-                continue
+            for client in clients:
+                wm_class = client.get("class", "")
+                pid = client.get("pid", 0)
+                ws_id = client.get("workspace", {}).get("id", 1)
+                
+                if not wm_class or ws_id < 0 or pid <= 0:
+                    continue
+                
+                proc = ProcessInfo.from_pid(pid)
+                if not proc:
+                    continue
+                
+                desktop = DesktopEntry.find_by_class(wm_class)
+                project = self._get_project(proc)
+                launch_cmd = self._get_launch_cmd(desktop, wm_class)
+                
+                windows_data.append({
+                    "wm_class": wm_class,
+                    "wm_class_lower": wm_class.lower(),
+                    "workspace": ws_id,
+                    "floating": client.get("floating", False),
+                    "fullscreen": client.get("fullscreen", 0),
+                    "position": list(client.get("at", [0, 0])),
+                    "size": list(client.get("size", [800, 600])),
+                    "launch_cmd": launch_cmd,
+                    "project": project,
+                    "is_terminal": desktop.is_terminal if desktop else self._detect_terminal(pid),
+                })
             
-            desktop = DesktopEntry.find_by_class(wm_class)
-            project = self._get_project(proc)
-            launch_cmd = self._get_launch_cmd(desktop, wm_class)
+            by_class: dict[str, list[dict]] = defaultdict(list)
+            for w in windows_data:
+                by_class[w["wm_class_lower"]].append(w)
             
-            windows_data.append({
-                "wm_class": wm_class,
-                "wm_class_lower": wm_class.lower(),
-                "workspace": ws_id,
-                "floating": client.get("floating", False),
-                "fullscreen": client.get("fullscreen", 0),
-                "position": list(client.get("at", [0, 0])),
-                "size": list(client.get("size", [800, 600])),
-                "launch_cmd": launch_cmd,
-                "project": project,
-                "is_terminal": desktop.is_terminal if desktop else self._detect_terminal(pid),
-            })
-        
-        by_class: dict[str, list[dict]] = defaultdict(list)
-        for w in windows_data:
-            by_class[w["wm_class_lower"]].append(w)
-        
-        for cls, wins in by_class.items():
-            is_multi = len(wins) > 1
-            for w in wins:
-                w["is_multi_instance"] = is_multi
-        
-        windows = []
-        for w in windows_data:
-            del w["wm_class_lower"]
-            windows.append(w)
+            for cls, wins in by_class.items():
+                is_multi = len(wins) > 1
+                for w in wins:
+                    w["is_multi_instance"] = is_multi
             
-            if w["is_terminal"]:
-                icon, note = "💻", "terminal"
-                if w["project"]:
-                    note += f" @ {Path(w['project']).name}"
-            elif w["is_multi_instance"]:
-                project_name = Path(w["project"]).name if w["project"] else "?"
-                icon, note = "📑", f"multi → {project_name}"
-            else:
-                icon, note = "📦", "single"
+            windows = []
+            for w in windows_data:
+                del w["wm_class_lower"]
+                windows.append(w)
             
-            print(f"  {icon} {w['wm_class']} [WS{w['workspace']}] ({note})")
-        
-        session = {
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "active_workspace": ws_info.get("id", 1),
-            "windows": windows
-        }
-        
-        SESSION_FILE.write_text(json.dumps(session, indent=2))
-        print(f"\n✅ Сохранено: {len(windows)} окон")
+            session = {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "active_workspace": ws_info.get("id", 1),
+                "windows": windows
+            }
+            
+            SESSION_FILE.write_text(json.dumps(session, indent=2))
+        except:
+            pass
     
     def restore(self):
-        print("🔄 Восстановление сессии...\n")
-        
         if not SESSION_FILE.exists():
-            print("❌ Файл сессии не найден")
             return
         
-        session = json.loads(SESSION_FILE.read_text())
+        try:
+            session = json.loads(SESSION_FILE.read_text())
+        except:
+            return
+        
         saved_windows = session.get("windows", [])
         active_ws = session.get("active_workspace", 1)
         
-        print(f"📅 {session.get('timestamp')} | Цель: {len(saved_windows)} окон\n")
-        
         if not saved_windows:
             return
-        
-        start = time.time()
         
         target_counts: dict[str, int] = defaultdict(int)
         for w in saved_windows:
@@ -340,15 +339,9 @@ class SessionManager:
             if cls:
                 saved_by_class[cls].append(w)
         
-        print("1️⃣ Проверка лишних окон...")
         closed = close_excess_windows(target_counts, self.terminal_pid)
         if closed:
-            print(f"   Закрыто: {closed}")
             time.sleep(0.3)
-        else:
-            print("   Лишних нет")
-        
-        print("\n2��⃣ Проверка недостающих...")
         
         current = get_windows_by_class()
         opened = 0
@@ -358,11 +351,9 @@ class SessionManager:
             need = len(saved_list)
             
             if current_count >= need:
-                print(f"   {cls}: ✓ ({current_count}/{need})")
                 continue
             
             to_open = need - current_count
-            print(f"   {cls}: открываем {to_open}")
             
             for i in range(to_open):
                 idx = current_count + i
@@ -384,32 +375,14 @@ class SessionManager:
                 opened += 1
         
         if opened:
-            print(f"\n⏳ Ожидание {opened} окон...")
             time.sleep(2.5)
         
-        print("\n3️⃣ Повторная проверка...")
         closed = close_excess_windows(target_counts, self.terminal_pid)
         if closed:
-            print(f"   Закрыто ещё: {closed}")
             time.sleep(0.3)
-        else:
-            print("   Всё в норме")
         
-        print("\n4️⃣ Применение свойств...")
         self._apply_properties(saved_windows)
         dispatch(f"workspace {active_ws}")
-        
-        elapsed = time.time() - start
-        final = get_windows_by_class()
-        final_count = sum(len(v) for v in final.values())
-        
-        print(f"\n{'═' * 40}")
-        print(f"✅ Готово за {elapsed:.1f}с ({final_count}/{len(saved_windows)} окон)")
-        
-        subprocess.run(
-            ["notify-send", "-t", "2000", "Session", f"{final_count}/{len(saved_windows)}"],
-            capture_output=True
-        )
     
     def _apply_properties(self, saved_windows: list[dict]):
         current = get_windows_by_class()
@@ -448,24 +421,3 @@ class SessionManager:
                     commands.append(f"fullscreen {fs}")
         
         batch_dispatch(commands)
-        print(f"   Применено: {len(commands)} команд")
-
-
-def main():
-    if len(sys.argv) < 2:
-        print("save | restore")
-        return
-    
-    manager = SessionManager()
-    
-    match sys.argv[1]:
-        case "save":
-            manager.save()
-        case "restore":
-            manager.restore()
-        case _:
-            print("save | restore")
-
-
-if __name__ == "__main__":
-    main()

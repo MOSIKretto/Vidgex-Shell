@@ -50,6 +50,7 @@ PACKAGES=(
   python-gobject
 
   # Утилиты
+  kitty
   awww-git
   brightnessctl
   cliphist
