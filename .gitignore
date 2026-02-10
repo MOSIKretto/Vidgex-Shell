@@ -65,7 +65,6 @@ htmlcov/
 *.rpm
 *.deb
 *.Z
-*.gif
 *.lz
 *.lzo
 *.tar.gz
