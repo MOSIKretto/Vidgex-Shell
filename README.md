@@ -40,6 +40,10 @@
 <a href="https://t.me/TheElexum">
   <img src="https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram"/>
 </a>
+&ensp;
+<a href="https://t.me/VidgexShell">
+  <img src="https://img.shields.io/badge/Telegram-Chat-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram"/>
+</a>
 
 <br/>
 <br/>
@@ -391,6 +395,10 @@ cd Vidgex-Shell
 
 <a href="https://t.me/TheElexum">
   <img src="https://img.shields.io/badge/💬_Telegram-Подписаться-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="50" alt="Telegram"/>
+</a>
+&emsp;
+<a href="https://t.me/VidgexShell">
+  <img src="https://img.shields.io/badge/💬_Telegram-Обсудить-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="50" alt="Telegram"/>
 </a>
 &emsp;
 <a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
