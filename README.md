@@ -1,10 +1,8 @@
 <div align="center">
 
-<br/>
-
-<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="600"/>
-
-<br/>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="600" alt="Vidgex Logo"/>
+</p>
 <br/>
 
 <picture>
