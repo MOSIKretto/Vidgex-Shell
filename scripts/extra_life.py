@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Hyprland Session Manager v4.3
-С отладкой для понимания проблемы
-"""
 
 import json
 import os
@@ -15,14 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-SESSION_DIR = Path.home() / ".cache" / "hypr-session"
+SESSION_DIR = Path.home() / ".cache" / "vidgex-shell"
 SESSION_FILE = SESSION_DIR / "session.json"
-DEBUG = "--debug" in sys.argv
-
-
-def debug(msg: str):
-    if DEBUG:
-        print(f"    [DEBUG] {msg}")
 
 
 @dataclass
@@ -30,7 +20,6 @@ class ProcessInfo:
     pid: int
     cmdline: str = ""
     cwd: str = ""
-    exe: str = ""
     cmdline_args: list = field(default_factory=list)
     
     @classmethod
@@ -43,7 +32,6 @@ class ProcessInfo:
         
         try:
             cmdline_raw = (proc_path / "cmdline").read_bytes()
-            # Сохраняем как список аргументов
             info.cmdline_args = [arg for arg in cmdline_raw.decode(errors='ignore').split('\x00') if arg]
             info.cmdline = ' '.join(info.cmdline_args)
         except:
@@ -54,29 +42,7 @@ class ProcessInfo:
         except:
             info.cwd = str(Path.home())
         
-        try:
-            info.exe = os.readlink(proc_path / "exe")
-        except:
-            pass
-        
         return info
-    
-    def extract_project_path(self) -> Optional[str]:
-        """Извлекает путь к проекту из аргументов командной строки."""
-        for arg in self.cmdline_args:
-            # Пропускаем флаги
-            if arg.startswith('-'):
-                continue
-            # Пропускаем исполняемые файлы
-            if '/bin/' in arg or '/lib/' in arg or '/usr/' in arg:
-                continue
-            # Проверяем, является ли аргумент существующей директорией
-            if os.path.isdir(arg):
-                return arg
-            # Или файлом
-            if os.path.isfile(arg):
-                return os.path.dirname(arg)
-        return None
 
 
 @dataclass
@@ -85,25 +51,31 @@ class DesktopEntry:
     wm_class: str = ""
     categories: set = field(default_factory=set)
     is_terminal: bool = False
+    is_flatpak: bool = False
+    flatpak_id: str = ""
     
     @classmethod
     def find_by_class(cls, wm_class: str) -> Optional["DesktopEntry"]:
-        dirs = [
-            Path("/usr/share/applications"),
-            Path("/usr/local/share/applications"),
-            Path.home() / ".local/share/applications",
-            Path("/var/lib/flatpak/exports/share/applications"),
-            Path.home() / ".local/share/flatpak/exports/share/applications",
+        data_dirs = os.environ.get('XDG_DATA_DIRS', '/usr/share:/usr/local/share').split(':')
+        data_dirs.append(str(Path.home() / ".local/share"))
+        
+        flatpak_dirs = [
+            "/var/lib/flatpak/exports/share",
+            str(Path.home() / ".local/share/flatpak/exports/share"),
         ]
         
+        all_dirs = [Path(d) / "applications" for d in data_dirs + flatpak_dirs]
         wm_lower = wm_class.lower()
         
-        for d in dirs:
+        for d in all_dirs:
             if not d.exists():
                 continue
             for f in d.glob("*.desktop"):
                 entry = cls._parse_desktop(f, wm_lower)
                 if entry:
+                    if "flatpak" in str(f):
+                        entry.is_flatpak = True
+                        entry.flatpak_id = f.stem
                     return entry
         return None
     
@@ -132,6 +104,8 @@ class DesktopEntry:
             match key:
                 case 'Exec':
                     entry.exec_cmd = re.sub(r'%[a-zA-Z]', '', val).strip()
+                    if 'flatpak run' in val:
+                        entry.is_flatpak = True
                 case 'StartupWMClass':
                     entry.wm_class = val
                     if val.lower() == target_class:
@@ -140,9 +114,14 @@ class DesktopEntry:
                     entry.categories = set(c.strip() for c in val.split(';') if c.strip())
                 case 'Terminal':
                     entry.is_terminal = val.lower() == 'true'
+                case 'X-Flatpak':
+                    entry.is_flatpak = True
+                    entry.flatpak_id = val
         
-        if not match_found and target_class not in path.stem.lower():
-            return None
+        if not match_found:
+            file_stem = path.stem.lower()
+            if target_class not in file_stem and file_stem not in target_class:
+                return None
         
         if 'TerminalEmulator' in entry.categories:
             entry.is_terminal = True
@@ -170,15 +149,66 @@ def batch_dispatch(commands: list[str]):
         subprocess.run(["hyprctl", "--batch", batch], capture_output=True, timeout=5)
 
 
+def is_user_path(path: str) -> bool:
+    home = str(Path.home())
+    if not path.startswith(home):
+        return False
+    relative = path[len(home):]
+    excluded = ('/.cache/', '/.local/share/', '/.config/')
+    return not any(ex in relative for ex in excluded)
+
+
+def get_current_terminal_pid() -> Optional[int]:
+    try:
+        ppid = os.getppid()
+        stat = Path(f"/proc/{ppid}/stat").read_text()
+        return int(stat.split()[3])
+    except:
+        return None
+
+
+def get_windows_by_class() -> dict[str, list[dict]]:
+    clients = hyprctl("clients") or []
+    by_class: dict[str, list[dict]] = defaultdict(list)
+    for w in clients:
+        cls = w.get("class", "").lower()
+        if cls:
+            by_class[cls].append(w)
+    return dict(by_class)
+
+
+def close_excess_windows(target_counts: dict[str, int], protect_pid: Optional[int] = None) -> int:
+    current = get_windows_by_class()
+    closed = 0
+    
+    for cls, wins in current.items():
+        target = target_counts.get(cls, 0)
+        excess = len(wins) - target
+        
+        if excess > 0:
+            for win in wins[-excess:]:
+                pid = win.get("pid", 0)
+                if pid == protect_pid:
+                    continue
+                addr = win.get("address", "")
+                if addr:
+                    dispatch(f"closewindow address:{addr}")
+                    closed += 1
+    
+    return closed
+
+
 class SessionManager:
     def __init__(self):
         SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        self.terminal_pid = get_current_terminal_pid()
     
-    def _get_base_cmd(self, desktop: Optional[DesktopEntry], wm_class: str) -> str:
-        """Получает базовую команду без аргументов."""
-        if desktop and desktop.exec_cmd:
-            # Берём только первое слово (саму команду)
-            return desktop.exec_cmd.split()[0]
+    def _get_launch_cmd(self, desktop: Optional[DesktopEntry], wm_class: str) -> str:
+        if desktop:
+            if desktop.is_flatpak and desktop.flatpak_id:
+                return f"flatpak run {desktop.flatpak_id}"
+            if desktop.exec_cmd:
+                return desktop.exec_cmd
         return wm_class.lower()
     
     def _detect_terminal(self, pid: int) -> bool:
@@ -195,19 +225,16 @@ class SessionManager:
             pass
         return False
     
-    def _get_project_path(self, proc: ProcessInfo) -> str:
-        """Определяет путь к проекту для окна."""
-        # Сначала пробуем извлечь из cmdline
-        project = proc.extract_project_path()
-        if project:
-            return project
+    def _get_project(self, proc: ProcessInfo) -> str:
+        for arg in proc.cmdline_args[1:]:
+            if arg.startswith('-'):
+                continue
+            path = Path(arg)
+            if path.exists() and path.is_dir() and is_user_path(str(path)):
+                return str(path)
         
-        # Если нет — используем cwd, но только если он значимый
-        cwd = proc.cwd
-        home = str(Path.home())
-        
-        if cwd and cwd != home and cwd != "/" and not cwd.startswith(("/tmp", "/run", "/usr")):
-            return cwd
+        if is_user_path(proc.cwd):
+            return proc.cwd
         
         return ""
     
@@ -217,7 +244,6 @@ class SessionManager:
         clients = hyprctl("clients") or []
         ws_info = hyprctl("activeworkspace") or {}
         
-        # Собираем информацию
         windows_data = []
         
         for client in clients:
@@ -233,48 +259,31 @@ class SessionManager:
                 continue
             
             desktop = DesktopEntry.find_by_class(wm_class)
-            project_path = self._get_project_path(proc)
-            
-            debug(f"{wm_class}: pid={pid}, cwd={proc.cwd}")
-            debug(f"  cmdline: {proc.cmdline[:100]}...")
-            debug(f"  project_path: {project_path}")
+            project = self._get_project(proc)
+            launch_cmd = self._get_launch_cmd(desktop, wm_class)
             
             windows_data.append({
-                "pid": pid,
                 "wm_class": wm_class,
                 "wm_class_lower": wm_class.lower(),
-                "title": client.get("title", ""),
                 "workspace": ws_id,
                 "floating": client.get("floating", False),
                 "fullscreen": client.get("fullscreen", 0),
                 "position": list(client.get("at", [0, 0])),
                 "size": list(client.get("size", [800, 600])),
-                "base_cmd": self._get_base_cmd(desktop, wm_class),
-                "project_path": project_path,
+                "launch_cmd": launch_cmd,
+                "project": project,
                 "is_terminal": desktop.is_terminal if desktop else self._detect_terminal(pid),
             })
         
-        # Определяем multi-instance
         by_class: dict[str, list[dict]] = defaultdict(list)
         for w in windows_data:
             by_class[w["wm_class_lower"]].append(w)
         
         for cls, wins in by_class.items():
-            # Multi-instance если больше одного окна с разными project_path или разными PID
-            pids = {w["pid"] for w in wins}
-            projects = {w["project_path"] for w in wins if w["project_path"]}
-            
-            debug(f"{cls}: pids={pids}, projects={projects}")
-            
-            # Multi-instance если:
-            # - больше одного окна И
-            # - (разные PID ИЛИ разные проекты ИЛИ есть хотя бы один проект)
-            is_multi = len(wins) > 1 and (len(pids) > 1 or len(projects) > 1 or len(projects) >= 1)
-            
+            is_multi = len(wins) > 1
             for w in wins:
                 w["is_multi_instance"] = is_multi
         
-        # Формируем результат
         windows = []
         for w in windows_data:
             del w["wm_class_lower"]
@@ -282,16 +291,17 @@ class SessionManager:
             
             if w["is_terminal"]:
                 icon, note = "💻", "terminal"
+                if w["project"]:
+                    note += f" @ {Path(w['project']).name}"
             elif w["is_multi_instance"]:
-                project = w["project_path"] or "no-project"
-                icon, note = "📑", f"multi → {project}"
+                project_name = Path(w["project"]).name if w["project"] else "?"
+                icon, note = "📑", f"multi → {project_name}"
             else:
                 icon, note = "📦", "single"
             
             print(f"  {icon} {w['wm_class']} [WS{w['workspace']}] ({note})")
         
         session = {
-            "version": "4.3",
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "active_workspace": ws_info.get("id", 1),
             "windows": windows
@@ -308,104 +318,101 @@ class SessionManager:
             return
         
         session = json.loads(SESSION_FILE.read_text())
-        windows = session.get("windows", [])
+        saved_windows = session.get("windows", [])
         active_ws = session.get("active_workspace", 1)
         
-        print(f"📅 {session.get('timestamp')} | {len(windows)} окон\n")
+        print(f"📅 {session.get('timestamp')} | Цель: {len(saved_windows)} окон\n")
         
-        if not windows:
+        if not saved_windows:
             return
         
         start = time.time()
         
-        # Существующие окна
-        existing = hyprctl("clients") or []
-        existing_by_class: dict[str, int] = defaultdict(int)
-        for w in existing:
-            cls = w.get("class", "").lower()
+        target_counts: dict[str, int] = defaultdict(int)
+        for w in saved_windows:
+            cls = w.get("wm_class", "").lower()
             if cls:
-                existing_by_class[cls] += 1
+                target_counts[cls] += 1
         
-        # Группируем сохранённые
         saved_by_class: dict[str, list[dict]] = defaultdict(list)
-        for w in windows:
+        for w in saved_windows:
             cls = w.get("wm_class", "").lower()
             if cls:
                 saved_by_class[cls].append(w)
         
-        # Запускаем
-        for cls, saved_wins in saved_by_class.items():
-            existing_count = existing_by_class.get(cls, 0)
-            is_multi = any(w.get("is_multi_instance", False) for w in saved_wins)
+        print("1️⃣ Проверка лишних окон...")
+        closed = close_excess_windows(target_counts, self.terminal_pid)
+        if closed:
+            print(f"   Закрыто: {closed}")
+            time.sleep(0.3)
+        else:
+            print("   Лишних нет")
+        
+        print("\n2��⃣ Проверка недостающих...")
+        
+        current = get_windows_by_class()
+        opened = 0
+        
+        for cls, saved_list in saved_by_class.items():
+            current_count = len(current.get(cls, []))
+            need = len(saved_list)
             
-            if is_multi:
-                # Запускаем каждое окно отдельно
-                to_launch = len(saved_wins) - existing_count
+            if current_count >= need:
+                print(f"   {cls}: ✓ ({current_count}/{need})")
+                continue
+            
+            to_open = need - current_count
+            print(f"   {cls}: открываем {to_open}")
+            
+            for i in range(to_open):
+                idx = current_count + i
+                if idx >= len(saved_list):
+                    break
                 
-                for i in range(to_launch):
-                    idx = existing_count + i
-                    if idx >= len(saved_wins):
-                        break
-                    
-                    w = saved_wins[idx]
-                    base_cmd = w.get("base_cmd", "")
-                    project = w.get("project_path", "")
-                    ws = w.get("workspace", 1)
-                    
-                    if not base_cmd:
-                        continue
-                    
-                    # Формируем команду
-                    if project:
-                        cmd = f"{base_cmd} {project}"
-                    else:
-                        cmd = base_cmd
-                    
-                    print(f"  🚀 {cls} #{idx + 1} → WS{ws}")
-                    if project:
-                        print(f"      📂 {project}")
-                    
-                    dispatch(f"exec [workspace {ws} silent] {cmd}")
-            else:
-                # Один запуск
-                if existing_count > 0:
-                    print(f"  ✓ {cls}: уже запущен")
-                    continue
-                
-                w = saved_wins[0]
-                cmd = w.get("base_cmd", "")
+                w = saved_list[idx]
+                cmd = w.get("launch_cmd", "")
+                project = w.get("project", "")
                 ws = w.get("workspace", 1)
                 
                 if not cmd:
                     continue
                 
-                print(f"  🚀 {cls} → WS{ws}")
+                if w.get("is_multi_instance") and project and os.path.isdir(project):
+                    cmd = f"{cmd} {project}"
+                
                 dispatch(f"exec [workspace {ws} silent] {cmd}")
+                opened += 1
         
-        print(f"\n⏳ Ожидание окон...")
-        time.sleep(2.5)
+        if opened:
+            print(f"\n⏳ Ожидание {opened} окон...")
+            time.sleep(2.5)
         
-        self._apply_properties(windows)
+        print("\n3️⃣ Повторная проверка...")
+        closed = close_excess_windows(target_counts, self.terminal_pid)
+        if closed:
+            print(f"   Закрыто ещё: {closed}")
+            time.sleep(0.3)
+        else:
+            print("   Всё в норме")
+        
+        print("\n4️⃣ Применение свойств...")
+        self._apply_properties(saved_windows)
         dispatch(f"workspace {active_ws}")
         
         elapsed = time.time() - start
-        print(f"\n✅ Готово за {elapsed:.1f}с")
+        final = get_windows_by_class()
+        final_count = sum(len(v) for v in final.values())
+        
+        print(f"\n{'═' * 40}")
+        print(f"✅ Готово за {elapsed:.1f}с ({final_count}/{len(saved_windows)} окон)")
         
         subprocess.run(
-            ["notify-send", "-t", "2000", "Session", f"Restored {len(windows)} windows"],
+            ["notify-send", "-t", "2000", "Session", f"{final_count}/{len(saved_windows)}"],
             capture_output=True
         )
     
     def _apply_properties(self, saved_windows: list[dict]):
-        print("📍 Применение свойств...")
-        
-        current = hyprctl("clients") or []
-        
-        current_by_class: dict[str, list[dict]] = defaultdict(list)
-        for w in current:
-            cls = w.get("class", "").lower()
-            if cls:
-                current_by_class[cls].append(w)
+        current = get_windows_by_class()
         
         saved_by_class: dict[str, list[dict]] = defaultdict(list)
         for w in saved_windows:
@@ -414,10 +421,9 @@ class SessionManager:
                 saved_by_class[cls].append(w)
         
         commands = []
-        matched = 0
         
         for cls, saved_list in saved_by_class.items():
-            current_list = current_by_class.get(cls, [])
+            current_list = current.get(cls, [])
             
             for i, saved in enumerate(saved_list):
                 if i >= len(current_list):
@@ -440,29 +446,25 @@ class SessionManager:
                 if fs := saved.get("fullscreen"):
                     commands.append(f"focuswindow address:{addr}")
                     commands.append(f"fullscreen {fs}")
-                
-                matched += 1
         
         batch_dispatch(commands)
-        print(f"  ✓ Применено к {matched} окнам")
+        print(f"   Применено: {len(commands)} команд")
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    
-    if not args:
-        print("Использование: save | restore [--debug]")
+    if len(sys.argv) < 2:
+        print("save | restore")
         return
     
     manager = SessionManager()
     
-    match args[0]:
+    match sys.argv[1]:
         case "save":
             manager.save()
         case "restore":
             manager.restore()
         case _:
-            print("Неизвестная команда")
+            print("save | restore")
 
 
 if __name__ == "__main__":

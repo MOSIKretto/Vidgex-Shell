@@ -13,10 +13,14 @@ import services.icons as icons
 from services.icon_resolver import IconResolver
 
 
-_scr = Gdk.Screen.get_default()
-_CW, _CH = _scr.get_width(), _scr.get_height()
+def get_screen_dims():
+    scr = Gdk.Screen.get_default()
+    if scr is not None:
+        return scr.get_width(), scr.get_height()
+    return 1920, 1080
+
+_CW, _CH = get_screen_dims()
 _SW, _SH = int(_CW * 0.1), int(_CH * 0.1)
-del _scr
 
 _BS = 0.1
 _TG = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
