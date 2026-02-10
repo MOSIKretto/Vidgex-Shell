@@ -358,6 +358,15 @@
 
 <br/>
 
+## ⌨️ Горячие клавиши 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard.png" width="350"/>
+</p>
+
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" alt="rainbow line" width="100%"/>
+
+<br/>
+
 ## 📥 Установка
 
 <br/>
