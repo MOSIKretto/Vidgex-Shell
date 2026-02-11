@@ -76,6 +76,7 @@ PACKAGES=(
   python-opencv
   python-pywayland
   python-onnxruntime-cpu
+  python-dbus
 
   nvidia-utils
 )

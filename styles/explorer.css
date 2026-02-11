@@ -1,3 +1,5 @@
+/* ==================== EXPLORER WINDOW ==================== */
+
 #explorer-window {
     background: transparent;
 }
@@ -27,6 +29,8 @@
     margin-bottom: 8px;
     margin-right: 8px;
 }
+
+/* ==================== HEADER ==================== */
 
 #explorer-header {
     padding: 8px 12px;
@@ -188,10 +192,7 @@
 #explorer-path-part:active #explorer-path-part-label,
 #explorer-path-part:checked #explorer-path-part-label,
 #explorer-path-part:active label,
-#explorer-path-part:checked label {
-    color: var(--on-primary);
-}
-
+#explorer-path-part:checked label,
 #explorer-path-part:active *,
 #explorer-path-part:checked * {
     color: var(--on-primary);
@@ -372,7 +373,6 @@
     color: var(--on-primary);
 }
 
-/* Unmounted device styles */
 #explorer-file-row.unmounted {
     opacity: 0.7;
     border: 1px dashed var(--on-surface-variant);
@@ -604,57 +604,173 @@
 
 #explorer-sidebar scrollbar,
 #explorer-file-view scrollbar {
-    background: transparent;
+    background: var(--surface);
     border: none;
+    border-radius: 8px;
+    margin: 4px;
+    min-width: 8px;
+}
+
+#explorer-sidebar scrollbar trough,
+#explorer-file-view scrollbar trough {
+    background: transparent;
+    border-radius: 6px;
+    min-width: 8px;
 }
 
 #explorer-sidebar scrollbar slider,
 #explorer-file-view scrollbar slider {
-    background-color: var(--on-surface-variant);
-    border-radius: 4px;
-    min-width: 6px;
+    background-color: var(--primary);
+    border-radius: 6px;
+    min-width: 8px;
     min-height: 40px;
+    margin: 2px;
     transition: all 150ms ease-out;
+    opacity: 0.6;
 }
 
 #explorer-sidebar scrollbar slider:hover,
 #explorer-file-view scrollbar slider:hover {
-    background-color: var(--on-surface-variant);
+    background-color: var(--primary);
+    opacity: 0.9;
+    min-width: 10px;
 }
 
 #explorer-sidebar scrollbar slider:active,
 #explorer-file-view scrollbar slider:active {
     background-color: var(--primary);
+    opacity: 1;
+}
+
+#explorer-sidebar scrollbar button,
+#explorer-file-view scrollbar button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+#explorer-file-view undershoot.top,
+#explorer-file-view undershoot.bottom,
+#explorer-file-view overshoot.top,
+#explorer-file-view overshoot.bottom,
+#explorer-sidebar undershoot.top,
+#explorer-sidebar undershoot.bottom,
+#explorer-sidebar overshoot.top,
+#explorer-sidebar overshoot.bottom {
+    background: none;
 }
 
 /* ==================== CONTEXT MENU ==================== */
 
-#explorer-window menu {
+#explorer-context-menu,
+#explorer-window menu,
+menu {
     background-color: var(--surface);
     border: 1px solid var(--primary);
     border-radius: 12px;
     padding: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-#explorer-window menuitem {
-    padding: 8px 14px;
+menu separator {
+    background-color: var(--primary);
+    margin: 4px 8px;
+    min-height: 1px;
+}
+
+/* ==================== INLINE RENAME ==================== */
+
+#explorer-rename-container {
+    background-color: var(--surface);
+    border: 1px solid var(--primary);
     border-radius: 8px;
+    padding: 8px 10px;
+    margin: 4px 0px;
+}
+
+#explorer-rename-entry {
+    background-color: var(--shadow);
+    border: 1px solid var(--surface-bright);
+    border-radius: 6px;
     color: var(--on-surface);
-    transition: all 150ms ease-in-out;
-    margin: 2px 0px;
+    padding: 6px 10px;
+    font-size: 13px;
+    min-height: 20px;
+    caret-color: var(--primary);
 }
 
-#explorer-window menuitem:hover {
-    background-color: var(--surface-bright);
+#explorer-rename-entry:focus {
+    border-color: var(--primary);
+    outline: none;
 }
 
-#explorer-window menuitem:active {
+#explorer-rename-entry selection {
     background-color: var(--primary);
     color: var(--on-primary);
 }
 
-#explorer-window separator {
+#explorer-rename-buttons {
+    margin-top: 6px;
+}
+
+#explorer-rename-btn {
+    background-color: var(--surface);
+    border-radius: 6px;
+    padding: 4px 12px;
+    border: 1px solid var(--surface-bright);
+    transition: all 100ms ease-in-out;
+    font-weight: 600;
+    font-size: 11px;
+    min-height: 24px;
+}
+
+#explorer-rename-btn:hover {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+}
+
+#explorer-rename-btn:active {
     background-color: var(--primary);
-    margin: 4px 8px;
-    min-height: 1px;
+    border-color: var(--primary);
+    color: var(--on-primary);
+}
+
+#explorer-rename-btn.cancel {
+    color: var(--on-surface);
+}
+
+#explorer-rename-btn.cancel:hover {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+#explorer-rename-btn.cancel:active {
+    background-color: var(--error);
+    border-color: var(--error);
+    color: var(--on-primary);
+}
+
+#explorer-rename-btn.confirm {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+}
+
+#explorer-rename-btn.confirm:hover {
+    opacity: 0.9;
+}
+
+#explorer-rename-btn.confirm:active {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+    color: var(--primary);
+    opacity: 1;
+}
+
+/* ==================== REVEALER ==================== */
+
+#explorer-revealer {
+    background: transparent;
 }

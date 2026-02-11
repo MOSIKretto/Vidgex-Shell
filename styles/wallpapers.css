@@ -186,5 +186,5 @@ menuitem:hover {
 
 /* Карусель обоев - цвет для рамки выделения */
 #wallpaper-carousel {
-    color: var(--primary);
+  color: var(--primary);
 }
