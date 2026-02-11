@@ -48,7 +48,6 @@ def run():
         GLib.idle_add(on_session_restored)
 
     def on_session_restored():
-        print("[SessionManager] Сессия восстановлена")
         session_manager.start_autosave(5)
         return False 
 
