@@ -1,8 +1,13 @@
+
+
+<br/>
+
 <div align="center">
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgexlogo.gif" width="350" alt="Vidgex Logo"/>
 </p>
+
 <br/>
 
 <picture>
@@ -14,11 +19,9 @@
 
 <a href="https://github.com/hyprwm/Hyprland">
   <img src="https://img.shields.io/badge/Shell%20for-Hyprland-0092CD?style=for-the-badge&logo=linux&logoColor=D9E0EE&labelColor=11111b" alt="Hyprland"/>
-</a>
-<a href="https://github.com/Fabric-Development/fabric/">
+</a>&ensp;<a href="https://github.com/Fabric-Development/fabric/">
   <img src="https://img.shields.io/badge/Powered%20by-Fabric-A6E3A1?style=for-the-badge&logo=python&logoColor=D9E0EE&labelColor=11111b" alt="Fabric"/>
-</a>
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/blob/main/LICENSE">
+</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/blob/main/LICENSE">
   <img src="https://img.shields.io/github/license/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=unlicense&color=CBA6F7&logoColor=D9E0EE&labelColor=11111b&label=License" alt="License"/>
 </a>
 
@@ -27,43 +30,34 @@
 
 <a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
   <img src="https://img.shields.io/github/stars/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=starship&color=F5A97F&logoColor=D9E0EE&labelColor=11111b" alt="Stars"/>
-</a>
-&ensp;
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
+</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
   <img src="https://img.shields.io/github/issues/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=gitbook&color=B5E8E0&logoColor=D9E0EE&labelColor=11111b" alt="Issues"/>
-</a>
-&ensp;
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/commits">
+</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/commits">
   <img src="https://img.shields.io/github/last-commit/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=github&color=89B4FA&logoColor=D9E0EE&labelColor=11111b" alt="Last Commit"/>
-</a>
-&ensp;
-<a href="https://t.me/TheElexum">
-  <img src="https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram"/>
-</a>
-&ensp;
-<a href="https://t.me/VidgexShell">
-  <img src="https://img.shields.io/badge/Telegram-Chat-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram"/>
+</a>&ensp;<a href="https://t.me/TheElexum">
+  <img src="https://img.shields.io/badge/Telegram-Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram Channel"/>
+</a>&ensp;<a href="https://t.me/VidgexShell">
+  <img src="https://img.shields.io/badge/Telegram-Chat-26A5E4?style=for-the-badge&logo=telegram&logoColor=D9E0EE&labelColor=11111b" alt="Telegram Chat"/>
 </a>
 
 <br/>
 <br/>
 
-## Vidgex-Shell — первый шаг к по-настоящему продуктивной работе в Hyprland. Единственная оболочка с матричным воркспейсом 3×3 и уникальной системой управления.
+### Vidgex-Shell — первый шаг к по-настоящему продуктивной работе в Hyprland.<br/>Единственная оболочка с матричным воркспейсом 3×3 и уникальной системой управления.
 
 </div>
 
 <br/>
 
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" alt="rainbow line" width="100%"/>
+
+<br/>
 
 <div align="center">
 
 ## 📋 Навигация
 
-[`🚀 О проекте`](#-о-проекте) ·
-[`📸 Галерея`](#-галерея) ·
-[`✨ Возможности`](#-ключевые-возможности) ·
-[`📥 Установка`](#-установка) ·
-[`🤝 Сообщество`](#-сообщество-и-поддержка)
+[`🚀 О проекте`](#-о-проекте) · [`📸 Галерея`](#-галерея) · [`✨ Возможности`](#-ключевые-возможности) · [`⌨️ Горячие клавиши`](#%EF%B8%8F-горячие-клавиши) · [`📥 Установка`](#-установка) · [`🤝 Сообщество`](#-сообщество-и-поддержка)
 
 </div>
 
@@ -88,36 +82,10 @@
 
 <br/>
 
-<table>
-  <tr>
-    <th>
-      <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Brain.png" width="20"/>
-      RAM
-    </th>
-    <th>
-      <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="20"/>
-      CPU
-    </th>
-    <th>
-      <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/High%20Voltage.png" width="20"/>
-      Отклик
-    </th>
-  </tr>
-  <tr>
-    <td align="center">
-      <h3><code>≈70 МБ</code></h3>
-      <sub>ОЗУ отдыхает</sub>
-    </td>
-    <td align="center">
-      <h3><code>&lt;0.01%</code></h3>
-      <sub>Процессор отдыхает</sub>
-    </td>
-    <td align="center">
-      <h3><code>Мгновенный</code></h3>
-      <sub>Нагрузка только при взаимодействии</sub>
-    </td>
-  </tr>
-</table>
+| <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Brain.png" width="20"/> RAM | <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="20"/> CPU | <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/High%20Voltage.png" width="20"/> Отклик |
+|:---:|:---:|:---:|
+| **`≈70 МБ`** | **`<0.01%`** | **`Мгновенный`** |
+| ОЗУ отдыхает | Процессор отдыхает | Нагрузка только при взаимодействии |
 
 </div>
 
@@ -134,19 +102,18 @@
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex1.png" width="100%" style="border-radius: 16px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex1.png" width="100%"/>
     </td>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex2.png" width="100%" style="border-radius: 16px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex2.png" width="100%"/>
     </td>
   </tr>
-  <tr><td colspan="2" height="8"></td></tr>
   <tr>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex3.png" width="100%" style="border-radius: 16px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex3.png" width="100%"/>
     </td>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex4.png" width="100%" style="border-radius: 16px;"/>
+      <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/Vidgex4.png" width="100%"/>
     </td>
   </tr>
 </table>
@@ -164,54 +131,24 @@
 <br/>
 
 <details open>
-<summary>
-
-### ℹ️&ensp;Ключевые особенности
-
-</summary>
+<summary><h3>ℹ️ Ключевые особенности</h3></summary>
 
 <br/>
 
-<table>
-  <tr>
-    <td width="60" align="center"><h2>🧊</h2></td>
-    <td width="200"><b>Матрица 3×3</b></td>
-    <td>Революционная навигация по рабочим столам — забудьте о линейной ленте навсегда</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>👁️</h2></td>
-    <td><b>Eyes-Hands</b></td>
-    <td>Уникальная система управления жестами без касания клавиатуры и мыши</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>🔭</h2></td>
-    <td><b>Продвинутый обзор</b></td>
-    <td>Перетаскивание, закрытие и перегруппировка окон в режиме Overview</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>🖥️</h2></td>
-    <td><b>Современный Dock</b></td>
-    <td>Панель задач, вдохновлённая лучшими решениями macOS и Ubuntu</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>♻️</h2></td>
-    <td><b>Сохранение и востановление сессий</b></td>
-  <td>Автоматически сохраняет ваш прогресс сессии и при следущем запуске устройства полностью востанавливает её</td>
-  </tr>
-</table>
+| | Функция | Описание |
+|:---:|:---|:---|
+| 🧊 | **Матрица 3×3** | Революционная навигация по рабочим столам — забудьте о линейной ленте навсегда |
+| 👁️ | **Eyes-Hands** | Уникальная система управления жестами без касания клавиатуры и мыши |
+| 🔭 | **Продвинутый обзор** | Перетаскивание, закрытие и перегруппировка окон в режиме Overview |
+| 🖥️ | **Современный Dock** | Панель задач, вдохновлённая лучшими решениями macOS и Ubuntu |
+| ♻️ | **Сохранение и восстановление сессий** | Автоматически сохраняет прогресс сессии и при следующем запуске полностью восстанавливает её |
 
 </details>
 
 <br/>
 
-<!-- ─────────── ЦЕНТР УПРАВЛЕНИЯ ─────────── -->
-
 <details open>
-<summary>
-
-### 🎛 &ensp;Центр управления
-
-</summary>
+<summary><h3>🎛 Центр управления</h3></summary>
 
 <br/>
 
@@ -221,64 +158,17 @@
 
 <div align="center">
 
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <h3>🔔</h3>
-      <b>Уведомления</b>
-      <br/><sub>Система оповещений</sub>
-    </td>
-    <td align="center" width="33%">
-      <h3>📶</h3>
-      <b>Подключения</b>
-      <br/><sub>Wi-Fi / Bluetooth</sub>
-    </td>
-    <td align="center" width="33%">
-      <h3>🎵</h3>
-      <b>Медиаплеер</b>
-      <br/><sub>Управление музыкой</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <h3>📅</h3>
-      <b>Календарь</b>
-      <br/><sub>Даты и события</sub>
-    </td>
-    <td align="center">
-      <h3>🔆</h3>
-      <b>Регуляторы</b>
-      <br/><sub>Яркость / Громкость / Микрофон</sub>
-    </td>
-    <td align="center">
-      <h3>📊</h3>
-      <b>Мониторинг</b>
-      <br/><sub>CPU • GPU • RAM • Диск • °C</sub>
-    </td>
-  </tr>
-</table>
+| 🔔 Уведомления | 📶 Подключения | 🎵 Медиаплеер |
+|:---:|:---:|:---:|
+| Система оповещений | Wi-Fi / Bluetooth | Управление музыкой |
 
-<br/>
+| 📅 Календарь | 🔆 Регуляторы | 📊 Мониторинг |
+|:---:|:---:|:---:|
+| Даты и события | Яркость / Громкость / Микрофон | CPU • GPU • RAM • Диск • °C |
 
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <h3>☕</h3>
-      <b>Caffeine</b>
-      <br/><sub>Предотвращение засыпания системы</sub>
-    </td>
-    <td align="center" width="33%">
-      <h3>👁️</h3>
-      <b>Eyes-Hands</b>
-      <br/><sub>Управление системой с камеры</sub>
-    </td>
-    <td align="center" width="33%">
-      <h3>🌙</h3>
-      <b>Night Mode</b>
-      <br/><sub>Бережёт глаза ночью</sub>
-    </td>
-  </tr>
-</table>
+| ☕ Caffeine | 👁️ Eyes-Hands | 🌙 Night Mode |
+|:---:|:---:|:---:|
+| Предотвращение засыпания системы | Управление системой с камеры | Бережёт глаза ночью |
 
 </div>
 
@@ -286,69 +176,31 @@
 
 <br/>
 
-<!-- ─────────── ЭСТЕТИКА И МУЛЬТИМЕДИА ─────────── -->
-
 <details open>
-<summary>
-
-### 🎨 &ensp;Эстетика и мультимедиа
-
-</summary>
+<summary><h3>🎨 Эстетика и мультимедиа</h3></summary>
 
 <br/>
 
-<table>
-  <tr>
-    <td width="60" align="center"><h2>🖼️</h2></td>
-    <td width="260"><b>Динамическая карусель обоев</b></td>
-    <td>
-      <code>PNG</code> <code>JPG</code> <code>BMP</code> <code>GIF</code> <code>WEBP</code>
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><h2>🌈</h2></td>
-    <td><b>Адаптивная тема</b></td>
-    <td>Цвета интерфейса автоматически подстраиваются под доминирующий оттенок обоев</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>🎚️</h2></td>
-    <td><b>Аудио-микшер</b></td>
-    <td>Тонкая настройка громкости для каждого приложения отдельно</td>
-  </tr>
-</table>
+| | Функция | Описание |
+|:---:|:---|:---|
+| 🖼️ | **Динамическая карусель обоев** | `PNG` `JPG` `BMP` `GIF` `WEBP` |
+| 🌈 | **Адаптивная тема** | Цвета интерфейса автоматически подстраиваются под доминирующий оттенок обоев |
+| 🎚️ | **Аудио-микшер** | Тонкая настройка громкости для каждого приложения отдельно |
 
 </details>
 
 <br/>
 
-<!-- ─────────── УМНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ ─────────── -->
-
 <details open>
-<summary>
-
-### 🔋 &ensp;Умная производительность
-
-</summary>
+<summary><h3>🔋 Умная производительность</h3></summary>
 
 <br/>
 
-<table>
-  <tr>
-    <td width="60" align="center"><h2>⚡</h2></td>
-    <td width="260"><b>Auto-Performance</b></td>
-    <td>Автоматическое переключение режимов энергопотребления в зависимости от заряда и питания</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>🔍</h2></td>
-    <td><b>Быстрый лаунчер</b></td>
-    <td>Мгновенный поиск и запуск приложений</td>
-  </tr>
-  <tr>
-    <td align="center"><h2>📋</h2></td>
-    <td><b>Менеджер буфера обмена</b></td>
-    <td>Полная история копирований с быстрым доступом</td>
-  </tr>
-</table>
+| | Функция | Описание |
+|:---:|:---|:---|
+| ⚡ | **Auto-Performance** | Автоматическое переключение режимов энергопотребления в зависимости от заряда и питания |
+| 🔍 | **Быстрый лаунчер** | Мгновенный поиск и запуск приложений |
+| 📋 | **Менеджер буфера обмена** | Полная история копирований с быстрым доступом |
 
 </details>
 
@@ -358,27 +210,37 @@
 
 <br/>
 
-## ⌨️ Горячие клавиши 
+## ⌨️ Горячие клавиши
 
-### Горячие клавиши для базовой работы с Shell
-<p align="center">
-  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard1.png" width="600"/>
-</p>
+<br/>
 
-### Дополнительные горячие клавиши для работы с Shell. 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard2.png" width="600"/>
-</p>
+<div align="center">
 
-### Управление рабочими столами
+**Базовые горячие клавиши**
 
-> CTRL + ALT + клавиши вверх/вниз/вправо/влево - перемещение по матрице рабочих столов
+<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard1.png" width="600"/>
 
-> CTRL + ALT + {номер рабочего стола} - перемещение на конкретный рабочий стол
+<br/>
+<br/>
 
-> CTRL + ALT + SHIFT + клавиши вверх/вниз/вправо/влево - перемещение активного окна по матрице рабочих столов
+**Дополнительные горячие клавиши**
 
-> CTRL + ALT + SHIFT + {номер рабочего стола} - перемещение активного окна по матрице рабочих столов
+<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard2.png" width="600"/>
+
+</div>
+
+<br/>
+
+### 🗺️ Управление рабочими столами
+
+| Комбинация | Действие |
+|:---|:---|
+| `Ctrl` + `Alt` + `↑` `↓` `←` `→` | Перемещение по матрице рабочих столов |
+| `Ctrl` + `Alt` + `1-9` | Перемещение на конкретный рабочий стол |
+| `Ctrl` + `Alt` + `Shift` + `↑` `↓` `←` `→` | Перемещение активного окна по матрице рабочих столов |
+| `Ctrl` + `Alt` + `Shift` + `1-9` | Перемещение активного окна на конкретный рабочий стол |
+
+<br/>
 
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" alt="rainbow line" width="100%"/>
 
@@ -389,19 +251,13 @@
 <br/>
 
 ```bash
-# ╭──────────────────────────────────────────╮
-# │  1. Клонируйте репозиторий               │
-# ╰──────────────────────────────────────────╯
+# 1. Клонируйте репозиторий
 git clone https://github.com/MOSIKretto/Vidgex-Shell.git
 
-# ╭──────────────────────────────────────────╮
-# │  2. Перейдите в директорию               │
-# ╰──────────────────────────────────────────╯
+# 2. Перейдите в директорию
 cd Vidgex-Shell
 
-# ╭──────────────────────────────────────────╮
-# │  3. Запустите установщик                 │
-# ╰──────────────────────────────────────────╯
+# 3. Запустите установщик
 ./install.sh
 ```
 
@@ -420,19 +276,13 @@ cd Vidgex-Shell
 <br/>
 
 <a href="https://t.me/TheElexum">
-  <img src="https://img.shields.io/badge/💬_Telegram-Подписаться-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="50" alt="Telegram"/>
-</a>
-&emsp;
-<a href="https://t.me/VidgexShell">
-  <img src="https://img.shields.io/badge/💬_Telegram-Обсудить-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="50" alt="Telegram"/>
-</a>
-&emsp;
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
-  <img src="https://img.shields.io/badge/⭐_Star-Поддержать-F5A97F?style=for-the-badge&logo=starship&logoColor=white&labelColor=11111b" height="50" alt="Stars"/>
-</a>
-&emsp;
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
-  <img src="https://img.shields.io/badge/🐛_Issues-Сообщить-B5E8E0?style=for-the-badge&logo=gitbook&logoColor=white&labelColor=11111b" height="50" alt="Issues"/>
+  <img src="https://img.shields.io/badge/💬_Telegram-Подписаться-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="45" alt="Telegram"/>
+</a>&emsp;<a href="https://t.me/VidgexShell">
+  <img src="https://img.shields.io/badge/💬_Telegram-Обсудить-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=11111b" height="45" alt="Telegram"/>
+</a>&emsp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
+  <img src="https://img.shields.io/badge/⭐_Star-Поддержать-F5A97F?style=for-the-badge&logo=starship&logoColor=white&labelColor=11111b" height="45" alt="Stars"/>
+</a>&emsp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
+  <img src="https://img.shields.io/badge/🐛_Issues-Сообщить-B5E8E0?style=for-the-badge&logo=gitbook&logoColor=white&labelColor=11111b" height="45" alt="Issues"/>
 </a>
 
 </div>
@@ -445,11 +295,7 @@ cd Vidgex-Shell
 
 <div align="center">
 
-<sub>
-
 **Made with ❤️ for Hyprland community**
-
-</sub>
 
 <br/>
 
