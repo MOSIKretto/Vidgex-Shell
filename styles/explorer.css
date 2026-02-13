@@ -715,35 +715,29 @@ menu separator {
     margin-top: 6px;
 }
 
+/* ===== БАЗОВЫЙ СТИЛЬ ДЛЯ ОБЕИХ КНОПОК ===== */
+
 #explorer-rename-btn {
     background-color: var(--surface);
     border-radius: 6px;
     padding: 4px 12px;
     border: 1px solid var(--surface-bright);
-    transition: all 100ms ease-in-out;
+    transition: all 0.1s ease;
     font-weight: 600;
     font-size: 11px;
     min-height: 24px;
 }
 
-#explorer-rename-btn:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-}
-
-#explorer-rename-btn:active {
-    background-color: var(--primary);
-    border-color: var(--primary);
-    color: var(--on-primary);
-}
+/* ===== CANCEL — контур всегда виден ===== */
 
 #explorer-rename-btn.cancel {
-    color: var(--on-surface);
+    color: var(--error);
+    border-color: var(--error);
 }
 
 #explorer-rename-btn.cancel:hover {
+    background-color: var(--surface-bright);
     border-color: var(--error);
-    color: var(--error);
 }
 
 #explorer-rename-btn.cancel:active {
@@ -752,21 +746,29 @@ menu separator {
     color: var(--on-primary);
 }
 
+/* ===== RENAME — контур primary, серая когда disabled ===== */
+
 #explorer-rename-btn.confirm {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+#explorer-rename-btn.confirm:hover {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+}
+
+#explorer-rename-btn.confirm:active {
     background-color: var(--primary);
     border-color: var(--primary);
     color: var(--on-primary);
 }
 
-#explorer-rename-btn.confirm:hover {
-    opacity: 0.9;
-}
-
-#explorer-rename-btn.confirm:active {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-    color: var(--primary);
-    opacity: 1;
+#explorer-rename-btn.confirm:disabled {
+    background-color: transparent;
+    border-color: var(--surface-bright);
+    color: var(--outline);
+    opacity: 0.6;
 }
 
 /* ==================== REVEALER ==================== */

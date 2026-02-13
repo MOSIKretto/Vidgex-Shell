@@ -1,6 +1,7 @@
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib, Gtk, Gio
+gi.require_version('GtkLayerShell', '0.1')  # ← ДОБАВИТЬ
+from gi.repository import Gdk, GLib, Gtk, Gio, GtkLayerShell  # ← ДОБАВИТЬ GtkLayerShell
 
 import os
 import shutil
@@ -33,10 +34,10 @@ class Explorer(Window):
     POST_DRAG_GRACE_PERIOD = 600
     ACTIVATOR_HOVER_DELAY = 1000
     
-    DRAG_SCROLL_MARGIN = 80
-    DRAG_SCROLL_SPEED_SLOW = 30
-    DRAG_SCROLL_SPEED_FAST = 80
-    DRAG_SCROLL_INTERVAL = 25
+    DRAG_SCROLL_MARGIN = 250
+    DRAG_SCROLL_SPEED_SLOW = 40
+    DRAG_SCROLL_SPEED_FAST = 120
+    DRAG_SCROLL_INTERVAL = 20
 
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
@@ -143,6 +144,24 @@ class Explorer(Window):
         self._init_ui()
         
         GLib.timeout_add(100, self._delayed_show)
+
+    # ──────────────────────────────────────────────
+    #  Keyboard interactivity for layer-shell
+    # ──────────────────────────────────────────────
+    def _set_keyboard_interactive(self, enabled: bool):
+        """Enable or disable keyboard input for this layer-shell surface."""
+        try:
+            if enabled:
+                # Try EXCLUSIVE first for guaranteed keyboard grab
+                GtkLayerShell.set_keyboard_mode(
+                    self, GtkLayerShell.KeyboardMode.EXCLUSIVE
+                )
+            else:
+                GtkLayerShell.set_keyboard_mode(
+                    self, GtkLayerShell.KeyboardMode.NONE
+                )
+        except Exception as e:
+            print(f"keyboard mode error: {e}")
 
     def _delayed_show(self) -> bool:
         self.show_all()
@@ -1147,8 +1166,13 @@ class Explorer(Window):
 
     def _start_drag_hover_timer(self, path: Path, widget: Gtk.Widget = None):
         self._cancel_drag_hover_timer()
+        
         if path == self._current_path:
             return
+            
+        if self._drag_source_path and path == self._drag_source_path:
+            return
+
         self._drag_hover_path = path
         self._drag_hover_widget = widget
         if widget:
@@ -1360,15 +1384,35 @@ class Explorer(Window):
         self._drag_over_explorer = True
         self._cancel_pending_hide()
         self._cancel_post_drag_grace()
-        icon_name = self._get_icon_for_path(path)
+        
         try:
-            icon_info = self._icon_theme.lookup_icon(icon_name, 32, Gtk.IconLookupFlags.FORCE_SIZE)
-            if icon_info:
-                pixbuf = icon_info.load_icon()
-                if pixbuf:
-                    Gtk.drag_set_icon_pixbuf(context, pixbuf, pixbuf.get_width() // 2, pixbuf.get_height() // 2)
-        except:
-            pass
+            icon_size = 48
+            icon_name = self._get_icon_for_path(path)
+            full_color_icon_name = icon_name.replace("-symbolic", "")
+            
+            pixbuf = None
+            try:
+                pixbuf = self._icon_theme.load_icon(full_color_icon_name, icon_size, 0)
+            except:
+                pass
+                
+            if not pixbuf:
+                fallback_name = "folder" if path.is_dir() else "text-x-generic"
+                try:
+                    pixbuf = self._icon_theme.load_icon(fallback_name, icon_size, 0)
+                except:
+                    pass
+
+            if pixbuf:
+                hot_x = icon_size // 2
+                hot_y = icon_size // 2
+                Gtk.drag_set_icon_pixbuf(context, pixbuf, hot_x, hot_y)
+            else:
+                Gtk.drag_set_icon_default(context)
+
+        except Exception:
+            Gtk.drag_set_icon_default(context)
+
         widget.get_style_context().add_class("dragging")
         self.dnd_indicator.set_label(f"Dragging: {path.name}")
         self.dnd_indicator.get_style_context().add_class("active")
@@ -1695,21 +1739,16 @@ class Explorer(Window):
         self._menu_open = True
         self._cancel_pending_hide()
         
+        # Enable keyboard FIRST
+        self._set_keyboard_interactive(True)
+        
         self._rename_widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._rename_widget.set_name("explorer-rename-container")
         
         entry = Gtk.Entry()
         entry.set_name("explorer-rename-entry")
         entry.set_text(path.name)
-        
-        if path.is_file() and '.' in path.name and not path.name.startswith('.'):
-            last_dot = path.name.rfind('.')
-            if last_dot > 0:
-                GLib.idle_add(lambda: entry.select_region(0, last_dot))
-            else:
-                GLib.idle_add(lambda: entry.select_region(0, len(path.name)))
-        else:
-            GLib.idle_add(lambda: entry.select_region(0, len(path.name)))
+        entry.set_can_focus(True)
         
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_box.set_name("explorer-rename-buttons")
@@ -1723,9 +1762,22 @@ class Explorer(Window):
         confirm_btn = Gtk.Button(label="Rename")
         confirm_btn.set_name("explorer-rename-btn")
         confirm_btn.get_style_context().add_class("confirm")
+        confirm_btn.set_sensitive(False)
         confirm_btn.connect("clicked", lambda _: self._do_rename_inline(entry.get_text()))
         
-        entry.connect("activate", lambda _: self._do_rename_inline(entry.get_text()))
+        original_name = path.name
+        def on_text_changed(entry_widget):
+            new_text = entry_widget.get_text().strip()
+            has_change = new_text != original_name and len(new_text) > 0
+            confirm_btn.set_sensitive(has_change)
+        
+        entry.connect("changed", on_text_changed)
+        
+        def on_entry_activate(entry_widget):
+            if confirm_btn.get_sensitive():
+                self._do_rename_inline(entry_widget.get_text())
+        
+        entry.connect("activate", on_entry_activate)
         entry.connect("key-press-event", self._on_rename_key_press)
         
         btn_box.pack_start(cancel_btn, False, False, 0)
@@ -1743,7 +1795,40 @@ class Explorer(Window):
                 parent.reorder_child(self._rename_widget, idx + 1)
         
         self._rename_widget.show_all()
-        GLib.idle_add(entry.grab_focus)
+        
+        # ◄ Store entry reference for focus
+        self._rename_entry = entry
+        
+        # Prepare selection bounds
+        is_file = path.is_file()
+        has_dot = '.' in path.name and not path.name.startswith('.')
+        last_dot = path.name.rfind('.') if has_dot else -1
+        
+        def force_focus():
+            try:
+                # Force window to take keyboard focus
+                self.present()
+                
+                # Set focus at window level
+                self.set_focus(self._rename_entry)
+                
+                # Also try direct grab
+                self._rename_entry.grab_focus()
+                
+                # Select appropriate region
+                if is_file and last_dot > 0:
+                    self._rename_entry.select_region(0, last_dot)
+                else:
+                    self._rename_entry.select_region(0, len(path.name))
+            except Exception as e:
+                print(f"Focus error: {e}")
+            return False
+        
+        # Multiple attempts with increasing delays
+        GLib.idle_add(force_focus)
+        GLib.timeout_add(50, force_focus)
+        GLib.timeout_add(100, force_focus)
+        GLib.timeout_add(200, force_focus)
 
     def _on_rename_key_press(self, entry, event) -> bool:
         if event.keyval == Gdk.KEY_Escape:
@@ -1757,6 +1842,8 @@ class Explorer(Window):
             self._rename_widget = None
         self._rename_path = None
         self._menu_open = False
+        # ──── Disable keyboard when rename is done ────              # ◄ NEW
+        self._set_keyboard_interactive(False)
 
     def _do_rename_inline(self, new_name: str):
         if not self._rename_path:
