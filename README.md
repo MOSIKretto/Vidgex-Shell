@@ -21,14 +21,14 @@
   <img src="https://img.shields.io/badge/Shell%20for-Hyprland-0092CD?style=for-the-badge&logo=linux&logoColor=D9E0EE&labelColor=11111b" alt="Hyprland"/>
 </a>&ensp;<a href="https://github.com/Fabric-Development/fabric/">
   <img src="https://img.shields.io/badge/Powered%20by-Fabric-A6E3A1?style=for-the-badge&logo=python&logoColor=D9E0EE&labelColor=11111b" alt="Fabric"/>
-</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/develop/blob/main/LICENSE">
+</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/blob/main/LICENSE">
   <img src="https://img.shields.io/github/license/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=unlicense&color=CBA6F7&logoColor=D9E0EE&labelColor=11111b&label=License" alt="License"/>
 </a>
 
 <br/>
 <br/>
 
-<a href="https://github.com/MOSIKretto/Vidgex-Shell/develop/stargazers">
+<a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
   <img src="https://img.shields.io/github/stars/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=starship&color=F5A97F&logoColor=D9E0EE&labelColor=11111b" alt="Stars"/>
 </a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
   <img src="https://img.shields.io/github/issues/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=gitbook&color=B5E8E0&logoColor=D9E0EE&labelColor=11111b" alt="Issues"/>
