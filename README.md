@@ -28,7 +28,7 @@
 <br/>
 <br/>
 
-<a href="https://github.com/MOSIKretto/Vidgex-Shell//developstargazers">
+<a href="https://github.com/MOSIKretto/Vidgex-Shell/stargazers">
   <img src="https://img.shields.io/github/stars/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=starship&color=F5A97F&logoColor=D9E0EE&labelColor=11111b" alt="Stars"/>
 </a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/issues">
   <img src="https://img.shields.io/github/issues/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=gitbook&color=B5E8E0&logoColor=D9E0EE&labelColor=11111b" alt="Issues"/>
