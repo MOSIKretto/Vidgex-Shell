@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/Shell%20for-Hyprland-0092CD?style=for-the-badge&logo=linux&logoColor=D9E0EE&labelColor=11111b" alt="Hyprland"/>
 </a>&ensp;<a href="https://github.com/Fabric-Development/fabric/">
   <img src="https://img.shields.io/badge/Powered%20by-Fabric-A6E3A1?style=for-the-badge&logo=python&logoColor=D9E0EE&labelColor=11111b" alt="Fabric"/>
-</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/blob/main/LICENSE">
+</a>&ensp;<a href="https://github.com/MOSIKretto/Vidgex-Shell/develop/blob/main/LICENSE">
   <img src="https://img.shields.io/github/license/MOSIKretto/Vidgex-Shell?style=for-the-badge&logo=unlicense&color=CBA6F7&logoColor=D9E0EE&labelColor=11111b&label=License" alt="License"/>
 </a>
 
