@@ -1,12 +1,10 @@
 from fabric.widgets.box import Box
-
 from modules.Notifications.history import NotificationHistory, NotificationContainer
-
 from services.wayland import WaylandWindow as Window
 
 
 class NotificationPopup(Window):
-    __slots__ = ('widgets', 'notification_history', 'notification_container', 'show_box')
+    __slots__ = ('notification_history', 'notification_container')
 
     def __init__(self, **kwargs):
         super().__init__(
@@ -19,19 +17,19 @@ class NotificationPopup(Window):
             all_visible=True,
         )
 
-        self.widgets = kwargs.get("widgets")
-        self.notification_history = self.widgets.notification_history if self.widgets else NotificationHistory()
+        widgets = kwargs.get("widgets")
+        self.notification_history = widgets.notification_history if widgets else NotificationHistory()
 
         self.notification_container = NotificationContainer(
             notification_history_instance=self.notification_history,
             revealer_transition_type="slide-down",
         )
 
-        self.show_box = Box()
-        self.show_box.set_size_request(1, 1)
+        show_box = Box()
+        show_box.set_size_request(1, 1)
 
         self.add(Box(
             name="notification-popup-box",
             orientation="v",
-            children=[self.notification_container, self.show_box],
+            children=[self.notification_container, show_box],
         ))

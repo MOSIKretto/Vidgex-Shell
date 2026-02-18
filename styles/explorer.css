@@ -23,7 +23,7 @@
 }
 
 #explorer-container {
-    border-radius: 0px 20px 20px 0px;
+    border-radius: 0px 12px 12px 0px;
     padding: 12px;
     margin-top: 8px;
     margin-bottom: 8px;
@@ -106,21 +106,21 @@
 }
 
 #explorer-eject-header-btn:hover {
-    background-color: alpha(#ff6b6b, 0.15);
-    border-color: #ff6b6b;
+    background-color: alpha(var(--error), 0.15);
+    border-color: var(--error);
 }
 
 #explorer-eject-header-btn:hover * {
-    color: #ff6b6b;
+    color: var(--error);
 }
 
 #explorer-eject-header-btn:active {
-    background-color: #ff6b6b;
-    border-color: #ff6b6b;
+    background-color: var(--error);
+    border-color: var(--error);
 }
 
 #explorer-eject-header-btn:active * {
-    color: white;
+    color: var(--foreground);
 }
 
 #explorer-eject-header-btn:disabled {
@@ -130,9 +130,9 @@
 /* ==================== PATH BAR ==================== */
 
 #explorer-path-bar {
-    padding: 8px 12px;
+    padding: 12px 12px;
     background-color: var(--shadow);
-    border-radius: 8px;
+    border-radius: 12px;
     margin-bottom: 8px;
     border: 1px solid var(--primary);
 }
@@ -343,6 +343,23 @@
 }
 
 #explorer-file-row.selected * {
+    color: var(--on-primary);
+}
+
+/* ==================== DEFAULT APP HIGHLIGHT ==================== */
+
+#explorer-file-row.default-app {
+    border-color: alpha(var(--primary), 0.3);
+}
+
+.default-app-label {
+    color: var(--primary);
+    font-weight: 600;
+    opacity: 1;
+}
+
+#explorer-file-row:active .default-app-label,
+#explorer-file-row:checked .default-app-label {
     color: var(--on-primary);
 }
 
@@ -558,9 +575,9 @@
 /* ==================== STATUS BAR ==================== */
 
 #explorer-status-bar {
-    padding: 8px 12px;
+    padding: 12px 12px;
     background-color: var(--shadow);
-    border-radius: 8px;
+    border-radius: 12px;
     margin-top: 8px;
     border: 1px solid var(--primary);
 }
@@ -715,8 +732,6 @@ menu separator {
     margin-top: 6px;
 }
 
-/* ===== БАЗОВЫЙ СТИЛЬ ДЛЯ ОБЕИХ КНОПОК ===== */
-
 #explorer-rename-btn {
     background-color: var(--surface);
     border-radius: 6px;
@@ -727,8 +742,6 @@ menu separator {
     font-size: 11px;
     min-height: 24px;
 }
-
-/* ===== CANCEL — контур всегда виден ===== */
 
 #explorer-rename-btn.cancel {
     color: var(--error);
@@ -745,8 +758,6 @@ menu separator {
     border-color: var(--error);
     color: var(--on-primary);
 }
-
-/* ===== RENAME — контур primary, серая когда disabled ===== */
 
 #explorer-rename-btn.confirm {
     color: var(--primary);
@@ -775,4 +786,108 @@ menu separator {
 
 #explorer-revealer {
     background: transparent;
+}
+
+/* ==================== APP CHOOSER (INLINE LIST) ==================== */
+
+#explorer-app-chooser-header {
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background-color: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--primary);
+}
+
+#explorer-app-chooser-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-surface);
+    margin-left: 4px;
+}
+
+/* ==================== APP CHOOSER BACK BUTTON ==================== */
+
+#explorer-app-back {
+    background-color: var(--surface);
+    border-radius: 6px;
+    padding: 8px;
+    margin: 2px;
+    border: 1px solid var(--surface-bright);
+    transition: all 0.1s ease;
+    font-weight: bold;
+}
+
+#explorer-app-back:hover {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+}
+
+#explorer-app-back:active {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+#explorer-app-back:active * {
+    color: var(--on-primary);
+}
+
+#explorer-app-back-icon {
+    color: var(--primary);
+    font-size: 20px;
+}
+
+#explorer-app-back:active #explorer-app-back-icon {
+    color: var(--on-primary);
+}
+
+/* ==================== APP CHOOSER SEARCH ==================== */
+
+#explorer-app-search {
+    background-color: var(--surface);
+    border: 1px solid var(--surface-bright);
+    border-radius: 8px;
+    color: var(--on-surface);
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 20px;
+    margin-bottom: 4px;
+    caret-color: var(--primary);
+    transition: all 150ms ease-in-out;
+}
+
+#explorer-app-search:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 1px alpha(var(--primary), 0.3);
+}
+
+#explorer-app-search selection {
+    background-color: var(--primary);
+    color: var(--on-primary);
+}
+
+#explorer-app-search image {
+    color: var(--on-surface-variant);
+    opacity: 0.6;
+    margin: 0 4px;
+}
+
+#explorer-app-search:focus image {
+    color: var(--primary);
+    opacity: 1;
+}
+
+/* ==================== APP CHOOSER LIST ==================== */
+
+#explorer-app-list {
+    padding: 0px;
+}
+
+#explorer-app-list #explorer-sidebar-header {
+    margin-top: 4px;
+    padding: 6px 8px 2px 8px;
+}
+
+#explorer-app-list #explorer-sidebar-header:first-child {
+    margin-top: 0px;
 }

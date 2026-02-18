@@ -11,12 +11,10 @@ from services.image import CustomImage
 
 PERSISTENT_DIR = "/tmp/vidgex-shell/notifications"
 PERSISTENT_HISTORY_FILE = PERSISTENT_DIR + "/notification_history.json"
-
 MAX_NOTIFICATION_HISTORY = 20
 MAX_CACHED_IMAGES = 10
 MAX_POPUP_NOTIFICATIONS = 5
-
-_cache_dir_exists = False
+NOTIFICATION_WIDTH = 320
 
 
 def get_limited_apps_history():
@@ -24,19 +22,17 @@ def get_limited_apps_history():
 
 
 def get_history_ignored_apps():
-    return []
+    return set()
 
 
 def ensure_cache_dir():
-    global _cache_dir_exists
-    if not _cache_dir_exists:
-        GLib.mkdir_with_parents(PERSISTENT_DIR, 0o700)
-        _cache_dir_exists = True
+    GLib.mkdir_with_parents(PERSISTENT_DIR, 0o700)
 
 
 def cache_notification_pixbuf(notification_box):
-    notification = notification_box.notification
-    pixbuf = notification.image_pixbuf if notification else None
+    notif = notification_box.notification
+    pixbuf = getattr(notif, 'image_pixbuf', None)
+    
     if not pixbuf:
         return None
 
@@ -61,33 +57,32 @@ def get_app_icon_pixbuf(icon_path, width, height):
         return None
 
     try:
-        return GdkPixbuf.Pixbuf.new_from_file(icon_path).scale_simple(width, height, GdkPixbuf.InterpType.BILINEAR)
+        return GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_path, width, height, False)
     except Exception:
         return None
 
 
 def load_scaled_pixbuf(notification_box, width, height):
-    notification = getattr(notification_box, "notification", None)
-    if not notification:
+    notif = getattr(notification_box, "notification", None)
+    if not notif:
         return None
 
     cached_path = getattr(notification_box, "cached_image_path", None)
     if cached_path and GLib.file_test(cached_path, GLib.FileTest.EXISTS):
         try:
-            return GdkPixbuf.Pixbuf.new_from_file(cached_path).scale_simple(width, height, GdkPixbuf.InterpType.BILINEAR)
+            return GdkPixbuf.Pixbuf.new_from_file_at_scale(cached_path, width, height, False)
         except Exception:
             pass
 
-    if notification.image_pixbuf:
-        return notification.image_pixbuf.scale_simple(width, height, GdkPixbuf.InterpType.BILINEAR)
+    pixbuf = getattr(notif, 'image_pixbuf', None)
+    if pixbuf:
+        return pixbuf.scale_simple(width, height, GdkPixbuf.InterpType.BILINEAR)
 
-    return get_app_icon_pixbuf(notification.app_icon, width, height)
+    return get_app_icon_pixbuf(getattr(notif, 'app_icon', None), width, height)
 
 
 class ActionButton(Button):
     __slots__ = ('action', 'notification_box', '_handlers')
-
-    _style_classes = ("start-action", "end-action", "middle-action")
 
     def __init__(self, action: NotificationAction, index: int, total: int, notification_box):
         self.action = action
@@ -97,14 +92,15 @@ class ActionButton(Button):
             name="action-button",
             h_expand=True,
             on_clicked=self._on_clicked,
-            child=Label(
-                name="button-label", h_expand=True, h_align="fill",
-                ellipsization="end", max_chars_width=1, label=action.label,
-            ),
+            child=Label(name="button-label", h_expand=True, h_align="fill", ellipsization="end", max_chars_width=1, label=action.label),
         )
 
-        style_idx = 0 if index == 0 else (1 if index == total - 1 else 2)
-        self.add_style_class(self._style_classes[style_idx])
+        if index == 0:
+            self.add_style_class("start-action")
+        elif index == total - 1:
+            self.add_style_class("end-action")
+        else:
+            self.add_style_class("middle-action")
 
         self._handlers = (
             self.connect("enter-notify-event", self._on_enter),
@@ -142,10 +138,7 @@ class NotificationBox(Box):
     )
 
     def __init__(self, notification: Notification, timeout_ms=5000, **kwargs):
-        super().__init__(
-            name="notification-box", orientation="v",
-            h_align="fill", h_expand=True,
-        )
+        super().__init__(name="notification-box", orientation="v", h_align="fill", h_expand=True)
 
         self.notification = notification
         self.uuid = GLib.uuid_string_random()
@@ -162,12 +155,13 @@ class NotificationBox(Box):
         if self.timeout_ms > 0:
             self.start_timeout()
 
-        if notification.image_pixbuf:
+        if getattr(notification, 'image_pixbuf', None):
             self.cached_image_path = cache_notification_pixbuf(self)
 
         self.add(self._create_content())
 
-        if (actions := self._create_action_buttons()):
+        actions = self._create_action_buttons()
+        if actions:
             self.add(actions)
 
         self._hover_handlers = (
@@ -184,28 +178,6 @@ class NotificationBox(Box):
     def get_container(self):
         return self._container
 
-    def _create_close_button(self):
-        btn = Button(
-            name="notif-close-button",
-            child=Label(name="notif-close-label", markup=icons.cancel),
-        )
-
-        def on_close(*_):
-            if self.notification:
-                self.notification.close("dismissed-by-user")
-
-        def on_enter(*_):
-            self.hover_button(btn)
-
-        def on_leave(*_):
-            self.unhover_button(btn)
-
-        btn.connect("clicked", on_close)
-        btn.connect("enter-notify-event", on_enter)
-        btn.connect("leave-notify-event", on_leave)
-
-        return btn
-
     def _create_content(self):
         notif = self.notification
 
@@ -214,46 +186,33 @@ class NotificationBox(Box):
             children=[CustomImage(pixbuf=load_scaled_pixbuf(self, 48, 48)), Box(v_expand=True)],
         )
 
-        summary = Label(
-            name="notification-summary", 
-            markup=notif.summary,
-            h_align="start", 
-            max_chars_width=16, 
-            ellipsization="end",
-        )
+        summary = Label(name="notification-summary", markup=notif.summary, h_align="start", max_chars_width=20, ellipsization="end")
+        app_name = Label(name="notification-app-name", markup=notif.app_name, h_align="start", max_chars_width=12, ellipsization="end")
 
-        app_name = Label(
-            name="notification-app-name", 
-            markup=notif.app_name,
-            h_align="start", 
-            max_chars_width=16, 
-            ellipsization="end",
-        )
-
-        if notif.body:
-            body = Label(markup=notif.body, h_align="start", max_chars_width=34, ellipsization="end")
+        body_text = getattr(notif, 'body', None)
+        if body_text:
+            body = Label(name="notification-body", markup=body_text, h_align="start", max_chars_width=40, ellipsization="end")
             body.set_single_line_mode(True)
         else:
             body = Box()
 
         text_box = Box(
-            name="notification-text", 
-            orientation="v", 
-            v_align="center", 
-            h_expand=True,
+            name="notification-text", orientation="v", v_align="center", h_expand=True,
             children=[
                 Box(name="notification-summary-box", orientation="h", children=[summary, Box(name="notif-sep"), app_name]),
                 body,
             ],
         )
 
-        return Box(
-            name="notification-content", spacing=8,
-            children=[image_box, text_box, Box(orientation="v", children=[self._create_close_button()])],
-        )
+        close_btn = Button(name="notif-close-button", child=Label(name="notif-close-label", markup=icons.cancel))
+        close_btn.connect("clicked", lambda *_: self.notification and self.notification.close("dismissed-by-user"))
+        close_btn.connect("enter-notify-event", lambda *_: self.hover_button(close_btn))
+        close_btn.connect("leave-notify-event", lambda *_: self.unhover_button(close_btn))
+
+        return Box(name="notification-content", spacing=8, h_expand=True, children=[image_box, text_box, Box(orientation="v", v_align="start", children=[close_btn])])
 
     def _create_action_buttons(self):
-        actions = self.notification.actions
+        actions = getattr(self.notification, 'actions', None)
         if not actions:
             return None
 
@@ -315,10 +274,11 @@ class NotificationBox(Box):
                 pass
         self._action_buttons.clear()
 
-        if self.cached_image_path and GLib.file_test(self.cached_image_path, GLib.FileTest.EXISTS):
+        cached = self.cached_image_path
+        if cached and GLib.file_test(cached, GLib.FileTest.EXISTS):
             if not self._is_history or from_history_delete:
                 try:
-                    GLib.unlink(self.cached_image_path)
+                    GLib.unlink(cached)
                 except Exception:
                     pass
 

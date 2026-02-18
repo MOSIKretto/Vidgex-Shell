@@ -219,7 +219,7 @@ class NetworkButton(Box):
 
 
 class BluetoothButton(Box):
-    __slots__ = ('_w', '_n', '_en',
+    __slots__ = ('_w', '_n', '_en', '_sw', '_pending',
                  'bluetooth_icon', 'bluetooth_label', 'bluetooth_status_text',
                  'bluetooth_status_button', 'bluetooth_menu_button', 'bluetooth_menu_label')
 
@@ -227,31 +227,46 @@ class BluetoothButton(Box):
         super().__init__()
         self._w, self._n = widgets, notch
         self._en = False
+        self._pending = False
 
         self._build()
-        self._setup_sig()
+        GLib.timeout_add(500, self._delayed_init)
+
+    def _delayed_init(self):
         self.update_state()
+        return False
 
     def _build(self):
-        self.bluetooth_icon = Label(name="bluetooth-icon")
-        self.bluetooth_label = Label(name="bluetooth-label", label="Bluetooth", justification="left")
-        self.bluetooth_status_text = Label(name="bluetooth-status", justification="left")
+        self.bluetooth_icon = Label(
+            name="bluetooth-icon", 
+            markup=icons.bluetooth_off
+        )
+        self.bluetooth_label = Label(
+            name="bluetooth-label", label="Bluetooth", justification="left"
+        )
+        self.bluetooth_status_text = Label(
+            name="bluetooth-status", 
+            label=_OFF,
+            justification="left"
+        )
 
         self.bluetooth_status_button = Button(
             name="bluetooth-status-button",
             h_expand=True,
             child=_content(
-                self.bluetooth_icon, 
-                self.bluetooth_label, 
+                self.bluetooth_icon,
+                self.bluetooth_label,
                 self.bluetooth_status_text
             ),
-            on_clicked=lambda *_: _async(self._toggle, self._upd_ui)
+            on_clicked=self._on_toggle_click
         )
         _hover(self.bluetooth_status_button)
 
-        self.bluetooth_menu_label = Label(name="bluetooth-menu-label", markup=icons.chevron_right)
+        self.bluetooth_menu_label = Label(
+            name="bluetooth-menu-label", markup=icons.chevron_right
+        )
         self.bluetooth_menu_button = Button(
-            name="bluetooth-menu-button", 
+            name="bluetooth-menu-button",
             child=self.bluetooth_menu_label,
             on_clicked=lambda *_: self._open_menu()
         )
@@ -260,64 +275,76 @@ class BluetoothButton(Box):
         self.add(self.bluetooth_status_button)
         self.add(self.bluetooth_menu_button)
 
-    def _setup_sig(self):
-        if hasattr(self._w, 'bluetooth'):
-            bt = self._w.bluetooth
-            if hasattr(bt, 'client') and hasattr(bt.client, 'connect'):
-                try:
-                    bt.client.connect('power-changed', lambda *_: self.update_state())
-                    bt.client.connect('device-added', self.update_state)
-                    bt.client.connect('device-removed', self.update_state)
-                except:
-                    pass
+        self._sw = (
+            self, self.bluetooth_icon,
+            self.bluetooth_label, self.bluetooth_status_text,
+            self.bluetooth_status_button, self.bluetooth_menu_button,
+            self.bluetooth_menu_label
+        )
 
     def _get_pwr(self):
+        """Получить состояние через rfkill"""
         try:
-            if _chk("bluetoothd"):
-                _, out, _, c = GLib.spawn_command_line_sync("bluetoothctl show")
-                if c == 0 and out:
-                    for ln in out.decode('utf-8', errors='ignore').splitlines():
-                        if "Powered:" in ln:
-                            return "yes" in ln
             _, out, _, c = GLib.spawn_command_line_sync("rfkill list bluetooth")
             if c == 0 and out:
-                o = out.decode('utf-8', errors='ignore').lower()
-                return "soft blocked: no" in o and "hard blocked: no" in o
+                text = out.decode('utf-8', errors='ignore').lower()
+                if "soft blocked: no" in text:
+                    return True
+                if "soft blocked: yes" in text:
+                    return False
         except:
             pass
         return False
 
-    def _toggle(self):
+    def _on_toggle_click(self, *_):
+        """Обработчик клика"""
+        if self._pending:
+            return
+        
+        self._pending = True
+        cur_state = self._get_pwr()
+        
+        cmd = 'rfkill unblock bluetooth' if not cur_state else 'rfkill block bluetooth'
+        
         try:
-            cur = self._get_pwr()
-            if _chk("bluetoothd"):
-                GLib.spawn_command_line_sync(f"bluetoothctl power {'off' if cur else 'on'}")
-            else:
-                GLib.spawn_command_line_sync(f"rfkill {'block' if cur else 'unblock'} bluetooth")
-            return not cur
+            GLib.spawn_command_line_sync(cmd)
         except:
-            return self._en
+            pass
+        
+        GLib.timeout_add(300, self._finish_toggle)
+
+    def _finish_toggle(self):
+        """Завершение переключения"""
+        self._pending = False
+        self._upd_ui(self._get_pwr())
+        return False
 
     def _upd_ui(self, en=None):
+        """Обновить UI"""
         if en is None:
-            en = self._get_pwr()
-        self._en = en
-        self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
+            en = self._en
+        else:
+            self._en = en
+            
+        self.bluetooth_icon.set_markup(
+            icons.bluetooth if en else icons.bluetooth_off
+        )
         self.bluetooth_status_text.set_label(_ON if en else _OFF)
+        _dis(self._sw, not en)
+        return False
 
     def update_state(self, *_):
+        """Обновить состояние из системы"""
         _async(self._get_pwr, self._upd_ui)
+        return False
 
     def _open_menu(self):
         if self._n:
             self._n.open_notch("bluetooth")
-        elif hasattr(self._w, 'show_bt'):
+        elif self._w and hasattr(self._w, 'show_bt'):
             self._w.show_bt()
         else:
-            try:
-                GLib.spawn_command_line_async("blueman-manager")
-            except:
-                pass
+            exec_shell_command_async("blueman-manager")
 
     def cleanup(self):
         self._w = self._n = None
@@ -409,7 +436,7 @@ class CaffeineButton(_ToggleBtn):
                 self._pid = pid
                 GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
             except:
-                GLib.spawn_command_line_async(self.START)
+                exec_shell_command_async(self.START)
                 self._pid = None
             return True
         except:
@@ -459,7 +486,7 @@ class EyesHandsButton(_ToggleBtn):
                 self._pid = pid
                 GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
             except:
-                GLib.spawn_command_line_async(self.START)
+                exec_shell_command_async(self.START)
                 self._pid = None
             return True
         except:
@@ -472,8 +499,6 @@ class EyesHandsButton(_ToggleBtn):
 
 
 class Buttons(Gtk.Grid):
-    __slots__ = ('_w', '_n', 'network_button', 'bluetooth_button',
-                 'night_mode_button', 'caffeine_button', 'eyes_hands_button')
 
     def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")
@@ -498,15 +523,3 @@ class Buttons(Gtk.Grid):
         self.attach(self.eyes_hands_button, 4, 0, 1, 1)
 
         self.show_all()
-
-    def refresh_all_states(self):
-        self.network_button.update_state()
-        self.bluetooth_button.update_state()
-        self.night_mode_button.update_state()
-        self.caffeine_button.update_state()
-        self.eyes_hands_button.update_state()
-
-    def cleanup(self):
-        self.network_button.cleanup()
-        self.bluetooth_button.cleanup()
-        self._w = self._n = None

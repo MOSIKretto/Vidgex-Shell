@@ -40,6 +40,11 @@
   color: var(--outline);
 }
 
+#notification-body {
+  color: var(--outline);
+}
+
+/* Popup уведомления */
 #notification-stack-box {
   border-radius: 32px;
   padding: 16px;
@@ -70,7 +75,6 @@
   font-size: 16px;
 }
 
-
 #nav-button {
   padding: 8px;
   border-radius: 16px;
@@ -88,13 +92,13 @@
   font-size: 16px;
 }
 
-
 #nav-button:hover #nav-button-label.close,
 #nav-button:hover #nav-button-label {
   color: var(--primary);
 }
 
-#notification-history scrollbar {
+/* История уведомлений - скроллбар как в bluetooth-devices */
+#notification-history-scrolled-window {
   background: transparent;
 }
 
