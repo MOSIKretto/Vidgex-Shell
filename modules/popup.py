@@ -18,18 +18,27 @@ class NotificationPopup(Window):
         )
 
         widgets = kwargs.get("widgets")
-        self.notification_history = widgets.notification_history if widgets else NotificationHistory()
+        self.notification_history = (
+            widgets.notification_history if widgets else NotificationHistory()
+        )
 
         self.notification_container = NotificationContainer(
             notification_history_instance=self.notification_history,
             revealer_transition_type="slide-down",
         )
 
-        show_box = Box()
-        show_box.set_size_request(1, 1)
+        spacer = Box()
+        spacer.set_size_request(1, 1)
 
         self.add(Box(
             name="notification-popup-box",
             orientation="v",
-            children=[self.notification_container, show_box],
+            children=[self.notification_container, spacer],
         ))
+
+    def destroy(self):
+        if self.notification_container:
+            self.notification_container.destroy()
+            self.notification_container = None
+        
+        super().destroy()

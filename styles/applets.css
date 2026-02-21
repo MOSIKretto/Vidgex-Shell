@@ -29,6 +29,13 @@
   transition: none;
 }
 
+/* Стили для слотов устройств */
+#bluetooth-device-slot,
+#wifi-network-slot {
+    margin-bottom: 4px;
+    padding: 2px;
+}
+
 /* Стили для иконок в кнопках */
 #bluetooth-back-label,
 #network-back-label,
@@ -67,13 +74,15 @@
   margin: 4px 0;
 }
 
-/* Стили для подключенных состояний */
+/* === СТИЛИ ДЛЯ ПОДКЛЮЧЕННЫХ СОСТОЯНИЙ === */
+
+/* Зеленая кнопка при подключении */
 #wifi-connect.connected,
 #bluetooth-connect.connected {
   background-color: var(--green);
 }
 
-/* ЧЕРНЫЙ ТЕКСТ ДЛЯ ПОДКЛЮЧЕННЫХ КНОПОК */
+/* Черный текст и иконки на зеленой кнопке */
 #bluetooth-connect.connected,
 #bluetooth-connect.connected label  {
   color: var(--shadow);
@@ -89,20 +98,7 @@
   margin: 2px;
 }
 
-/* Контейнеры для списков */
-#bluetooth-paired,
-#bluetooth-available,
-.saved-box,
-.available-box {
-  background-color: var(--surface);
-  border-radius: 20px;
-  padding: 4px;
-  margin: 4px 0;
-}
-
-#bt-sep {
-  border-radius: 16px;
-}
+/* === ЦВЕТНЫЕ АКЦЕНТЫ === */
 
 /* Цвет иконок при сканировании */
 #bluetooth-scan-label,
@@ -111,7 +107,7 @@
   color: var(--primary);
 }
 
-/* ИНТЕРЕСНАЯ МИНИМАЛИСТИЧНАЯ АНИМАЦИЯ */
+/* АНИМАЦИЯ СКАНИРОВАНИЯ */
 #bluetooth-scan.scanning,
 #network-scan.scanning {
   background: linear-gradient(90deg, 
@@ -141,33 +137,9 @@
   }
 }
 
-/* Альтернатива: волнообразная анимация градиента */
-#bluetooth-scan.scanning.alternative,
-#network-scan.scanning.alternative {
-  background: linear-gradient(90deg, 
-    var(--surface), 
-    var(--surface-bright) 25%, 
-    var(--surface) 50%,
-    var(--surface-bright) 75%,
-    var(--surface));
-  background-size: 200% 100%;
-  border-color: var(--primary);
-  animation-name: scanning-wave;
-  animation-duration: 2s;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
+/* === НАЖАТИЕ КНОПОК (ACTIVE/PRESSED) === */
 
-@keyframes scanning-wave {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* Стили для кнопки pressed */
+/* Стандартные кнопки */
 #bluetooth-scan.pressed,
 #bluetooth-back.pressed,
 #network-scan.pressed,
@@ -185,7 +157,7 @@
   color: var(--cursor);
 }
 
-/* Кнопки удаления при нажатии */
+/* Кнопки удаления (Красные при нажатии/ховере) */
 #wifi-delete.pressed,
 #bluetooth-delete.pressed,
 #wifi-delete:active,
@@ -197,7 +169,7 @@
   color: var(--cursor);
 }
 
-/* Для подключенных кнопок Bluetooth при нажатии */
+/* Подключенные кнопки (Зеленые -> Темные при нажатии) */
 #bluetooth-connect.connected.pressed,
 #bluetooth-connect.connected:active {
   background-color: var(--shadow);
@@ -205,88 +177,21 @@
   color: var(--cursor);
 }
 
-/* Для подключенных кнопок Bluetooth при нажатии - черный текст для метки */
 #bluetooth-connect.connected.pressed label,
 #bluetooth-connect.connected:active label {
   color: var(--cursor);
 }
 
-#password-block {
-  margin: 8px;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-}
-#wifi-network-slot {
-  margin-bottom: 4px;
-}
+/* === КОНТЕЙНЕР ПАРОЛЯ WI-FI (из исходника) === */
 
-/* ===== СТИЛИ ДЛЯ КНОПОК В КОНТЕЙНЕРЕ ВВОДА ПАРОЛЯ ===== */
-
-/* Базовый стиль для кнопок (как у кнопки подключения в WiFi) */
-#password-entry-container button {
+#password-entry-container {
   background-color: var(--surface);
-  border-radius: 8px;
-  padding: 8px;
-  margin: 2px;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px;
   border: 1px solid var(--surface-bright);
-  transition: all 0.1s ease;
-  font-weight: bold;
 }
 
-/* Кнопка Отмена - красные акценты */
-#password-entry-container button:nth-child(1) {
-  color: var(--red);
-  border-color: var(--red);
-}
-
-/* Кнопка ОК - синие акценты */
-#password-entry-container button:nth-child(2) {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-/* Hover эффекты для всех активных кнопок */
-#password-entry-container button:nth-child(1):hover,
-#password-entry-container button:nth-child(2):hover {
-  background-color: var(--surface-bright);
-  border-color: var(--primary);
-}
-
-/* Специфичные hover цвета */
-#password-entry-container button:nth-child(1):hover {
-  border-color: var(--red);
-}
-
-/* Состояние disabled для кнопки ОК */
-#password-entry-container button:nth-child(2):disabled {
-  background-color: transparent;
-  border-color: var(--surface-bright);
-  color: var(--outline);
-  opacity: 0.6;
-}
-
-/* Active/pressed состояния */
-#password-entry-container button:nth-child(1):active,
-#password-entry-container button:nth-child(2):active,
-#password-entry-container button:nth-child(1).pressed,
-#password-entry-container button:nth-child(2).pressed {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: var(--cursor);
-}
-
-/* Особый случай для кнопки Отмена в active состоянии */
-#password-entry-container button:nth-child(1):active,
-#password-entry-container button:nth-child(1).pressed {
-  background-color: var(--red);
-  border-color: var(--red);
-  color: var(--cursor);
-}
-
-/* ===== ДОПОЛНИТЕЛЬНЫЕ СТИЛИ ДЛЯ КОНСИСТЕНТНОСТИ ===== */
-
-/* Поле ввода в контейнере */
 #password-entry-container entry {
   background-color: var(--surface);
   border: 1px solid var(--surface-bright);
@@ -297,17 +202,63 @@
   margin-bottom: 12px;
 }
 
-/* Эффект фокуса для поля ввода */
 #password-entry-container entry:focus {
   border-color: var(--primary);
   border-width: 1px;
 }
 
-/* Контейнер для пароля */
-#password-entry-container {
+#password-entry-container button {
   background-color: var(--surface);
-  border-radius: 12px;
-  padding: 16px;
-  margin: 8px;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 2px;
   border: 1px solid var(--surface-bright);
+  transition: all 0.1s ease;
+  font-weight: bold;
+}
+
+/* Кнопка Отмена */
+#password-entry-container button:nth-child(1) {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+/* Кнопка ОК */
+#password-entry-container button:nth-child(2) {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+#password-entry-container button:nth-child(1):hover,
+#password-entry-container button:nth-child(2):hover {
+  background-color: var(--surface-bright);
+  border-color: var(--primary);
+}
+
+#password-entry-container button:nth-child(1):hover {
+  border-color: var(--red);
+}
+
+#password-entry-container button:nth-child(2):disabled {
+  background-color: transparent;
+  border-color: var(--surface-bright);
+  color: var(--outline);
+  opacity: 0.6;
+}
+
+#password-entry-container button:nth-child(1):active,
+#password-entry-container button:nth-child(2):active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--cursor);
+}
+
+#password-entry-container button:nth-child(1):active {
+  background-color: var(--red);
+  border-color: var(--red);
+  color: var(--cursor);
+}
+#bluetooth-devices-scroll,
+#bluetooth-devices-scroll viewport {
+    background: transparent;
 }

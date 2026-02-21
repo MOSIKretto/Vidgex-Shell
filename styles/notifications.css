@@ -97,11 +97,6 @@
   color: var(--primary);
 }
 
-/* История уведомлений - скроллбар как в bluetooth-devices */
-#notification-history-scrolled-window {
-  background: transparent;
-}
-
 #notification-box-hist {
   padding: 8px;
   border-radius: 12px;
@@ -159,4 +154,141 @@
 #notif-date-sep-label {
   color: var(--outline);
   font-weight: bold;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ГРУППЫ УВЕДОМЛЕНИЙ  –  GNOME 49-style stacking
+   ══════════════════════════════════════════════════════════════════════ */
+
+#notification-group {
+  margin-bottom: 4px;
+}
+
+/* ── Header (Box = expand-button + round close-button) ─────────────── */
+
+#notification-group-header {
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 4px;
+  border: 2px solid transparent;
+  margin-bottom: 4px;
+  transition: all 200ms ease-in-out;
+}
+
+#notification-group-header.expanded {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* expand / collapse button  –  transparent inside header */
+#group-expand-button {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+
+#group-header-content {
+  min-height: 24px;
+}
+
+#group-app-name {
+  font-weight: bold;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+#group-count-label {
+  color: var(--shadow);
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 8px;
+  background-color: var(--primary);
+  border-radius: 8px;
+  margin-right: 4px;
+}
+
+#group-expand-icon {
+  color: var(--outline);
+  font-size: 14px;
+}
+
+/* expanded text colours */
+#notification-group-header.expanded #group-app-name,
+#notification-group-header.expanded #group-count-label,
+#notification-group-header.expanded #group-expand-icon {
+  color: var(--shadow);
+}
+
+#notification-group-header.expanded #group-count-label {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* round close button inside expanded header */
+#notification-group-header.expanded > #notif-close-button {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+#notification-group-header.expanded > #notif-close-button:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+#notification-group-header.expanded > #notif-close-button #notif-close-label {
+  color: var(--shadow);
+}
+
+/* ── Stack indicators  –  «card edges» behind the first card ──────── */
+
+#stack-indicators {
+  margin-top: -4px;
+}
+
+#stack-indicator.first {
+  min-height: 8px;
+  margin-left: 6px;
+  margin-right: 6px;
+  background-color: var(--surface);
+  border-radius: 0 0 12px 12px;
+}
+
+#stack-indicator.second {
+  min-height: 6px;
+  margin-top: 1px;
+  margin-left: 14px;
+  margin-right: 14px;
+  background-color: var(--surface-bright);
+  border-radius: 0 0 10px 10px;
+  opacity: 0.5;
+}
+
+/* ── Stacked (expanded) container ─────────────────────────────────── */
+
+#group-stacked-container {
+  margin-top: 4px;
+}
+
+#group-stacked-container #notification-box-hist {
+  border-color: var(--surface);
+  opacity: 0.95;
+  transition: opacity 150ms ease-in-out, border-color 150ms ease-in-out;
+}
+
+#group-stacked-container #notification-box-hist:hover {
+  opacity: 1;
+  border-color: var(--primary);
+}
+
+/* ── Spacing between groups and date separators ───────────────────── */
+
+#notification-group + #notification-group {
+  margin-top: 8px;
+}
+
+#notification-group + #notif-date-sep {
+  margin-top: 12px;
+}
+
+#notif-date-sep + #notification-group {
+  margin-top: 8px;
 }
