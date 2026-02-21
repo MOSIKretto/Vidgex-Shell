@@ -16,9 +16,8 @@ from gi.repository import GLib, Gtk
 from .notification_box import (
     NotificationBox, NotificationGroup, load_scaled_pixbuf, get_history_ignored_apps,
     PERSISTENT_HISTORY_FILE, MAX_NOTIFICATION_HISTORY, MAX_POPUP_NOTIFICATIONS,
-    PERSISTENT_DIR, HistoricalNotification, NOTIFICATION_WIDTH,
-    save_notification_image, delete_notification_image, clear_all_notification_images,
-    submit_io_task
+    HistoricalNotification, NOTIFICATION_WIDTH, save_notification_image, 
+    delete_notification_image, clear_all_notification_images, submit_io_task
 )
 import services.icons as icons
 from services.image import CustomImage
