@@ -1,9 +1,12 @@
+import os
+import subprocess
+import threading
+from gi.repository import Gdk, GLib, Gtk
+
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
-
-from gi.repository import Gdk, GLib, Gtk
 
 import services.icons as icons
 from modules.Notch.Widgets.network import NetworkClient
@@ -14,17 +17,16 @@ _WI = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
 _AN = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
 _ON, _OFF = "Enabled", "Disabled"
 
-
 def _hover(w):
     w.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    cur = [None]
+    w._cursor = None 
 
     def ent(w, _):
         win = w.get_window()
         if win:
-            if not cur[0]:
-                cur[0] = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
-            win.set_cursor(cur[0])
+            if not w._cursor:
+                w._cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
+            win.set_cursor(w._cursor)
 
     def lv(w, _):
         win = w.get_window()
@@ -37,25 +39,28 @@ def _hover(w):
 
 def _chk(pat):
     try:
-        _, _, _, c = GLib.spawn_command_line_sync(f"pgrep -f '{pat}'")
-        return c == 0
-    except:
+        r = subprocess.run(
+            ["pgrep", "-f", pat], 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL
+        )
+        return r.returncode == 0
+    except Exception:
         return False
 
 
-def _async(fn, cb=None):
-    def w(_):
-        r = fn()
-        if cb:
-            GLib.idle_add(cb, r)
-    GLib.Thread.new(None, w, None)
+def _async_exec(target, callback=None):
+    def worker():
+        res = target()
+        if callback:
+            GLib.idle_add(callback, res)
+    threading.Thread(target=worker, daemon=True).start()
 
 
-def _dis(ws, d):
-    m = "add_style_class" if d else "remove_style_class"
+def _dis(ws, disabled):
+    m = "add_style_class" if disabled else "remove_style_class"
     for w in ws:
-        if hasattr(w, m):
-            getattr(w, m)("disabled")
+        getattr(w, m)("disabled")
 
 
 def _content(ic, ti, st):
@@ -64,9 +69,7 @@ def _content(ic, ti, st):
         children=[
             ic,
             Box(
-                orientation="v", 
-                h_align="start", 
-                v_align="center", 
+                orientation="v", h_align="start", v_align="center",
                 children=[
                     Box(children=[ti, Box(h_expand=True)]),
                     Box(children=[st, Box(h_expand=True)])
@@ -79,13 +82,14 @@ def _content(ic, ti, st):
 class NetworkButton(Box):
     __slots__ = ('_w', '_n', '_cl', '_aid', '_uid', '_ast', '_sw',
                  'network_icon', 'network_label', 'network_ssid',
-                 'network_status_button', 'network_menu_button', 'network_menu_label')
+                 'network_status_button', 'network_menu_button', 'network_menu_label', '_last_ico')
 
     def __init__(self, widgets=None, notch=None):
         super().__init__()
         self._w, self._n = widgets, notch
         self._aid = self._uid = None
         self._ast = 0
+        self._last_ico = None
 
         self._cl = NetworkClient()
         self._build()
@@ -98,21 +102,15 @@ class NetworkButton(Box):
         self.network_ssid = Label(name="network-ssid", justification="left")
 
         self.network_status_button = Button(
-            name="network-status-button", 
-            h_expand=True,
-            child=_content(
-                self.network_icon, 
-                self.network_label, 
-                self.network_ssid
-            ),
-            on_clicked=self._stat_click
+            name="network-status-button", h_expand=True,
+            child=_content(self.network_icon, self.network_label, self.network_ssid),
+            on_clicked=lambda *_: getattr(self._cl.wifi_device, "toggle_wifi", lambda: None)()
         )
         _hover(self.network_status_button)
 
         self.network_menu_label = Label(name="network-menu-label", markup=icons.chevron_right)
         self.network_menu_button = Button(
-            name="network-menu-button", 
-            child=self.network_menu_label,
+            name="network-menu-button", child=self.network_menu_label,
             on_clicked=self._menu_click
         )
         _hover(self.network_menu_button)
@@ -121,35 +119,22 @@ class NetworkButton(Box):
         self.add(self.network_menu_button)
 
         self._sw = (
-            self, self.network_icon, 
-            self.network_label, 
-            self.network_ssid,
-            self.network_status_button, 
-            self.network_menu_button, 
-            self.network_menu_label
+            self, self.network_icon, self.network_label, self.network_ssid,
+            self.network_status_button, self.network_menu_button, self.network_menu_label
         )
 
-    def _stat_click(self, *_):
-        wifi = self._cl.wifi_device
-        if wifi:
-            wifi.toggle_wifi()
-
     def _menu_click(self, *_):
-        if self._n:
-            self._n.open_notch("network_applet")
-        elif self._w and hasattr(self._w, 'show_network_applet'):
-            self._w.show_network_applet()
+        if self._n: self._n.open_notch("network_applet")
+        elif self._w and hasattr(self._w, 'show_network_applet'): self._w.show_network_applet()
 
     def _ready(self, *_):
-        wifi = self._cl.wifi_device
-        if wifi:
+        if wifi := self._cl.wifi_device:
             wifi.connect('notify::enabled', lambda *_: self._sched())
             wifi.connect('notify::ssid', lambda *_: self._sched())
             self._sched()
 
     def _sched(self):
-        if self._uid:
-            GLib.source_remove(self._uid)
+        if self._uid: GLib.source_remove(self._uid)
         self._uid = GLib.timeout_add(100, self._do_upd)
 
     def _do_upd(self):
@@ -157,8 +142,10 @@ class NetworkButton(Box):
         self.update_state()
         return False
 
-    def _wifi_ic(self, s):
-        return _WI[0] if s < _TH[0] else (_WI[1] if s < _TH[1] else (_WI[2] if s < _TH[2] else _WI[3]))
+    def _set_icon(self, markup):
+        if self._last_ico != markup:
+            self.network_icon.set_markup(markup)
+            self._last_ico = markup
 
     def _start_anim(self):
         if self._aid is None:
@@ -175,7 +162,8 @@ class NetworkButton(Box):
         if not wifi or not wifi.enabled or (wifi.state == "activated" and wifi.ssid != "Отключено"):
             self._stop_anim()
             return False
-        GLib.idle_add(self.network_icon.set_markup, _AN[self._ast])
+        
+        self._set_icon(_AN[self._ast])
         self._ast = (self._ast + 1) % 6
         return True
 
@@ -184,7 +172,7 @@ class NetworkButton(Box):
 
         if wifi and not wifi.enabled:
             self._stop_anim()
-            self.network_icon.set_markup(icons.wifi_off)
+            self._set_icon(icons.wifi_off)
             self.network_ssid.set_label(_OFF)
             _dis(self._sw, True)
             return
@@ -193,19 +181,22 @@ class NetworkButton(Box):
 
         if getattr(self._cl, 'primary_device', 'wireless') == "wired":
             self._stop_anim()
-            self.network_icon.set_markup(icons.world if eth and eth.internet == "activated" else icons.world_off)
+            self._set_icon(icons.world if eth and getattr(eth, "internet", "") == "activated" else icons.world_off)
             return
 
         if not wifi:
             self._stop_anim()
-            self.network_icon.set_markup(icons.wifi_off)
+            self._set_icon(icons.wifi_off)
             return
 
         if wifi.state == "activated" and wifi.ssid != "Отключено":
             self._stop_anim()
             s = wifi.ssid
             self.network_ssid.set_label(s[:10] + "..." if len(s) > 10 else s)
-            self.network_icon.set_markup(self._wifi_ic(wifi.strength))
+            
+            st = wifi.strength
+            ic = _WI[0] if st < _TH[0] else (_WI[1] if st < _TH[1] else (_WI[2] if st < _TH[2] else _WI[3]))
+            self._set_icon(ic)
         else:
             self.network_ssid.set_label(_ON)
             self._start_anim()
@@ -226,49 +217,27 @@ class BluetoothButton(Box):
     def __init__(self, widgets=None, notch=None):
         super().__init__()
         self._w, self._n = widgets, notch
-        self._en = False
-        self._pending = False
+        self._en = self._pending = False
 
         self._build()
-        GLib.timeout_add(500, self._delayed_init)
-
-    def _delayed_init(self):
         self.update_state()
-        return False
 
     def _build(self):
-        self.bluetooth_icon = Label(
-            name="bluetooth-icon", 
-            markup=icons.bluetooth_off
-        )
-        self.bluetooth_label = Label(
-            name="bluetooth-label", label="Bluetooth", justification="left"
-        )
-        self.bluetooth_status_text = Label(
-            name="bluetooth-status", 
-            label=_OFF,
-            justification="left"
-        )
+        self.bluetooth_icon = Label(name="bluetooth-icon", markup=icons.bluetooth_off)
+        self.bluetooth_label = Label(name="bluetooth-label", label="Bluetooth", justification="left")
+        self.bluetooth_status_text = Label(name="bluetooth-status", label=_OFF, justification="left")
 
         self.bluetooth_status_button = Button(
-            name="bluetooth-status-button",
-            h_expand=True,
-            child=_content(
-                self.bluetooth_icon,
-                self.bluetooth_label,
-                self.bluetooth_status_text
-            ),
+            name="bluetooth-status-button", h_expand=True,
+            child=_content(self.bluetooth_icon, self.bluetooth_label, self.bluetooth_status_text),
             on_clicked=self._on_toggle_click
         )
         _hover(self.bluetooth_status_button)
 
-        self.bluetooth_menu_label = Label(
-            name="bluetooth-menu-label", markup=icons.chevron_right
-        )
+        self.bluetooth_menu_label = Label(name="bluetooth-menu-label", markup=icons.chevron_right)
         self.bluetooth_menu_button = Button(
-            name="bluetooth-menu-button",
-            child=self.bluetooth_menu_label,
-            on_clicked=lambda *_: self._open_menu()
+            name="bluetooth-menu-button", child=self.bluetooth_menu_label,
+            on_clicked=self._open_menu
         )
         _hover(self.bluetooth_menu_button)
 
@@ -276,75 +245,51 @@ class BluetoothButton(Box):
         self.add(self.bluetooth_menu_button)
 
         self._sw = (
-            self, self.bluetooth_icon,
-            self.bluetooth_label, self.bluetooth_status_text,
-            self.bluetooth_status_button, self.bluetooth_menu_button,
-            self.bluetooth_menu_label
+            self, self.bluetooth_icon, self.bluetooth_label, self.bluetooth_status_text,
+            self.bluetooth_status_button, self.bluetooth_menu_button, self.bluetooth_menu_label
         )
 
     def _get_pwr(self):
-        """Получить состояние через rfkill"""
         try:
-            _, out, _, c = GLib.spawn_command_line_sync("rfkill list bluetooth")
-            if c == 0 and out:
-                text = out.decode('utf-8', errors='ignore').lower()
-                if "soft blocked: no" in text:
-                    return True
-                if "soft blocked: yes" in text:
-                    return False
-        except:
+            base_dir = "/sys/class/rfkill/"
+            for d in os.listdir(base_dir):
+                with open(os.path.join(base_dir, d, "type"), "r") as f:
+                    if f.read().strip() == "bluetooth":
+                        with open(os.path.join(base_dir, d, "state"), "r") as sf:
+                            return sf.read().strip() == "1"
+        except Exception:
             pass
         return False
 
     def _on_toggle_click(self, *_):
-        """Обработчик клика"""
-        if self._pending:
-            return
-        
+        if self._pending: return
         self._pending = True
-        cur_state = self._get_pwr()
         
-        cmd = 'rfkill unblock bluetooth' if not cur_state else 'rfkill block bluetooth'
-        
-        try:
-            GLib.spawn_command_line_sync(cmd)
-        except:
-            pass
-        
-        GLib.timeout_add(300, self._finish_toggle)
+        cmd = ["rfkill", "block" if self._en else "unblock", "bluetooth"]
+        def worker():
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            GLib.timeout_add(300, self.update_state)
 
-    def _finish_toggle(self):
-        """Завершение переключения"""
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _upd_ui(self, en):
         self._pending = False
-        self._upd_ui(self._get_pwr())
-        return False
-
-    def _upd_ui(self, en=None):
-        """Обновить UI"""
-        if en is None:
-            en = self._en
-        else:
-            self._en = en
+        if self._en == en: return False
+        self._en = en
             
-        self.bluetooth_icon.set_markup(
-            icons.bluetooth if en else icons.bluetooth_off
-        )
+        self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
         self.bluetooth_status_text.set_label(_ON if en else _OFF)
         _dis(self._sw, not en)
         return False
 
     def update_state(self, *_):
-        """Обновить состояние из системы"""
-        _async(self._get_pwr, self._upd_ui)
+        self._upd_ui(self._get_pwr())
         return False
 
-    def _open_menu(self):
-        if self._n:
-            self._n.open_notch("bluetooth")
-        elif self._w and hasattr(self._w, 'show_bt'):
-            self._w.show_bt()
-        else:
-            exec_shell_command_async("blueman-manager")
+    def _open_menu(self, *_):
+        if self._n: self._n.open_notch("bluetooth")
+        elif self._w and hasattr(self._w, 'show_bt'): self._w.show_bt()
+        else: exec_shell_command_async("blueman-manager")
 
     def cleanup(self):
         self._w = self._n = None
@@ -352,26 +297,25 @@ class BluetoothButton(Box):
 
 class _ToggleBtn(Button):
     __slots__ = ('_ic', '_ti', '_st', '_sw')
-    PAT = ""
-    START = ""
-    STOP = ""
-    NAME = ""
-    ICON = ""
-    TEXT = ""
+    PAT = START = STOP = NAME = ICON = TEXT = ""
 
     def __init__(self):
         self._ic = Label(name=f"{self.NAME}-icon", markup=self.ICON)
         self._ti = Label(name=f"{self.NAME}-label", label=self.TEXT, justification="left")
         self._st = Label(name=f"{self.NAME}-status", label=_OFF, justification="left")
 
-        super().__init__(name=f"{self.NAME}-button", h_expand=True, child=_content(self._ic, self._ti, self._st), on_clicked=self._click)
+        super().__init__(
+            name=f"{self.NAME}-button", h_expand=True, 
+            child=_content(self._ic, self._ti, self._st), 
+            on_clicked=self._click
+        )
 
         _hover(self)
         self._sw = (self, self._ic, self._ti, self._st)
         self.update_state()
 
     def _click(self, *_):
-        _async(self._toggle, self._upd)
+        _async_exec(self._toggle, self._upd)
 
     def _toggle(self):
         if _chk(self.PAT):
@@ -381,7 +325,7 @@ class _ToggleBtn(Button):
         return True
 
     def update_state(self, *_):
-        _async(lambda: _chk(self.PAT), self._upd)
+        _async_exec(lambda: _chk(self.PAT), self._upd)
 
     def _upd(self, en):
         self._st.set_label(_ON if en else _OFF)
@@ -390,136 +334,87 @@ class _ToggleBtn(Button):
 
 
 class NightModeButton(_ToggleBtn):
-    PAT = "hyprsunset"
-    START = "hyprsunset -t 3500"
-    STOP = "pkill hyprsunset"
-    NAME = "night-mode"
-    ICON = icons.night
-    TEXT = "Night mode"
+    PAT, START, STOP = "hyprsunset", "hyprsunset -t 3500", "pkill hyprsunset"
+    NAME, ICON, TEXT = "night-mode", icons.night, "Night mode"
 
 
-class CaffeineButton(_ToggleBtn):
+class _ScriptToggleBtn(_ToggleBtn):
     __slots__ = ('_pid',)
+    
+    def __init__(self):
+        self._pid = None
+        super().__init__()
+
+    def _toggle(self):
+        if self._pid is not None:
+            try:
+                os.kill(self._pid, 0)
+                os.kill(self._pid, 15)
+                self._pid = None
+                return False
+            except OSError:
+                self._pid = None
+
+        if _chk(self.PAT):
+            exec_shell_command_async(self.STOP)
+            self._pid = None
+            return False
+
+        try:
+            pid, _, _, _ = GLib.spawn_async(
+                argv=["/bin/sh", "-c", self.START],
+                flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD
+            )
+            self._pid = pid
+            GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
+            return True
+        except Exception:
+            exec_shell_command_async(self.START)
+            self._pid = None
+            return True
+
+    def _on_exit(self, pid, _):
+        if self._pid == pid:
+            self._pid = None
+        GLib.idle_add(self.update_state)
+
+
+class CaffeineButton(_ScriptToggleBtn):
     PAT = "vidgex-inhibit"
     START = "python ~/.config/Vidgex-Shell/scripts/inhibit.py"
     STOP = "pkill -f vidgex-inhibit"
-    NAME = "caffeine"
-    ICON = icons.coffee
-    TEXT = "Caffeine"
-
-    def __init__(self):
-        self._pid = None
-        super().__init__()
-
-    def _toggle(self):
-        try:
-            if self._pid is not None:
-                try:
-                    _, _, _, c = GLib.spawn_command_line_sync(f"kill -0 {self._pid}")
-                    if c == 0:
-                        GLib.spawn_command_line_sync(f"kill {self._pid}")
-                        self._pid = None
-                        return False
-                except:
-                    pass
-                self._pid = None
-
-            if _chk(self.PAT):
-                exec_shell_command_async(self.STOP)
-                self._pid = None
-                return False
-
-            try:
-                pid, _, _, _ = GLib.spawn_async(
-                    argv=["/bin/sh", "-c", self.START],
-                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD)
-                self._pid = pid
-                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
-            except:
-                exec_shell_command_async(self.START)
-                self._pid = None
-            return True
-        except:
-            return False
-
-    def _on_exit(self, pid, _):
-        if self._pid == pid:
-            self._pid = None
-        GLib.idle_add(self.update_state)
+    NAME, ICON, TEXT = "caffeine", icons.coffee, "Caffeine"
 
 
-class EyesHandsButton(_ToggleBtn):
-    __slots__ = ('_pid',)
+class EyesHandsButton(_ScriptToggleBtn):
     PAT = "vidgex-eyes-hands"
     START = "python ~/.config/Vidgex-Shell/scripts/eyes-hands/eyes-hands.py"
     STOP = "pkill -f vidgex-eyes-hands"
-    NAME = "eyes-hands"
-    ICON = icons.spy
-    TEXT = "Eyes-Hands"
-
-    def __init__(self):
-        self._pid = None
-        super().__init__()
-
-    def _toggle(self):
-        try:
-            if self._pid is not None:
-                try:
-                    _, _, _, c = GLib.spawn_command_line_sync(f"kill -0 {self._pid}")
-                    if c == 0:
-                        GLib.spawn_command_line_sync(f"kill {self._pid}")
-                        self._pid = None
-                        return False
-                except:
-                    pass
-                self._pid = None
-
-            if _chk(self.PAT):
-                exec_shell_command_async(self.STOP)
-                self._pid = None
-                return False
-
-            try:
-                pid, _, _, _ = GLib.spawn_async(
-                    argv=["/bin/sh", "-c", self.START],
-                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD)
-                self._pid = pid
-                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
-            except:
-                exec_shell_command_async(self.START)
-                self._pid = None
-            return True
-        except:
-            return False
-
-    def _on_exit(self, pid, _):
-        if self._pid == pid:
-            self._pid = None
-        GLib.idle_add(self.update_state)
+    NAME, ICON, TEXT = "eyes-hands", icons.spy, "Eyes-Hands"
 
 
 class Buttons(Gtk.Grid):
-
     def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")
-        self._w, self._n = widgets, notch
-
+        
         self.set_row_homogeneous(True)
         self.set_column_homogeneous(True)
         self.set_row_spacing(4)
         self.set_column_spacing(4)
         self.set_vexpand(False)
 
-        self.network_button = NetworkButton(widgets=self._w, notch=self._n)
-        self.bluetooth_button = BluetoothButton(widgets=self._w, notch=self._n)
-        self.night_mode_button = NightModeButton()
-        self.caffeine_button = CaffeineButton()
-        self.eyes_hands_button = EyesHandsButton()
+        btns = [
+            NetworkButton(widgets, notch),
+            BluetoothButton(widgets, notch),
+            NightModeButton(),
+            CaffeineButton(),
+            EyesHandsButton()
+        ]
 
-        self.attach(self.network_button, 0, 0, 1, 1)
-        self.attach(self.bluetooth_button, 1, 0, 1, 1)
-        self.attach(self.night_mode_button, 2, 0, 1, 1)
-        self.attach(self.caffeine_button, 3, 0, 1, 1)
-        self.attach(self.eyes_hands_button, 4, 0, 1, 1)
+        for i, btn in enumerate(btns):
+            self.attach(btn, i, 0, 1, 1)
+
+        self.network_button, self.bluetooth_button, self.night_mode_button, \
+        self.caffeine_button, self.eyes_hands_button = btns
 
         self.show_all()

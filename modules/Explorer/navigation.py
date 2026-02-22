@@ -168,7 +168,10 @@ class NavigationMixin:
         self._show_hidden = show
 
         ctx = btn.get_style_context()
-        (ctx.add_class if show else ctx.remove_class)("active")
+        if show:
+            ctx.add_class("active")
+        else:
+            ctx.remove_class("active")
 
         self._load_directory()
 
@@ -179,7 +182,10 @@ class NavigationMixin:
         self._is_pinned = pinned
 
         ctx = btn.get_style_context()
-        (ctx.add_class if pinned else ctx.remove_class)("active")
+        if pinned:
+            ctx.add_class("active")
+        else:
+            ctx.remove_class("active")
 
         if pinned:
             self._cancel_pending_hide()

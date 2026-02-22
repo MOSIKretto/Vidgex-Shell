@@ -20,18 +20,12 @@ class AppChooserMixin:
             content_type = content_type or "application/octet-stream"
             self._app_chooser_content_type = content_type
 
-            default_app = None
-            try:
-                default_app = Gio.AppInfo.get_default_for_type(content_type, False)
-            except:
-                pass
-
             recommended = []
             try:
                 recommended = Gio.AppInfo.get_recommended_for_type(content_type) or []
             except:
                 pass
-            recommended_ids = {a.get_id() for a in recommended}
+            recommended_ids = {a.get_id() for a in recommended if a.get_id()}
 
             all_for_type = []
             try:
@@ -139,64 +133,54 @@ class AppChooserMixin:
         search = search_text.lower().strip()
         path = self._app_chooser_path
 
-        default_app = None
+        default_id = None
         try:
             if self._app_chooser_content_type:
-                default_app = Gio.AppInfo.get_default_for_type(self._app_chooser_content_type, False)
+                da = Gio.AppInfo.get_default_for_type(self._app_chooser_content_type, False)
+                if da:
+                    default_id = da.get_id()
         except:
             pass
-        default_id = default_app.get_id() if default_app else None
 
         def matches(app):
             if not search:
                 return True
             name = (app.get_display_name() or "").lower()
+            if search in name: return True
             desc = (app.get_description() or "").lower()
+            if search in desc: return True
             exe = (app.get_executable() or "").lower()
-            return search in name or search in desc or search in exe
+            return search in exe
 
         has_any = False
+        pack = self._app_list_container.pack_start
 
-        filtered_rec = [a for a in self._app_chooser_recommended if matches(a)]
-        if filtered_rec:
-            has_any = True
-            header = Gtk.Label(label="Recommended")
-            header.set_name("explorer-sidebar-header")
-            header.set_halign(Gtk.Align.START)
-            self._app_list_container.pack_start(header, False, False, 0)
-            for app in filtered_rec:
-                is_def = (app.get_id() == default_id)
-                row = self._create_app_row(app, path, is_def)
-                self._app_list_container.pack_start(row, False, False, 0)
-
-        filtered_other = [a for a in self._app_chooser_other if matches(a)]
-        if filtered_other:
-            has_any = True
-            header = Gtk.Label(label="Other")
-            header.set_name("explorer-sidebar-header")
-            header.set_halign(Gtk.Align.START)
-            self._app_list_container.pack_start(header, False, False, 0)
-            for app in filtered_other:
-                row = self._create_app_row(app, path, False)
-                self._app_list_container.pack_start(row, False, False, 0)
-
-        filtered_remaining = [a for a in self._app_chooser_remaining if matches(a)]
-        if filtered_remaining:
-            has_any = True
-            header = Gtk.Label(label="All Applications")
-            header.set_name("explorer-sidebar-header")
-            header.set_halign(Gtk.Align.START)
-            self._app_list_container.pack_start(header, False, False, 0)
-            for app in filtered_remaining:
-                row = self._create_app_row(app, path, False)
-                self._app_list_container.pack_start(row, False, False, 0)
+        for label_text, app_list in (
+            ("Recommended", self._app_chooser_recommended),
+            ("Other", self._app_chooser_other),
+            ("All Applications", self._app_chooser_remaining)
+        ):
+            filtered = []
+            for a in app_list:
+                if matches(a):
+                    filtered.append(a)
+            
+            if filtered:
+                has_any = True
+                header = Gtk.Label(label=label_text)
+                header.set_name("explorer-sidebar-header")
+                header.set_halign(Gtk.Align.START)
+                pack(header, False, False, 0)
+                for app in filtered:
+                    row = self._create_app_row(app, path, app.get_id() == default_id)
+                    pack(row, False, False, 0)
 
         if not has_any:
             empty_label = Gtk.Label(label="No matching applications found")
             empty_label.set_name("explorer-empty-label")
             empty_label.set_margin_top(20)
             empty_label.set_margin_bottom(20)
-            self._app_list_container.pack_start(empty_label, False, False, 0)
+            pack(empty_label, False, False, 0)
 
         self._app_list_container.show_all()
 
@@ -274,9 +258,9 @@ class AppChooserMixin:
             self._app_chooser_active = False
             self._app_chooser_path = None
             self._app_chooser_content_type = None
-            self._app_chooser_recommended = []
-            self._app_chooser_other = []
-            self._app_chooser_remaining = []
+            self._app_chooser_recommended.clear()
+            self._app_chooser_other.clear()
+            self._app_chooser_remaining.clear()
             self._app_list_container = None
             self._app_search_entry = None
             self._menu_open = False

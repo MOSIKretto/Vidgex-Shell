@@ -1,3 +1,6 @@
+import weakref
+from time import time
+
 from fabric.hyprland.widgets import (
     HyprlandLanguage as Language,
     HyprlandWorkspaces as Workspaces,
@@ -16,8 +19,6 @@ from modules.Bar.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
-
-from time import time
 
 _CD = 0.2
 _TH = 0.3
@@ -159,11 +160,20 @@ class Bar(Window):
             self.ll.set_label(l[:3].upper())
 
     def _hov(self, w):
-        def sc(_, __, h):
-            if h and not self._hc:
-                self._hc = Gdk.Cursor.new_from_name(w.get_display(), "hand2")
-            if win := w.get_window():
-                win.set_cursor(self._hc if h else None)
+        # ИСПРАВЛЕНИЕ: Используем слабую ссылку (weakref), чтобы сборщик мусора 
+        # мог нормально удалять кнопку и виджеты из ОЗУ.
+        weak_self = weakref.ref(self)
+        
+        def sc(widget, _, is_hovered):
+            real_self = weak_self()
+            if not real_self:
+                return
+                
+            if is_hovered and not real_self._hc:
+                real_self._hc = Gdk.Cursor.new_from_name(widget.get_display(), "hand2")
+            
+            if win := widget.get_window():
+                win.set_cursor(real_self._hc if is_hovered else None)
 
         w.connect("enter-notify-event", sc, True)
         w.connect("leave-notify-event", sc, False)

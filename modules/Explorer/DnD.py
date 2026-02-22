@@ -200,8 +200,11 @@ class DnDMixin:
         folder = self._find_folder_at_position(root_x, root_y)
         is_copy = bool(state & Gdk.ModifierType.CONTROL_MASK)
         action_word = "copy" if is_copy else "move"
-        self.dnd_indicator.get_style_context().remove_class("copy" if not is_copy else "move")
-        self.dnd_indicator.get_style_context().add_class("copy" if is_copy else "move")
+        
+        ctx = self.dnd_indicator.get_style_context()
+        ctx.remove_class("copy" if not is_copy else "move")
+        ctx.add_class("copy" if is_copy else "move")
+        
         if folder and folder != self._current_path:
             dest_name = folder.name
             self.dnd_indicator.set_label(f"Release to {action_word} to {dest_name}")
@@ -298,9 +301,10 @@ class DnDMixin:
         self._clear_folder_highlights()
         self.file_view.get_style_context().remove_class("drag-over")
         self.dnd_indicator.set_label("")
-        self.dnd_indicator.get_style_context().remove_class("active")
-        self.dnd_indicator.get_style_context().remove_class("copy")
-        self.dnd_indicator.get_style_context().remove_class("move")
+        ctx = self.dnd_indicator.get_style_context()
+        ctx.remove_class("active")
+        ctx.remove_class("copy")
+        ctx.remove_class("move")
         self._drag_in_progress = False
         self._drag_over_explorer = False
         self._start_post_drag_grace()
@@ -393,7 +397,10 @@ class DnDMixin:
 
     def _on_drag_data_get(self, widget, context, selection, info, time, path):
         uri = path.as_uri()
-        selection.set_uris([uri]) if info == self.TARGET_URI_LIST else selection.set_text(str(path), -1)
+        if info == self.TARGET_URI_LIST:
+            selection.set_uris([uri])
+        else:
+            selection.set_text(str(path), -1)
 
     def _on_drag_end(self, widget, context):
         widget.get_style_context().remove_class("dragging")
@@ -404,9 +411,10 @@ class DnDMixin:
         self._drag_source_path = None
         self._drag_in_progress = False
         self.dnd_indicator.set_label("")
-        self.dnd_indicator.get_style_context().remove_class("active")
-        self.dnd_indicator.get_style_context().remove_class("copy")
-        self.dnd_indicator.get_style_context().remove_class("move")
+        ctx = self.dnd_indicator.get_style_context()
+        ctx.remove_class("active")
+        ctx.remove_class("copy")
+        ctx.remove_class("move")
         self._cancel_drag_hover_timer()
         self._start_post_drag_grace()
 
@@ -468,13 +476,14 @@ class DnDMixin:
     def _update_dnd_indicator(self, action, dest_name: str):
         action_text = "Copy" if action == Gdk.DragAction.COPY else "Move"
         self.dnd_indicator.set_label(f"{action_text} to {dest_name}")
-        self.dnd_indicator.get_style_context().add_class("active")
+        ctx = self.dnd_indicator.get_style_context()
+        ctx.add_class("active")
         if action == Gdk.DragAction.COPY:
-            self.dnd_indicator.get_style_context().remove_class("move")
-            self.dnd_indicator.get_style_context().add_class("copy")
+            ctx.remove_class("move")
+            ctx.add_class("copy")
         else:
-            self.dnd_indicator.get_style_context().remove_class("copy")
-            self.dnd_indicator.get_style_context().add_class("move")
+            ctx.remove_class("copy")
+            ctx.add_class("move")
 
     def _handle_drop_data(self, context, selection, info, time, dest_folder):
         if not dest_folder or not dest_folder.is_dir():
@@ -523,7 +532,9 @@ class DnDMixin:
     def _get_unique_path(self, path: Path) -> Path:
         if not path.exists():
             return path
-        base, ext, parent = path.stem, path.suffix, path.parent
+        base = path.stem
+        ext = path.suffix
+        parent = path.parent
         for i in range(1, 100):
             new_path = parent / f"{base} ({i}){ext}"
             if not new_path.exists():

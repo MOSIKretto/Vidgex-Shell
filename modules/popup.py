@@ -4,41 +4,32 @@ from services.wayland import WaylandWindow as Window
 
 
 class NotificationPopup(Window):
-    __slots__ = ('notification_history', 'notification_container')
+    __slots__ = ('notification_history', 'notification_container', '_spacer')
 
     def __init__(self, **kwargs):
         super().__init__(
-            name="notification-popup",
-            anchor="right top",
-            layer="top",
-            keyboard_mode="none",
-            exclusivity="none",
-            visible=True,
-            all_visible=True,
+            name="notification-popup", anchor="right top", layer="top",
+            keyboard_mode="none", exclusivity="none", visible=True, all_visible=True,
         )
 
         widgets = kwargs.get("widgets")
-        self.notification_history = (
-            widgets.notification_history if widgets else NotificationHistory()
-        )
-
+        self.notification_history = widgets.notification_history if widgets else NotificationHistory()
         self.notification_container = NotificationContainer(
             notification_history_instance=self.notification_history,
             revealer_transition_type="slide-down",
         )
 
-        spacer = Box()
-        spacer.set_size_request(1, 1)
+        self._spacer = Box()
+        self._spacer.set_size_request(1, 1)
 
-        self.add(Box(
-            name="notification-popup-box",
-            orientation="v",
-            children=[self.notification_container, spacer],
-        ))
+        self.add(Box(name="notification-popup-box", orientation="v", children=[self.notification_container, self._spacer]))
 
     def destroy(self):
-        if self.notification_container:
+        if getattr(self, 'notification_container', None):
             self.notification_container.destroy()
             self.notification_container = None
-        
+        if getattr(self, '_spacer', None):
+            self._spacer.destroy()
+            self._spacer = None
+        self.notification_history = None
         super().destroy()

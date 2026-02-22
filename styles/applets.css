@@ -258,7 +258,8 @@
   border-color: var(--red);
   color: var(--cursor);
 }
+
 #bluetooth-devices-scroll,
 #bluetooth-devices-scroll viewport {
-    background: transparent;
+  background: transparent;
 }

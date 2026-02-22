@@ -6,11 +6,11 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import Gtk
 
-
 _SL_H, _LBL_H, _SEC_H, _MAX_CH = 30, 20, 150, 45
 
+
 class MixerSlider(Scale):
-    __slots__ = ('stream', '_upd', '_sig')
+    __slots__ = ('stream', '_upd', '_sig', '_last_vol', '_muted_style')
 
     def __init__(self, stream, **kwargs):
         super().__init__(
@@ -20,78 +20,84 @@ class MixerSlider(Scale):
             h_align="fill",
             has_origin=True,
             increments=(0.01, 0.1),
-            style_classes=["no-icon"],
+            style_classes=("no-icon",),
             **kwargs,
         )
         self.stream = stream
         self._upd = False
-
+        
         v = stream.volume
+        self._last_vol = int(v + 0.5)
+        self._muted_style = stream.muted
+
         self.set_value(v * 0.01)
         self.set_size_request(-1, _SL_H)
-        self.set_tooltip_text(f"{v:.0f}%")
+        self.set_tooltip_text(f"{self._last_vol}%")
 
         self.connect("value-changed", self._on_val)
         self._sig = stream.connect("changed", self._on_strm)
 
         t = getattr(stream, "type", "").lower()
         self.add_style_class("mic" if "microphone" in t or "input" in t else "vol")
-        if stream.muted:
+        
+        if self._muted_style:
             self.add_style_class("muted")
 
     def _on_val(self, _):
-        if self._upd:
-            return
-        s = self.stream
-        if s:
+        if self._upd: return
+        
+        if s := self.stream:
             nv = self.value * 100.0
-            s.volume = nv
-            self.set_tooltip_text(f"{nv:.0f}%")
+            if abs(s.volume - nv) > 0.5:
+                s.volume = nv
+                pct = int(nv + 0.5)
+                if pct != self._last_vol:
+                    self.set_tooltip_text(f"{pct}%")
+                    self._last_vol = pct
 
     def _on_strm(self, s):
         self._upd = True
         v = s.volume
         self.value = v * 0.01
-        self.set_tooltip_text(f"{v:.0f}%")
-        (self.add_style_class if s.muted else self.remove_style_class)("muted")
+        
+        pct = int(v + 0.5)
+        if pct != self._last_vol:
+            self.set_tooltip_text(f"{pct}%")
+            self._last_vol = pct
+
+        m = s.muted
+        if m and not self._muted_style:
+            self.add_style_class("muted")
+            self._muted_style = True
+        elif not m and self._muted_style:
+            self.remove_style_class("muted")
+            self._muted_style = False
+            
         self._upd = False
 
     def cleanup(self):
         if self.stream and self._sig:
-            try:
-                self.stream.disconnect(self._sig)
-            except Exception:
-                pass
+            try: self.stream.disconnect(self._sig)
+            except Exception: pass
         self.stream = None
 
 
 class MixerSection(Box):
     __slots__ = ('_tl', '_cb', '_sw')
 
-    def __init__(self, title, **kwargs):
+    def __init__(self, title: str, **kwargs):
+        self._tl = Label(name="mixer-section-title", label=title, h_expand=True, h_align="fill")
+        self._cb = Box(name="mixer-content", orientation="v", spacing=8, h_expand=True, v_expand=False)
+        self._sw = {}
+        
         super().__init__(
             name="mixer-section",
             orientation="v",
             spacing=8,
             h_expand=True,
             v_expand=False,
+            children=(self._tl, self._cb) 
         )
-        self._tl = Label(
-            name="mixer-section-title", 
-            label=title, 
-            h_expand=True, 
-            h_align="fill"
-        )
-        self._cb = Box(
-            name="mixer-content", 
-            orientation="v", 
-            spacing=8, 
-            h_expand=True, 
-            v_expand=False
-        )
-        self._sw = {}
-        self.add(self._tl)
-        self.add(self._cb)
 
     def update_streams(self, streams):
         cb, ow, nw, cids = self._cb, self._sw, {}, set()
@@ -100,9 +106,7 @@ class MixerSection(Box):
             sid = id(s)
             cids.add(sid)
             if sid in ow:
-                c, lbl, sl, sig = ow[sid]
                 nw[sid] = ow[sid]
-                lbl.set_label(f"[{int(s.volume + 0.5)}%] {s.description}")
             else:
                 c, lbl, sl, sig = self._mk_widget(s)
                 nw[sid] = (c, lbl, sl, sig)
@@ -114,8 +118,9 @@ class MixerSection(Box):
                 sl.cleanup()
                 c.destroy()
 
-        self._sw = nw
-        cb.show_all()
+        if len(ow) != len(nw) or ow.keys() != nw.keys():
+            self._sw = nw
+            cb.show_all()
 
     def _mk_widget(self, s):
         v = int(s.volume + 0.5)
@@ -131,7 +136,15 @@ class MixerSection(Box):
             height_request=_LBL_H,
         )
         sl = MixerSlider(s)
-        sig = s.connect("changed", lambda st, l=lbl: l.set_label(f"[{int(st.volume + 0.5)}%] {st.description}"))
+        
+        last_v = [v]
+        def _lbl_update(st, l=lbl, lv=last_v):
+            new_v = int(st.volume + 0.5)
+            if new_v != lv[0]:
+                l.set_label(f"[{new_v}%] {st.description}")
+                lv[0] = new_v
+
+        sig = s.connect("changed", _lbl_update)
         c.add(lbl)
         c.add(sl)
         return c, lbl, sl, sig
@@ -139,70 +152,47 @@ class MixerSection(Box):
     def cleanup(self):
         for c, _, sl, sig in self._sw.values():
             if sl.stream:
-                try:
-                    sl.stream.disconnect(sig)
-                except Exception:
-                    pass
+                try: sl.stream.disconnect(sig)
+                except Exception: pass
             sl.cleanup()
             c.destroy()
         self._sw.clear()
-        self._cb.children = []
+        self._cb.children = ()
 
 
 class Mixer(Box):
     __slots__ = ('audio', '_out', '_inp', '_sigs')
 
     def __init__(self, **kwargs):
-        super().__init__(
-            name="mixer",
-            orientation="v",
-            spacing=8,
-            h_expand=True,
-            v_expand=True,
-        )
+        super().__init__(name="mixer", orientation="v", spacing=8, h_expand=True, v_expand=True)
         self._sigs = []
         try:
             self.audio = Audio()
         except Exception as e:
-            self.add(Label(
-                label=f"Audio service unavailable: {e}", 
-                h_align="center", 
-                v_align="center", 
-                h_expand=True, 
-                v_expand=True
-            ))
+            self.add(Label(label=f"Audio service unavailable: {e}", h_align="center", v_align="center", h_expand=True, v_expand=True))
             self.audio = None
             return
 
-        mc = Box(orientation="h", spacing=8, h_expand=True, v_expand=True)
-        mc.set_homogeneous(True)
-
         self._out = MixerSection("Outputs")
         osc = ScrolledWindow(
-            name="outputs-scrolled",
-            h_expand=True,
-            v_expand=False,
+            name="outputs-scrolled", h_expand=True, v_expand=False,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
-            hscrollbar_policy=Gtk.PolicyType.NEVER,
-            child=self._out,
+            hscrollbar_policy=Gtk.PolicyType.NEVER, child=self._out
         )
         osc.set_size_request(-1, _SEC_H)
         osc.set_max_content_height(_SEC_H)
 
         self._inp = MixerSection("Inputs")
         isc = ScrolledWindow(
-            name="inputs-scrolled",
-            h_expand=True,
-            v_expand=False,
+            name="inputs-scrolled", h_expand=True, v_expand=False,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
-            hscrollbar_policy=Gtk.PolicyType.NEVER,
-            child=self._inp,
+            hscrollbar_policy=Gtk.PolicyType.NEVER, child=self._inp
         )
         isc.set_size_request(-1, _SEC_H)
         isc.set_max_content_height(_SEC_H)
 
-        mc.add(osc)
-        mc.add(isc)
+        mc = Box(orientation="h", spacing=8, h_expand=True, v_expand=True, homogeneous=True, children=(osc, isc))
+        
         self.add(mc)
         self.set_size_request(-1, _SEC_H << 1)
 
@@ -214,32 +204,24 @@ class Mixer(Box):
         self.show_all()
 
     def _upd(self, *_):
-        a = self.audio
-        if not a:
-            return
+        if not (a := self.audio): return
 
         outs = [a.speaker] if a.speaker else []
-        if a.applications:
-            outs.extend(a.applications)
+        outs.extend(a.applications or ())
 
         ins = [a.microphone] if a.microphone else []
-        if a.recorders:
-            ins.extend(a.recorders)
+        ins.extend(a.recorders or ())
 
         self._out.update_streams(outs)
         self._inp.update_streams(ins)
 
     def cleanup(self):
         for obj, sig in self._sigs:
-            try:
-                obj.disconnect(sig)
-            except Exception:
-                pass
+            try: obj.disconnect(sig)
+            except Exception: pass
         self._sigs.clear()
 
-        if hasattr(self, '_out'):
-            self._out.cleanup()
-        if hasattr(self, '_inp'):
-            self._inp.cleanup()
+        if out := getattr(self, '_out', None): out.cleanup()
+        if inp := getattr(self, '_inp', None): inp.cleanup()
 
         self.audio = None

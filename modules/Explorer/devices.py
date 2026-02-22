@@ -43,6 +43,7 @@ class DevicesMixin:
         if not self._volume_monitor:
             return
         added_identifiers = set()
+        add = container.add
         try:
             mounts = self._volume_monitor.get_mounts()
             for mount in mounts:
@@ -53,26 +54,29 @@ class DevicesMixin:
                     path_str = root.get_path()
                     if not path_str:
                         continue
-                    path = Path(path_str)
-                    if path == Path("/"):
+                    
+                    if path_str == "/" or path_str.startswith("/boot") or path_str.startswith("/snap") or path_str.startswith("/var/snap"):
                         continue
-                    if any(str(path).startswith(p) for p in ["/boot", "/snap", "/var/snap"]):
-                        continue
+                        
                     identifier = f"mount:{path_str}"
                     if identifier in added_identifiers:
                         continue
                     added_identifiers.add(identifier)
+                    
                     volume = mount.get_volume()
                     if volume:
                         vol_id = volume.get_identifier("uuid") or volume.get_name()
                         if vol_id:
                             added_identifiers.add(f"volume:{vol_id}")
+                            
+                    path = Path(path_str)
                     name = mount.get_name() or path.name or "Unknown"
                     icon_name = self._get_mount_icon(mount)
                     row = self._create_device_row(icon_name, name, path, mount)
-                    container.add(row)
+                    add(row)
                 except:
                     continue
+                    
             volumes = self._volume_monitor.get_volumes()
             for volume in volumes:
                 try:
@@ -89,7 +93,7 @@ class DevicesMixin:
                     name = volume.get_name() or "Unknown Volume"
                     icon_name = self._get_volume_icon(volume)
                     row = self._create_unmounted_volume_row(icon_name, name, volume)
-                    container.add(row)
+                    add(row)
                 except:
                     continue
         except:
@@ -219,7 +223,7 @@ class DevicesMixin:
         if not self._volume_monitor:
             return None, None, None
         try:
-            path_resolved = path.resolve()
+            path_resolved_str = str(path.resolve())
             mounts = self._volume_monitor.get_mounts()
             best_match, best_path, best_name, best_len = None, None, None, 0
             for mount in mounts:
@@ -234,13 +238,14 @@ class DevicesMixin:
                     if mount_path == Path("/"):
                         continue
                     mount_str = str(mount_path)
-                    path_str = str(path_resolved)
-                    if path_str == mount_str or path_str.startswith(mount_str + "/"):
-                        if len(mount_str) > best_len:
+                    
+                    if path_resolved_str == mount_str or path_resolved_str.startswith(mount_str + "/"):
+                        length = len(mount_str)
+                        if length > best_len:
                             best_match = mount
                             best_path = mount_path
                             best_name = mount.get_name() or mount_path.name
-                            best_len = len(mount_str)
+                            best_len = length
                 except:
                     continue
             return best_match, best_path, best_name

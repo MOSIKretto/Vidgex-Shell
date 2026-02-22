@@ -46,6 +46,7 @@ class ActionsMixin:
             default_id = default_app.get_id() if default_app else None
 
             added = set()
+            append = submenu.append
             for app in apps:
                 app_id = app.get_id()
                 if app_id in added:
@@ -53,20 +54,19 @@ class ActionsMixin:
                 added.add(app_id)
 
                 app_name = app.get_display_name()
-
                 if app_id == default_id:
                     app_name = f"● {app_name}"
 
                 item = Gtk.MenuItem(label=app_name)
                 item.connect("activate", lambda _, a=app, p=path: self._open_with_app(a, p))
-                submenu.append(item)
+                append(item)
 
             if added:
-                submenu.append(Gtk.SeparatorMenuItem())
+                append(Gtk.SeparatorMenuItem())
 
             other_item = Gtk.MenuItem(label="Other Application...")
             other_item.connect("activate", lambda _, p=path: self._show_app_chooser(p))
-            submenu.append(other_item)
+            append(other_item)
 
             return submenu
 
@@ -82,61 +82,62 @@ class ActionsMixin:
         menu = Gtk.Menu()
         menu.set_name("explorer-context-menu")
         menu.connect("deactivate", lambda m: setattr(self, '_menu_open', False))
+        append = menu.append
 
         path = btn._path
         is_dir = btn._is_dir
 
         open_item = Gtk.MenuItem(label="Open")
         open_item.connect("activate", lambda _: self._on_file_clicked(btn))
-        menu.append(open_item)
+        append(open_item)
 
         if not is_dir:
             open_with_submenu = self._build_open_with_submenu(path)
             if open_with_submenu:
                 open_with_item = Gtk.MenuItem(label="Open with...")
                 open_with_item.set_submenu(open_with_submenu)
-                menu.append(open_with_item)
+                append(open_with_item)
 
         rename_item = Gtk.MenuItem(label="Rename")
         rename_item.connect("activate", lambda _, b=btn, p=path: self._show_rename_inline(p, b))
-        menu.append(rename_item)
+        append(rename_item)
 
         term_dir = path if is_dir else path.parent
         term_item = Gtk.MenuItem(label="Open in Terminal")
         term_item.connect("activate", lambda _, d=term_dir: exec_shell_command_async(
             f'{os.environ.get("TERMINAL", "kitty")} --working-directory "{d}"'))
-        menu.append(term_item)
+        append(term_item)
 
-        menu.append(Gtk.SeparatorMenuItem())
+        append(Gtk.SeparatorMenuItem())
 
         copy_item = Gtk.MenuItem(label="Copy")
         copy_item.connect("activate", lambda _, p=path: self._copy_to_clipboard([p], is_cut=False))
-        menu.append(copy_item)
+        append(copy_item)
 
         cut_item = Gtk.MenuItem(label="Cut")
         cut_item.connect("activate", lambda _, p=path: self._copy_to_clipboard([p], is_cut=True))
-        menu.append(cut_item)
+        append(cut_item)
 
         if is_dir and self._can_paste_to(path):
             paste_item = Gtk.MenuItem(label="Paste")
             paste_item.connect("activate", lambda _, p=path: self._paste_from_clipboard(p))
-            menu.append(paste_item)
+            append(paste_item)
 
-        menu.append(Gtk.SeparatorMenuItem())
+        append(Gtk.SeparatorMenuItem())
 
         copy_path_item = Gtk.MenuItem(label="Copy Path")
         copy_path_item.connect("activate", lambda _: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(str(path), -1))
-        menu.append(copy_path_item)
+        append(copy_path_item)
 
         if self._is_archive(path):
             extract_item = Gtk.MenuItem(label="Extract")
             extract_item.connect("activate", lambda _, p=path: self._extract_archive(p))
-            menu.append(extract_item)
+            append(extract_item)
 
         compress_submenu = Gtk.Menu()
         compress_submenu.set_name("explorer-context-submenu")
 
-        single_file_only = {'.gz', '.bz2', '.xz', '.zst', '.lz4', '.lzma', '.sz'}
+        single_file_only = frozenset({'.gz', '.bz2', '.xz', '.zst', '.lz4', '.lzma', '.sz'})
         for fmt_ext, fmt_name in self._compression_formats:
             if is_dir and fmt_ext in single_file_only:
                 continue
@@ -150,21 +151,21 @@ class ActionsMixin:
 
         compress_parent = Gtk.MenuItem(label="Compress")
         compress_parent.set_submenu(compress_submenu)
-        menu.append(compress_parent)
+        append(compress_parent)
 
-        menu.append(Gtk.SeparatorMenuItem())
+        append(Gtk.SeparatorMenuItem())
 
         if self._is_in_trash():
             restore = Gtk.MenuItem(label="Restore")
             restore.connect("activate", lambda _, p=path: self._restore_from_trash(p))
-            menu.append(restore)
+            append(restore)
             delete = Gtk.MenuItem(label="Delete Permanently")
             delete.connect("activate", lambda _, p=path: self._delete_permanently(p))
-            menu.append(delete)
+            append(delete)
         else:
             trash = Gtk.MenuItem(label="Move to Trash")
             trash.connect("activate", lambda _, p=path: self._move_to_trash(p))
-            menu.append(trash)
+            append(trash)
 
         menu.show_all()
         menu.popup_at_pointer(event)
@@ -179,12 +180,12 @@ class ActionsMixin:
             if not p.exists():
                 continue
 
-            if p.is_dir() and p.resolve() == dest_resolved:
-                continue
-
             if p.is_dir():
+                pr = p.resolve()
+                if pr == dest_resolved:
+                    continue
                 try:
-                    dest_resolved.relative_to(p.resolve())
+                    dest_resolved.relative_to(pr)
                     continue
                 except ValueError:
                     pass
@@ -201,29 +202,29 @@ class ActionsMixin:
         menu = Gtk.Menu()
         menu.set_name("explorer-context-menu")
         menu.connect("deactivate", lambda m: setattr(self, '_menu_open', False))
+        append = menu.append
 
         if self._can_paste():
             paste_label = "Move" if self._clipboard_is_cut else "Paste"
-
             paste_item = Gtk.MenuItem(label=paste_label)
             paste_item.connect("activate", lambda _: self._paste_from_clipboard(self._current_path))
-            menu.append(paste_item)
-            menu.append(Gtk.SeparatorMenuItem())
+            append(paste_item)
+            append(Gtk.SeparatorMenuItem())
 
         new_folder_item = Gtk.MenuItem(label="New Folder")
         new_folder_item.connect("activate", lambda _: self._create_new_folder())
-        menu.append(new_folder_item)
+        append(new_folder_item)
 
         new_file_item = Gtk.MenuItem(label="New File")
         new_file_item.connect("activate", lambda _: self._create_new_file())
-        menu.append(new_file_item)
+        append(new_file_item)
 
-        menu.append(Gtk.SeparatorMenuItem())
+        append(Gtk.SeparatorMenuItem())
 
         term_item = Gtk.MenuItem(label="Open in Terminal")
         term_item.connect("activate", lambda _: exec_shell_command_async(
             f'{os.environ.get("TERMINAL", "kitty")} --working-directory "{self._current_path}"'))
-        menu.append(term_item)
+        append(term_item)
 
         menu.show_all()
         menu.popup_at_pointer(event)
@@ -232,9 +233,8 @@ class ActionsMixin:
         if path.is_dir():
             return False
         name_lower = path.name.lower()
-        for ext in self._archive_extensions_compound:
-            if name_lower.endswith(ext):
-                return True
+        if name_lower.endswith(self._archive_extensions_compound):
+            return True
         return path.suffix.lower() in self._archive_extensions_simple
 
     def _extract_archive(self, path: Path):
@@ -283,7 +283,7 @@ class ActionsMixin:
             self.status_label.set_label("File/folder not found")
             return
 
-        single_file_formats = {'.gz', '.xz', '.zst', '.bz2', '.lz4', '.lzma', '.sz'}
+        single_file_formats = frozenset({'.gz', '.xz', '.zst', '.bz2', '.lz4', '.lzma', '.sz'})
         if path.is_dir() and format_ext in single_file_formats:
             self.status_label.set_label(f"Cannot compress folder to {format_ext}")
             return
@@ -407,7 +407,7 @@ class ActionsMixin:
                 else:
                     self._rename_entry.select_region(0, len(path.name))
             except Exception as e:
-                print(f"Focus error: {e}")
+                pass
             return False
 
         GLib.idle_add(force_focus)

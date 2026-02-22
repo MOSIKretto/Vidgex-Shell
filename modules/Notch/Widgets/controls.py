@@ -14,14 +14,11 @@ import services.icons as icons
 
 _audio = None
 
-def _get_audio():
+def get_audio():
     global _audio
     if _audio is None:
         _audio = Audio()
     return _audio
-
-# Публичный алиас для совместимости
-get_audio = _get_audio
 
 _BTH = (75, 24)
 _BIC = (icons.brightness_high, icons.brightness_medium, icons.brightness_low)
@@ -33,133 +30,229 @@ _IS = {"high": icons.vol_high, "medium": icons.vol_medium, "mute": icons.vol_off
 _IB = {"high": icons.bluetooth_connected, "medium": icons.bluetooth, "mute": icons.bluetooth_off, "off": icons.bluetooth_disconnected}
 
 
-class VolumeSlider(Scale):
-    __slots__ = ('audio', '_upd', '_s', '_hid')
+class _AudioScale(Scale):
+    __slots__ = ('audio', '_upd', '_s', '_hid', '_muted_style', '_last_pct', '_type')
 
-    def __init__(self, **kwargs):
+    def __init__(self, stream_type, style, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
-        self.audio = _get_audio()
-        self._upd = False
-        self._s = None
-        self._hid = None
+        self.audio = get_audio()
+        self._type = stream_type
+        self._upd = self._muted_style = False
+        self._s = self._hid = None
+        self._last_pct = -1
 
-        self.add_style_class("vol")
-        self.audio.connect("notify::speaker", self._new_spk)
+        self.add_style_class(style)
+        self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self.connect("value-changed", self._val_chg)
-        self._new_spk()
+        self._new_stream()
 
-    def _new_spk(self, *_):
+    def _new_stream(self, *_):
         if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.speaker
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = getattr(self.audio, self._type)
         if self._s:
             self._hid = self._s.connect("changed", self._ui)
             self._ui()
 
     def _ui(self, *_):
-        if not self._s:
-            return
+        if not self._s: return
         self._upd = True
+        
         nv = self._s.volume * 0.01
         if abs(self.value - nv) > 0.005:
             self.value = nv
-            self.set_tooltip_text(f"{self._s.volume:.0f}%")
-        ctx = self.get_style_context()
-        has = "muted" in ctx.list_classes()
-        if self._s.muted and not has:
-            self.add_style_class("muted")
-        elif not self._s.muted and has:
-            self.remove_style_class("muted")
+            pct = int(self._s.volume)
+            if pct != self._last_pct:
+                self.set_tooltip_text(f"{pct}%")
+                self._last_pct = pct
+
+        muted = self._s.muted
+        if muted != self._muted_style:
+            self._muted_style = muted
+            if muted: self.add_style_class("muted")
+            else: self.remove_style_class("muted")
+            
         self._upd = False
 
     def _val_chg(self, _):
-        if self._upd or not self._s:
-            return
+        if self._upd or not self._s: return
         nv = self.value * 100
         if abs(self._s.volume - nv) > 0.5:
             self._s.volume = nv
-            self.set_tooltip_text(f"{nv:.0f}%")
+            pct = int(nv)
+            if pct != self._last_pct:
+                self.set_tooltip_text(f"{pct}%")
+                self._last_pct = pct
 
     def cleanup(self):
         if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = self._hid = None
 
 
-class MicSlider(Scale):
-    __slots__ = ('audio', '_upd', '_s', '_hid')
+class _AudioSmall(Box):
+    __slots__ = ('audio', '_s', '_hid', 'progress_bar', 'vol_label', '_muted_style', '_last_vol', '_is_mic')
 
-    def __init__(self, **kwargs):
-        super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
-        self.audio = _get_audio()
-        self._upd = False
-        self._s = None
-        self._hid = None
+    def __init__(self, stream_type, box_name, prog_name, lbl_name, is_mic=False, **kwargs):
+        super().__init__(name=box_name, **kwargs)
+        self.audio = get_audio()
+        self._is_mic = is_mic
+        self._s = self._hid = None
+        self._muted_style = False
+        self._last_vol = -1
 
-        self.add_style_class("mic")
-        self.audio.connect("notify::microphone", self._new_mic)
-        self.connect("value-changed", self._val_chg)
-        self._new_mic()
+        self.progress_bar = CircularProgressBar(name=prog_name, size=28, line_width=2, start_angle=150, end_angle=390)
+        self.vol_label = Label(name=lbl_name, markup=icons.mic if is_mic else icons.vol_high)
+        self.add(Overlay(child=self.progress_bar, overlays=self.vol_label))
 
-    def _new_mic(self, *_):
+        self.audio.connect(f"notify::{stream_type}", self._new_stream)
+        self._new_stream()
+
+    def _new_stream(self, *_):
         if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.microphone
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = getattr(self.audio, "microphone" if self._is_mic else "speaker")
         if self._s:
             self._hid = self._s.connect("changed", self._ui)
             self._ui()
 
     def _ui(self, *_):
-        if not self._s:
-            return
-        self._upd = True
-        nv = self._s.volume * 0.01
-        if abs(self.value - nv) > 0.005:
-            self.value = nv
-            self.set_tooltip_text(f"{self._s.volume:.0f}%")
-        ctx = self.get_style_context()
-        has = "muted" in ctx.list_classes()
-        if self._s.muted and not has:
-            self.add_style_class("muted")
-        elif not self._s.muted and has:
-            self.remove_style_class("muted")
-        self._upd = False
+        if not self._s: return
 
-    def _val_chg(self, _):
-        if self._upd or not self._s:
-            return
-        nv = self.value * 100
-        if abs(self._s.volume - nv) > 0.5:
-            self._s.volume = nv
-            self.set_tooltip_text(f"{nv:.0f}%")
+        vn = self._s.volume * 0.01
+        if abs(self.progress_bar.value - vn) > 0.005:
+            self.progress_bar.value = vn
+
+        muted = self._s.muted
+        if muted != self._muted_style:
+            self._muted_style = muted
+            if muted:
+                self.progress_bar.add_style_class("muted")
+                self.vol_label.add_style_class("muted")
+                self.set_tooltip_text("Микрофон выключен" if self._is_mic else "Без звука")
+                self._last_vol = -1
+            else:
+                self.progress_bar.remove_style_class("muted")
+                self.vol_label.remove_style_class("muted")
+
+        if muted:
+            self.vol_label.set_markup(icons.mic_mute if self._is_mic else (_IB["mute"] if "bluetooth" in getattr(self._s, "icon_name", "") else _IS["mute"]))
+        else:
+            v = int(self._s.volume)
+            if v != self._last_vol:
+                self.set_tooltip_text(f"{'Микрофон' if self._is_mic else 'Громкость'}: {v}%")
+                if self._is_mic:
+                    self.vol_label.set_markup(icons.mic if v >= 1 else icons.mic_mute)
+                else:
+                    im = _IB if "bluetooth" in getattr(self._s, "icon_name", "") else _IS
+                    self.vol_label.set_markup(im["high"] if v > 74 else (im["medium"] if v > 0 else im["off"]))
+                self._last_vol = v
 
     def cleanup(self):
         if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = self._hid = None
+
+
+class _AudioIcon(Box):
+    __slots__ = ('audio', '_s', '_hid', 'vol_label', 'vol_button', '_muted_style', '_last_vol', '_is_mic')
+
+    def __init__(self, stream_type, box_name, lbl_name, is_mic=False, **kwargs):
+        super().__init__(name=box_name, **kwargs)
+        self.audio = get_audio()
+        self._is_mic = is_mic
+        self._s = self._hid = None
+        self._muted_style = False
+        self._last_vol = -1
+
+        self.vol_label = Label(name=lbl_name, markup=icons.mic if is_mic else "")
+        self.vol_button = Button(on_clicked=self._tog, child=self.vol_label)
+        self.add(EventBox(child=self.vol_button, h_expand=True))
+
+        self.audio.connect(f"notify::{stream_type}", self._new_stream)
+        self._new_stream()
+
+    def _new_stream(self, *_):
+        if self._s and self._hid:
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = getattr(self.audio, "microphone" if self._is_mic else "speaker")
+        if self._s:
+            self._hid = self._s.connect("changed", self._ui)
+            self._ui()
+
+    def _tog(self, *_):
+        if self._s: self._s.muted = not self._s.muted
+
+    def _ui(self, *_):
+        if not self._s:
+            if not self._is_mic: self.vol_label.set_markup("")
+            self._mstyle(False)
+            return
+
+        if not self._is_mic: self.vol_label.set_markup(icons.headphones)
+        
+        muted = self._s.muted
+        if muted != self._muted_style:
+            self._mstyle(muted)
+            if muted:
+                self.set_tooltip_text("Микрофон выключен" if self._is_mic else "Без звука")
+                self._last_vol = -1
+                if self._is_mic: self.vol_label.set_markup(icons.mic_mute)
+
+        if not muted:
+            v = int(self._s.volume)
+            if v != self._last_vol:
+                self.set_tooltip_text(f"{'Микрофон' if self._is_mic else 'Громкость'}: {v}%")
+                if self._is_mic: self.vol_label.set_markup(icons.mic if v >= 1 else icons.mic_mute)
+                self._last_vol = v
+
+    def _mstyle(self, m: bool):
+        self._muted_style = m
+        meth = "add_style_class" if m else "remove_style_class"
+        getattr(self, meth)("muted")
+        getattr(self.vol_label, meth)("muted")
+        if not self._is_mic: getattr(self.vol_button, meth)("muted")
+
+    def cleanup(self):
+        if self._s and self._hid:
+            try: self._s.disconnect(self._hid)
+            except Exception: pass
+        self._s = self._hid = None
+
+
+class VolumeSlider(_AudioScale):
+    def __init__(self, **kwargs): super().__init__("speaker", "vol", **kwargs)
+
+class MicSlider(_AudioScale):
+    def __init__(self, **kwargs): super().__init__("microphone", "mic", **kwargs)
+
+class VolumeSmall(_AudioSmall):
+    def __init__(self, **kwargs): super().__init__("speaker", "button-bar-vol", "button-volume", "vol-label", False, **kwargs)
+
+class MicSmall(_AudioSmall):
+    def __init__(self, **kwargs): super().__init__("microphone", "button-bar-mic", "button-mic", "mic-label", True, **kwargs)
+
+class VolumeIcon(_AudioIcon):
+    def __init__(self, **kwargs): super().__init__("speaker", "vol-icon", "vol-label-dash", False, **kwargs)
+
+class MicIcon(_AudioIcon):
+    def __init__(self, **kwargs): super().__init__("microphone", "mic-icon", "mic-label-dash", True, **kwargs)
 
 
 class BrightnessSlider(Scale):
-    __slots__ = ('client', '_upd', '_tid', '_target')
+    __slots__ = ('client', '_upd', '_tid', '_target', '_last_pct')
 
     def __init__(self, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.client = Brightness.get_initial()
         self._upd = False
         self._tid = None
-        self._target = -1
+        self._target = self._last_pct = -1
 
         if self.client.max_screen <= 0:
             self.set_no_show_all(True)
@@ -172,16 +265,17 @@ class BrightnessSlider(Scale):
         self._br_chg(None, self.client.screen_brightness)
 
     def _val_chg(self, _):
-        if self._upd:
-            return
+        if self._upd: return
         
         val = self.get_value()
-        self.set_tooltip_text(f"{int(val * 100)}%")
+        pct = int(val * 100)
+        if pct != self._last_pct:
+            self.set_tooltip_text(f"{pct}%")
+            self._last_pct = pct
+            
         self._target = int(val * self.client.max_screen)
         
-        # Debounce: отменяем предыдущий таймер и ставим новый
-        if self._tid:
-            GLib.source_remove(self._tid)
+        if self._tid: GLib.source_remove(self._tid)
         self._tid = GLib.timeout_add(30, self._apply)
 
     def _apply(self):
@@ -191,20 +285,19 @@ class BrightnessSlider(Scale):
         return False
 
     def _br_chg(self, _, cur):
-        # Игнорируем пока есть pending изменение от пользователя
-        if self._tid:
-            return
-        if not self.client._valid or self.client.max_screen <= 0:
-            return
+        if self._tid or not getattr(self.client, '_valid', True) or self.client.max_screen <= 0: return
         
         n = cur / self.client.max_screen
-        # Игнорируем мелкие изменения (уже близко к текущему)
-        if abs(self.get_value() - n) < 0.008:
-            return
+        if abs(self.get_value() - n) < 0.008: return
         
         self._upd = True
         self.set_value(n)
-        self.set_tooltip_text(f"{int(n * 100)}%")
+        
+        pct = int(n * 100)
+        if pct != self._last_pct:
+            self.set_tooltip_text(f"{pct}%")
+            self._last_pct = pct
+            
         self._upd = False
 
     def cleanup(self):
@@ -214,21 +307,16 @@ class BrightnessSlider(Scale):
 
 
 class BrightnessSmall(Box):
-    __slots__ = ('brightness', 'progress_bar', 'brightness_label')
+    __slots__ = ('brightness', 'progress_bar', 'brightness_label', '_last_pct')
 
     def __init__(self, **kwargs):
         super().__init__(name="button-bar-brightness", **kwargs)
         self.brightness = Brightness.get_initial()
-        if self.brightness.screen_brightness == -1:
-            return
+        self._last_pct = -1
+        
+        if self.brightness.screen_brightness == -1: return
 
-        self.progress_bar = CircularProgressBar(
-            name="button-brightness", 
-            size=28, 
-            line_width=2,
-            start_angle=150, 
-            end_angle=390
-        )
+        self.progress_bar = CircularProgressBar(name="button-brightness", size=28, line_width=2, start_angle=150, end_angle=390)
         self.brightness_label = Label(name="brightness-label", markup=icons.brightness_high)
         self.add(Overlay(child=self.progress_bar, overlays=self.brightness_label))
 
@@ -237,151 +325,27 @@ class BrightnessSmall(Box):
 
     def _chg(self, *_):
         mx = self.brightness.max_screen
-        if mx <= 0:
-            return
+        if mx <= 0: return
+        
         n = self.brightness.screen_brightness / mx
         if abs(self.progress_bar.value - n) > 0.005:
             self.progress_bar.value = n
             p = int(n * 100)
-            self.brightness_label.set_markup(_bicon(p))
-            self.set_tooltip_text(f"Яркость: {p}%")
-
-
-class VolumeSmall(Box):
-    __slots__ = ('audio', '_s', '_hid', 'progress_bar', 'vol_label')
-
-    def __init__(self, **kwargs):
-        super().__init__(name="button-bar-vol", **kwargs)
-        self.audio = _get_audio()
-        self._s = None
-        self._hid = None
-
-        self.progress_bar = CircularProgressBar(
-            name="button-volume", 
-            size=28, 
-            line_width=2,
-            start_angle=150, 
-            end_angle=390
-        )
-        self.vol_label = Label(name="vol-label", markup=icons.vol_high)
-        self.add(Overlay(child=self.progress_bar, overlays=self.vol_label))
-
-        self.audio.connect("notify::speaker", self._new_spk)
-        self._new_spk()
-
-    def _new_spk(self, *_):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.speaker
-        if self._s:
-            self._hid = self._s.connect("changed", self._ui)
-            self._ui()
-
-    def _ui(self, *_):
-        s = self._s
-        if not s:
-            return
-
-        vn = s.volume * 0.01
-        if abs(self.progress_bar.value - vn) > 0.005:
-            self.progress_bar.value = vn
-
-        is_bt = "bluetooth" in s.icon_name
-        im = _IB if is_bt else _IS
-
-        if s.muted:
-            self.vol_label.set_markup(im["mute"])
-            self.progress_bar.add_style_class("muted")
-            self.vol_label.add_style_class("muted")
-            self.set_tooltip_text("Без звука")
-        else:
-            self.progress_bar.remove_style_class("muted")
-            self.vol_label.remove_style_class("muted")
-            self.set_tooltip_text(f"Громкость: {int(s.volume)}%")
-            self.vol_label.set_markup(im["high"] if s.volume > 74 else (im["medium"] if s.volume > 0 else im["off"]))
-
-    def cleanup(self):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
-
-
-class MicSmall(Box):
-    __slots__ = ('audio', '_s', '_hid', 'progress_bar', 'mic_label')
-
-    def __init__(self, **kwargs):
-        super().__init__(name="button-bar-mic", **kwargs)
-        self.audio = _get_audio()
-        self._s = None
-        self._hid = None
-
-        self.progress_bar = CircularProgressBar(
-            name="button-mic", 
-            size=28, 
-            line_width=2,
-            start_angle=150, 
-            end_angle=390
-        )
-        self.mic_label = Label(name="mic-label", markup=icons.mic)
-        self.add(Overlay(child=self.progress_bar, overlays=self.mic_label))
-
-        self.audio.connect("notify::microphone", self._new_mic)
-        self._new_mic()
-
-    def _new_mic(self, *_):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.microphone
-        if self._s:
-            self._hid = self._s.connect("changed", self._ui)
-            self._ui()
-
-    def _ui(self, *_):
-        m = self._s
-        if not m:
-            return
-
-        vn = m.volume * 0.01
-        if abs(self.progress_bar.value - vn) > 0.005:
-            self.progress_bar.value = vn
-
-        if m.muted:
-            self.mic_label.set_markup(icons.mic_mute)
-            self.progress_bar.add_style_class("muted")
-            self.mic_label.add_style_class("muted")
-            self.set_tooltip_text("Микрофон выключен")
-        else:
-            self.progress_bar.remove_style_class("muted")
-            self.mic_label.remove_style_class("muted")
-            self.set_tooltip_text(f"Микрофон: {int(m.volume)}%")
-            self.mic_label.set_markup(icons.mic if m.volume >= 1 else icons.mic_mute)
-
-    def cleanup(self):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
+            if p != self._last_pct:
+                self.brightness_label.set_markup(_bicon(p))
+                self.set_tooltip_text(f"Яркость: {p}%")
+                self._last_pct = p
 
 
 class BrightnessIcon(Box):
-    __slots__ = ('brightness', 'brightness_label')
+    __slots__ = ('brightness', 'brightness_label', '_last_pct')
 
     def __init__(self, **kwargs):
         super().__init__(name="brightness-icon", **kwargs)
         self.brightness = Brightness.get_initial()
-        if self.brightness.screen_brightness == -1:
-            return
+        self._last_pct = -1
+        
+        if self.brightness.screen_brightness == -1: return
 
         self.brightness_label = Label(name="brightness-label-dash", markup=icons.brightness_high)
         self.add(EventBox(child=Button(child=self.brightness_label), h_expand=True))
@@ -391,138 +355,13 @@ class BrightnessIcon(Box):
 
     def _chg(self, *_):
         mx = self.brightness.max_screen
-        if mx <= 0:
-            return
+        if mx <= 0: return
+        
         p = int(self.brightness.screen_brightness * 100 / mx)
-        self.brightness_label.set_markup(_bicon(p))
-        self.set_tooltip_text(f"Яркость: {p}%")
-
-
-class VolumeIcon(Box):
-    __slots__ = ('audio', '_s', '_hid', 'vol_label', 'vol_button')
-
-    def __init__(self, **kwargs):
-        super().__init__(name="vol-icon", **kwargs)
-        self.audio = _get_audio()
-        self._s = None
-        self._hid = None
-
-        self.vol_label = Label(name="vol-label-dash", markup="")
-        self.vol_button = Button(on_clicked=self._tog, child=self.vol_label)
-        self.add(EventBox(child=self.vol_button, h_expand=True))
-
-        self.audio.connect("notify::speaker", self._new_spk)
-        self._new_spk()
-
-    def _new_spk(self, *_):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.speaker
-        if self._s:
-            self._hid = self._s.connect("changed", self._ui)
-            self._ui()
-
-    def _tog(self, *_):
-        if self._s:
-            self._s.muted = not self._s.muted
-
-    def _ui(self, *_):
-        s = self._s
-        if not s:
-            self.vol_label.set_markup("")
-            self._mstyle(False)
-            return
-
-        self.vol_label.set_markup(icons.headphones)
-        if s.muted:
-            self._mstyle(True)
-            self.set_tooltip_text("Без звука")
-        else:
-            self._mstyle(False)
-            self.set_tooltip_text(f"Громкость: {int(s.volume)}%")
-
-    def _mstyle(self, m):
-        has = "muted" in self.get_style_context().list_classes()
-        if m and not has:
-            self.add_style_class("muted")
-            self.vol_label.add_style_class("muted")
-            self.vol_button.add_style_class("muted")
-        elif not m and has:
-            self.remove_style_class("muted")
-            self.vol_label.remove_style_class("muted")
-            self.vol_button.remove_style_class("muted")
-
-    def cleanup(self):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
-
-
-class MicIcon(Box):
-    __slots__ = ('audio', '_s', '_hid', 'mic_label', '_btn')
-
-    def __init__(self, **kwargs):
-        super().__init__(name="mic-icon", **kwargs)
-        self.audio = _get_audio()
-        self._s = None
-        self._hid = None
-
-        self.mic_label = Label(name="mic-label-dash", markup=icons.mic)
-        self._btn = Button(on_clicked=self._tog, child=self.mic_label)
-        self.add(EventBox(child=self._btn, h_expand=True))
-
-        self.audio.connect("notify::microphone", self._new_mic)
-        self._new_mic()
-
-    def _new_mic(self, *_):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = self.audio.microphone
-        if self._s:
-            self._hid = self._s.connect("changed", self._ui)
-            self._ui()
-
-    def _tog(self, *_):
-        if self._s:
-            self._s.muted = not self._s.muted
-
-    def _ui(self, *_):
-        m = self._s
-        if not m:
-            return
-
-        has = "muted" in self.get_style_context().list_classes()
-
-        if m.muted:
-            self.mic_label.set_markup(icons.mic_mute)
-            if not has:
-                self.add_style_class("muted")
-                self.mic_label.add_style_class("muted")
-            self.set_tooltip_text("Микрофон выключен")
-        else:
-            if has:
-                self.remove_style_class("muted")
-                self.mic_label.remove_style_class("muted")
-            v = int(m.volume)
-            self.set_tooltip_text(f"Микрофон: {v}%")
-            self.mic_label.set_markup(icons.mic if v >= 1 else icons.mic_mute)
-
-    def cleanup(self):
-        if self._s and self._hid:
-            try:
-                self._s.disconnect(self._hid)
-            except:
-                pass
-        self._s = None
+        if p != self._last_pct:
+            self.brightness_label.set_markup(_bicon(p))
+            self.set_tooltip_text(f"Яркость: {p}%")
+            self._last_pct = p
 
 
 class ControlSliders(Box):
@@ -534,23 +373,23 @@ class ControlSliders(Box):
         br = Brightness.get_initial()
 
         if br.screen_brightness != -1:
-            self._br = Box(spacing=0, h_expand=True, children=[BrightnessIcon(), BrightnessSlider()])
+            self._br = Box(spacing=0, h_expand=True, children=(BrightnessIcon(), BrightnessSlider()))
             self.add(self._br)
         else:
             self._br = None
 
-        self._vol = Box(spacing=0, h_expand=True, children=[VolumeIcon(), VolumeSlider()])
-        self._mic = Box(spacing=0, h_expand=True, children=[MicIcon(), MicSlider()])
+        self._vol = Box(spacing=0, h_expand=True, children=(VolumeIcon(), VolumeSlider()))
+        self._mic = Box(spacing=0, h_expand=True, children=(MicIcon(), MicSlider()))
 
         self.add(self._vol)
         self.add(self._mic)
         self.show_all()
 
     def cleanup(self):
-        for box in (self._vol, self._mic):
+        boxes = (self._vol, self._mic, self._br) if self._br else (self._vol, self._mic)
+        for box in boxes:
             for c in box.get_children():
-                if hasattr(c, 'cleanup'):
-                    c.cleanup()
+                if hasattr(c, 'cleanup'): c.cleanup()
 
 
 class ControlSmall(Box):
@@ -558,10 +397,7 @@ class ControlSmall(Box):
 
     def __init__(self, **kwargs):
         br = Brightness.get_initial()
-        ch = []
-        if br.screen_brightness != -1:
-            ch.append(BrightnessSmall())
-        ch.extend([VolumeSmall(), MicSmall()])
+        ch = ((BrightnessSmall(),) if br.screen_brightness != -1 else ()) + (VolumeSmall(), MicSmall())
 
         super().__init__(name="control-small", spacing=4, children=ch, **kwargs)
         self._widgets = ch
@@ -569,6 +405,5 @@ class ControlSmall(Box):
 
     def cleanup(self):
         for w in self._widgets:
-            if hasattr(w, 'cleanup'):
-                w.cleanup()
-        self._widgets = []
+            if hasattr(w, 'cleanup'): w.cleanup()
+        self._widgets = ()

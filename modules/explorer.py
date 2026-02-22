@@ -48,41 +48,22 @@ _FOLDER_ICONS = {
 }
 
 _EXT_ICONS = {
-    ".png": "image-x-generic-symbolic",
-    ".jpg": "image-x-generic-symbolic",
-    ".jpeg": "image-x-generic-symbolic",
-    ".gif": "image-x-generic-symbolic",
-    ".webp": "image-x-generic-symbolic",
-    ".svg": "image-x-generic-symbolic",
-    ".mp4": "video-x-generic-symbolic",
-    ".mkv": "video-x-generic-symbolic",
-    ".mp3": "audio-x-generic-symbolic",
-    ".flac": "audio-x-generic-symbolic",
-    ".pdf": "x-office-document-symbolic",
-    ".txt": "text-x-generic-symbolic",
-    ".zip": "package-x-generic-symbolic",
-    ".rar": "package-x-generic-symbolic",
-    ".7z": "package-x-generic-symbolic",
-    ".tar": "package-x-generic-symbolic",
-    ".gz": "package-x-generic-symbolic",
-    ".xz": "package-x-generic-symbolic",
-    ".py": "text-x-script-symbolic",
-    ".sh": "text-x-script-symbolic",
+    ".png": "image-x-generic-symbolic", ".jpg": "image-x-generic-symbolic", ".jpeg": "image-x-generic-symbolic",
+    ".gif": "image-x-generic-symbolic", ".webp": "image-x-generic-symbolic", ".svg": "image-x-generic-symbolic",
+    ".mp4": "video-x-generic-symbolic", ".mkv": "video-x-generic-symbolic", ".mp3": "audio-x-generic-symbolic",
+    ".flac": "audio-x-generic-symbolic", ".pdf": "x-office-document-symbolic", ".txt": "text-x-generic-symbolic",
+    ".zip": "package-x-generic-symbolic", ".rar": "package-x-generic-symbolic", ".7z": "package-x-generic-symbolic",
+    ".tar": "package-x-generic-symbolic", ".gz": "package-x-generic-symbolic", ".xz": "package-x-generic-symbolic",
+    ".py": "text-x-script-symbolic", ".sh": "text-x-script-symbolic",
 }
 
 _COMPOUND_ARCHIVE_EXTS = ('.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst')
-
 _SIZE_UNITS = ('B', 'KB', 'MB', 'GB', 'TB')
 
 
 class Explorer(
-    NavigationMixin,
-    DnDMixin,
-    ActionsMixin,
-    DevicesMixin,
-    ClipboardMixin,
-    AppChooserMixin,
-    Window,
+    NavigationMixin, DnDMixin, ActionsMixin,
+    DevicesMixin, ClipboardMixin, AppChooserMixin, Window,
 ):
     __gtype_name__ = "Explorer"
 
@@ -188,27 +169,13 @@ class Explorer(
         )
 
         self._compression_formats = [
-            (".zip", "ZIP Archive"),
-            (".7z", "7-Zip Archive"),
-            (".tar", "Tar Archive"),
-            (".tar.gz", "Tar + Gzip"),
-            (".tgz", "Tar + Gzip (.tgz)"),
-            (".tar.bz2", "Tar + Bzip2"),
-            (".tbz2", "Tar + Bzip2 (.tbz2)"),
-            (".tar.xz", "Tar + XZ"),
-            (".txz", "Tar + XZ (.txz)"),
-            (".tar.zst", "Tar + Zstd"),
-            (".tzst", "Tar + Zstd (.tzst)"),
-            (".tar.lz4", "Tar + LZ4"),
-            (".tar.lzma", "Tar + LZMA"),
-            (".tar.sz", "Tar + Snappy"),
-            (".gz", "Gzip"),
-            (".bz2", "Bzip2"),
-            (".xz", "XZ"),
-            (".zst", "Zstd"),
-            (".lz4", "LZ4"),
-            (".lzma", "LZMA"),
-            (".sz", "Snappy"),
+            (".zip", "ZIP Archive"), (".7z", "7-Zip Archive"), (".tar", "Tar Archive"),
+            (".tar.gz", "Tar + Gzip"), (".tgz", "Tar + Gzip (.tgz)"), (".tar.bz2", "Tar + Bzip2"),
+            (".tbz2", "Tar + Bzip2 (.tbz2)"), (".tar.xz", "Tar + XZ"), (".txz", "Tar + XZ (.txz)"),
+            (".tar.zst", "Tar + Zstd"), (".tzst", "Tar + Zstd (.tzst)"), (".tar.lz4", "Tar + LZ4"),
+            (".tar.lzma", "Tar + LZMA"), (".tar.sz", "Tar + Snappy"), (".gz", "Gzip"),
+            (".bz2", "Bzip2"), (".xz", "XZ"), (".zst", "Zstd"), (".lz4", "LZ4"),
+            (".lzma", "LZMA"), (".sz", "Snappy"),
         ]
 
         self._bookmarks: List[Tuple[str, str, Path]] = [
@@ -223,14 +190,9 @@ class Explorer(
         ]
 
         super().__init__(
-            name="explorer-window",
-            layer="top",
-            anchor="left top bottom",
-            margin="0px 0px 0px 0px",
-            exclusivity="none",
-            monitor=monitor_id,
-            visible=False,
-            **kwargs,
+            name="explorer-window", layer="top", anchor="left top bottom",
+            margin="0px 0px 0px 0px", exclusivity="none", monitor=monitor_id,
+            visible=False, **kwargs,
         )
 
         self._icon_theme = Gtk.IconTheme.get_default()
@@ -240,11 +202,7 @@ class Explorer(
 
     def _set_keyboard_interactive(self, enabled: bool):
         try:
-            mode = (
-                GtkLayerShell.KeyboardMode.EXCLUSIVE
-                if enabled
-                else GtkLayerShell.KeyboardMode.NONE
-            )
+            mode = GtkLayerShell.KeyboardMode.EXCLUSIVE if enabled else GtkLayerShell.KeyboardMode.NONE
             GtkLayerShell.set_keyboard_mode(self, mode)
         except Exception as e:
             print(f"keyboard mode error: {e}")
@@ -276,11 +234,9 @@ class Explorer(
         self.explorer_eb = EventBox(name="explorer-eventbox")
         self.explorer_eb.add(self.explorer_box)
         self.explorer_eb.add_events(
-            Gdk.EventMask.ENTER_NOTIFY_MASK
-            | Gdk.EventMask.LEAVE_NOTIFY_MASK
-            | Gdk.EventMask.POINTER_MOTION_MASK
-            | Gdk.EventMask.BUTTON_PRESS_MASK
-            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK |
+            Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK |
+            Gdk.EventMask.BUTTON_RELEASE_MASK
         )
         self.explorer_eb.connect("enter-notify-event", self._on_explorer_enter)
         self.explorer_eb.connect("leave-notify-event", self._on_explorer_leave)
@@ -289,17 +245,12 @@ class Explorer(
         self._setup_explorer_drop_tracking()
 
         self.revealer = Revealer(
-            name="explorer-revealer",
-            transition_type="slide-right",
-            transition_duration=350,
-            child_revealed=False,
-            child=self.explorer_eb,
+            name="explorer-revealer", transition_type="slide-right", transition_duration=350,
+            child_revealed=False, child=self.explorer_eb,
         )
 
         main_box = Box(
-            name="explorer-main",
-            orientation="h",
-            v_expand=True,
+            name="explorer-main", orientation="h", v_expand=True,
             children=[self.activator, self.revealer],
         )
         self.add(main_box)
@@ -328,9 +279,7 @@ class Explorer(
             if not window:
                 return self._cursor_inside
             origin = window.get_origin()
-            win_x, win_y = (
-                (origin[1], origin[2]) if len(origin) == 3 else origin
-            )
+            win_x, win_y = (origin[1], origin[2]) if len(origin) == 3 else origin
 
             if self.revealer.get_child_revealed():
                 try:
@@ -362,9 +311,7 @@ class Explorer(
             if not window:
                 return None
             origin = window.get_origin()
-            win_x, win_y = (
-                (origin[1], origin[2]) if len(origin) == 3 else origin
-            )
+            win_x, win_y = (origin[1], origin[2]) if len(origin) == 3 else origin
         except Exception:
             return None
 
@@ -499,103 +446,51 @@ class Explorer(
         self.status_bar = self._build_status_bar()
 
         content_box = Box(
-            name="explorer-content",
-            orientation="h",
-            h_expand=True,
-            v_expand=True,
+            name="explorer-content", orientation="h", h_expand=True, v_expand=True,
             children=[self.sidebar, self.file_view],
         )
 
         self.explorer_box = Box(
-            name="explorer-container",
-            orientation="v",
-            v_expand=True,
+            name="explorer-container", orientation="v", v_expand=True,
             children=[self.header, self.path_bar, content_box, self.status_bar],
         )
         self.explorer_box.set_size_request(self._explorer_width, -1)
 
     def _build_header(self):
-        self.btn_back = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="go-previous-symbolic", icon_size=16),
-            tooltip_text="Back",
-            on_clicked=self._on_back_clicked,
-        )
-        self.btn_forward = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="go-next-symbolic", icon_size=16),
-            tooltip_text="Forward",
-            on_clicked=self._on_forward_clicked,
-        )
-        self.btn_up = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="go-up-symbolic", icon_size=16),
-            tooltip_text="Parent folder",
-            on_clicked=self._on_up_clicked,
-        )
-        self.btn_home = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="go-home-symbolic", icon_size=16),
-            tooltip_text="Home",
-            on_clicked=self._on_home_clicked,
-        )
+        self.btn_back = Button(name="explorer-nav-btn", child=Image(icon_name="go-previous-symbolic", icon_size=16), tooltip_text="Back", on_clicked=self._on_back_clicked)
+        self.btn_forward = Button(name="explorer-nav-btn", child=Image(icon_name="go-next-symbolic", icon_size=16), tooltip_text="Forward", on_clicked=self._on_forward_clicked)
+        self.btn_up = Button(name="explorer-nav-btn", child=Image(icon_name="go-up-symbolic", icon_size=16), tooltip_text="Parent folder", on_clicked=self._on_up_clicked)
+        self.btn_home = Button(name="explorer-nav-btn", child=Image(icon_name="go-home-symbolic", icon_size=16), tooltip_text="Home", on_clicked=self._on_home_clicked)
 
         nav_box = Box(
-            name="explorer-nav-box",
-            orientation="h",
-            spacing=4,
+            name="explorer-nav-box", orientation="h", spacing=4,
             children=[self.btn_back, self.btn_forward, self.btn_up, self.btn_home],
         )
 
-        self.title_label = Label(
-            name="explorer-title", label="Files", h_expand=True, h_align="start"
-        )
+        self.title_label = Label(name="explorer-title", label="Files", h_expand=True, h_align="start")
 
-        self.btn_eject = Button(
-            name="explorer-eject-header-btn",
-            child=Image(icon_name="media-eject-symbolic", icon_size=16),
-            tooltip_text="Eject device",
-            on_clicked=self._on_header_eject_clicked,
-        )
+        self.btn_eject = Button(name="explorer-eject-header-btn", child=Image(icon_name="media-eject-symbolic", icon_size=16), tooltip_text="Eject device", on_clicked=self._on_header_eject_clicked)
         self.btn_eject.set_no_show_all(True)
         self.btn_eject.hide()
 
-        self.btn_hidden = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="view-more-symbolic", icon_size=16),
-            tooltip_text="Show hidden files",
-            on_clicked=self._on_toggle_hidden,
-        )
-        self.btn_pin = Button(
-            name="explorer-nav-btn",
-            child=Image(icon_name="view-pin-symbolic", icon_size=16),
-            tooltip_text="Pin explorer",
-            on_clicked=self._on_pin_clicked,
-        )
+        self.btn_hidden = Button(name="explorer-nav-btn", child=Image(icon_name="view-more-symbolic", icon_size=16), tooltip_text="Show hidden files", on_clicked=self._on_toggle_hidden)
+        self.btn_pin = Button(name="explorer-nav-btn", child=Image(icon_name="view-pin-symbolic", icon_size=16), tooltip_text="Pin explorer", on_clicked=self._on_pin_clicked)
 
         action_box = Box(
-            name="explorer-nav-box",
-            orientation="h",
-            spacing=4,
+            name="explorer-nav-box", orientation="h", spacing=4,
             children=[self.btn_eject, self.btn_hidden, self.btn_pin],
         )
 
         return Box(
-            name="explorer-header",
-            orientation="h",
-            spacing=8,
+            name="explorer-header", orientation="h", spacing=8,
             children=[nav_box, self.title_label, action_box],
         )
 
     def _build_path_bar(self):
-        self.path_container = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=2
-        )
+        self.path_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.path_container.set_name("explorer-path-container")
 
-        path_icon = Image(
-            icon_name="folder-symbolic", icon_size=16, name="explorer-path-icon"
-        )
+        path_icon = Image(icon_name="folder-symbolic", icon_size=16, name="explorer-path-icon")
 
         self.path_scroll = Gtk.ScrolledWindow()
         self.path_scroll.set_name("explorer-path-scroll")
@@ -610,9 +505,7 @@ class Explorer(
 
         scroll_eb = Gtk.EventBox()
         scroll_eb.add(self.path_scroll)
-        scroll_eb.add_events(
-            Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
-        )
+        scroll_eb.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
         scroll_eb.connect("scroll-event", self._on_path_scroll)
 
         path_wrapper = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -697,20 +590,13 @@ class Explorer(
         return False
 
     def _build_sidebar(self):
-        self.sidebar_content = Box(
-            name="explorer-sidebar-content", orientation="v", spacing=2
-        )
-        self.sidebar_content.add(
-            Label(name="explorer-sidebar-header", label="Places", h_align="start")
-        )
+        self.sidebar_content = Box(name="explorer-sidebar-content", orientation="v", spacing=2)
+        self.sidebar_content.add(Label(name="explorer-sidebar-header", label="Places", h_align="start"))
+        
         for icon_name, label, path in self._bookmarks:
-            self.sidebar_content.add(
-                self._create_bookmark_button(icon_name, label, path)
-            )
+            self.sidebar_content.add(self._create_bookmark_button(icon_name, label, path))
 
-        self.trash_button_container = Box(
-            name="explorer-trash-container", orientation="v"
-        )
+        self.trash_button_container = Box(name="explorer-trash-container", orientation="v")
         self._update_trash_button()
         self.sidebar_content.add(self.trash_button_container)
 
@@ -718,20 +604,13 @@ class Explorer(
         separator.set_size_request(-1, 1)
         self.sidebar_content.add(separator)
 
-        self.sidebar_content.add(
-            Label(name="explorer-sidebar-header", label="Devices", h_align="start")
-        )
-        self._devices_container = Box(
-            name="explorer-devices-container", orientation="v", spacing=2
-        )
+        self.sidebar_content.add(Label(name="explorer-sidebar-header", label="Devices", h_align="start"))
+        self._devices_container = Box(name="explorer-devices-container", orientation="v", spacing=2)
         self.sidebar_content.add(self._devices_container)
 
         return ScrolledWindow(
-            name="explorer-sidebar",
-            h_scrollbar_policy="never",
-            v_scrollbar_policy="automatic",
-            min_content_width=160,
-            child=self.sidebar_content,
+            name="explorer-sidebar", h_scrollbar_policy="never", v_scrollbar_policy="automatic",
+            min_content_width=160, child=self.sidebar_content,
         )
 
     def _create_bookmark_button(self, icon_name, label_text, path):
@@ -760,14 +639,10 @@ class Explorer(
         return btn
 
     def _create_trash_button(self):
-        return self._create_bookmark_button(
-            "user-trash-symbolic", "Trash", self._trash_path
-        )
+        return self._create_bookmark_button("user-trash-symbolic", "Trash", self._trash_path)
 
     def _create_clear_trash_button(self):
-        icon = Gtk.Image.new_from_icon_name(
-            "user-trash-full-symbolic", Gtk.IconSize.LARGE_TOOLBAR
-        )
+        icon = Gtk.Image.new_from_icon_name("user-trash-full-symbolic", Gtk.IconSize.LARGE_TOOLBAR)
         icon.set_pixel_size(24)
         icon.set_name("explorer-clear-icon")
 
@@ -791,42 +666,25 @@ class Explorer(
         container = self.trash_button_container
         for child in container.get_children():
             child.destroy()
-        btn = (
-            self._create_clear_trash_button()
-            if self._is_in_trash()
-            else self._create_trash_button()
-        )
+        btn = self._create_clear_trash_button() if self._is_in_trash() else self._create_trash_button()
         container.add(btn)
         container.show_all()
 
     def _build_file_view(self):
-        self.files_container = Box(
-            name="explorer-files-container", orientation="v", spacing=2
-        )
+        self.files_container = Box(name="explorer-files-container", orientation="v", spacing=2)
 
         self.files_eventbox = Gtk.EventBox()
         self.files_eventbox.add(self.files_container)
-        self.files_eventbox.connect(
-            "button-press-event", self._on_files_area_button_press
-        )
+        self.files_eventbox.connect("button-press-event", self._on_files_area_button_press)
 
         scrolled = ScrolledWindow(
-            name="explorer-file-view",
-            h_scrollbar_policy="never",
-            v_scrollbar_policy="always",
-            min_content_size=(-1, -1),
-            child=self.files_eventbox,
-            v_expand=True,
-            h_expand=True,
-            propagate_width=False,
-            propagate_height=False,
+            name="explorer-file-view", h_scrollbar_policy="never", v_scrollbar_policy="always",
+            min_content_size=(-1, -1), child=self.files_eventbox, v_expand=True, h_expand=True,
+            propagate_width=False, propagate_height=False,
         )
         scrolled.drag_dest_set(
-            Gtk.DestDefaults.MOTION
-            | Gtk.DestDefaults.HIGHLIGHT
-            | Gtk.DestDefaults.DROP,
-            self._dnd_targets,
-            Gdk.DragAction.COPY | Gdk.DragAction.MOVE,
+            Gtk.DestDefaults.MOTION | Gtk.DestDefaults.HIGHLIGHT | Gtk.DestDefaults.DROP,
+            self._dnd_targets, Gdk.DragAction.COPY | Gdk.DragAction.MOVE,
         )
         scrolled.connect("drag-motion", self._on_file_view_drag_motion)
         scrolled.connect("drag-leave", self._on_file_view_drag_leave)
@@ -846,11 +704,7 @@ class Explorer(
         self._update_drag_scroll(y)
 
         state = Gdk.Keymap.get_default().get_modifier_state()
-        action = (
-            Gdk.DragAction.COPY
-            if state & Gdk.ModifierType.CONTROL_MASK
-            else Gdk.DragAction.MOVE
-        )
+        action = Gdk.DragAction.COPY if state & Gdk.ModifierType.CONTROL_MASK else Gdk.DragAction.MOVE
         Gdk.drag_status(context, action, time)
         self._update_dnd_indicator(action, self._current_path.name or "here")
         return True
@@ -859,18 +713,11 @@ class Explorer(
         self._stop_drag_scroll()
 
     def _build_status_bar(self):
-        self.status_label = Label(
-            name="explorer-status-label", label="", h_align="start", h_expand=True
-        )
-        self.dnd_indicator = Label(
-            name="explorer-dnd-indicator", label="", h_align="center"
-        )
-        self.size_label = Label(
-            name="explorer-size-label", label="", h_align="end"
-        )
+        self.status_label = Label(name="explorer-status-label", label="", h_align="start", h_expand=True)
+        self.dnd_indicator = Label(name="explorer-dnd-indicator", label="", h_align="center")
+        self.size_label = Label(name="explorer-size-label", label="", h_align="end")
         return Box(
-            name="explorer-status-bar",
-            orientation="h",
+            name="explorer-status-bar", orientation="h",
             children=[self.status_label, self.dnd_indicator, self.size_label],
         )
 
@@ -892,8 +739,7 @@ class Explorer(
             self._is_loading = False
             return
 
-        show_hidden = self._show_hidden
-        if not show_hidden:
+        if not self._show_hidden:
             items = [i for i in items if not i.name.startswith('.')]
 
         items.sort(key=lambda x: (x.name.startswith('.'), x.is_file(), x.name.lower()))
@@ -918,18 +764,12 @@ class Explorer(
     def _show_empty_state(self):
         in_trash = self._is_in_trash()
         empty_box = Box(
-            name="explorer-empty-state",
-            orientation="v",
-            h_expand=True,
-            v_expand=True,
-            h_align="center",
-            v_align="center",
-            spacing=12,
+            name="explorer-empty-state", orientation="v", h_expand=True, v_expand=True,
+            h_align="center", v_align="center", spacing=12,
             children=[
                 Image(
                     icon_name="user-trash-symbolic" if in_trash else "folder-open-symbolic",
-                    icon_size=48,
-                    name="explorer-empty-icon",
+                    icon_size=48, name="explorer-empty-icon",
                 ),
                 Label(
                     name="explorer-empty-label",
@@ -944,48 +784,38 @@ class Explorer(
         is_dir = path.is_dir()
         icon = Image(
             icon_name=self._get_icon_for_path(path, is_dir),
-            icon_size=24,
-            name="explorer-file-icon",
+            icon_size=24, name="explorer-file-icon",
         )
         name_label = Label(
-            name="explorer-file-name",
-            label=path.name,
-            h_align="start",
-            h_expand=True,
-            ellipsize="end",
+            name="explorer-file-name", label=path.name, h_align="start",
+            h_expand=True, ellipsize="end",
         )
 
         size_label = Label(name="explorer-file-size", label="", h_align="end")
         size_label.set_size_request(75, -1)
 
+        try:
+            st = path.stat()
+            st_size = st.st_size
+            st_mtime = st.st_mtime
+            date_text = datetime.fromtimestamp(st_mtime).strftime("%Y-%m-%d %H:%M")
+        except OSError:
+            st_size = -1
+            date_text = ""
+
         if is_dir:
             count = self._count_folder_items(path)
             size_label.set_label(self._format_item_count(count))
         else:
-            try:
-                st = path.stat()
-                size_label.set_label(self._format_size(st.st_size))
-                date_text = datetime.fromtimestamp(st.st_mtime).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-            except OSError:
+            if st_size >= 0:
+                size_label.set_label(self._format_size(st_size))
+            else:
                 size_label.set_label("—")
-                date_text = ""
         
-        if is_dir:
-            try:
-                date_text = datetime.fromtimestamp(
-                    path.stat().st_mtime
-                ).strftime("%Y-%m-%d %H:%M")
-            except OSError:
-                date_text = ""
-
-        date_label = Label(
-            name="explorer-file-date", label=date_text, h_align="end"
-        )
+        date_label = Label(name="explorer-file-date", label=date_text, h_align="end")
+        
         content = Box(
-            orientation="h",
-            spacing=8,
+            orientation="h", spacing=8,
             children=[icon, name_label, size_label, date_label],
         )
         btn = Button(name="explorer-file-row", child=content)
@@ -1007,9 +837,8 @@ class Explorer(
             return _FOLDER_ICONS.get(path.name, "folder-symbolic")
 
         name_lower = path.name.lower()
-        for ext in _COMPOUND_ARCHIVE_EXTS:
-            if name_lower.endswith(ext):
-                return "package-x-generic-symbolic"
+        if name_lower.endswith(_COMPOUND_ARCHIVE_EXTS):
+            return "package-x-generic-symbolic"
 
         suffix = path.suffix
         if suffix:

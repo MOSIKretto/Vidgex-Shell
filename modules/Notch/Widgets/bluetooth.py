@@ -13,19 +13,19 @@ import services.icons as icons
 
 
 def _bt_cmd(*args, timeout=10):
-    """Безопасный вызов bluetoothctl."""
     try:
         r = subprocess.run(
-            ["bluetoothctl"] + list(args),
-            capture_output=True, timeout=timeout
+            ["bluetoothctl", *args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout
         )
         return r.returncode == 0
-    except Exception:
+    except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
 
 
 def _bt_known_addrs():
-    """Получить адреса всех известных устройств через bluetoothctl."""
     addrs = set()
     try:
         r = subprocess.run(
@@ -33,8 +33,8 @@ def _bt_known_addrs():
             capture_output=True, timeout=5, text=True
         )
         if r.returncode == 0:
-            for line in r.stdout.strip().splitlines():
-                parts = line.split()
+            for line in r.stdout.splitlines():
+                parts = line.split(maxsplit=2)
                 if len(parts) >= 2:
                     addrs.add(parts[1])
     except Exception:
@@ -43,18 +43,7 @@ def _bt_known_addrs():
 
 
 def _is_dev_known(dev):
-    """Устройство известно системе (paired или trusted)."""
-    try:
-        if dev.paired:
-            return True
-    except Exception:
-        pass
-    try:
-        if dev.trusted:
-            return True
-    except Exception:
-        pass
-    return False
+    return getattr(dev, "paired", False) or getattr(dev, "trusted", False)
 
 
 class BluetoothDeviceSlot(CenterBox):
@@ -64,170 +53,133 @@ class BluetoothDeviceSlot(CenterBox):
         self.client = client
         self._cb = on_pos_change
 
-        self._lc = None
-        self._lg = None
-        self._lp = None
-        self._lt = None
-        self._watch_id = None
+        self._lc = self._lg = self._lp = self._lt = None
         self._busy = False
         self._destroyed = False
 
-        self._act_box = Box(orientation="horizontal", spacing=4)
-
-        try:
-            icon_name = (device.icon_name or "bluetooth") + "-symbolic"
-            dev_name = device.name or device.address or "Unknown"
-        except Exception:
-            icon_name = "bluetooth-symbolic"
-            dev_name = "Device"
+        icon_name = f"{getattr(device, 'icon_name', 'bluetooth')}-symbolic"
+        dev_name = getattr(device, 'name', None) or getattr(device, 'address', 'Unknown')
 
         self.start_children = Box(
             spacing=8,
             children=[
                 Image(icon_name=icon_name, size=16),
-                Label(
-                    label=dev_name,
-                    h_expand=True,
-                    h_align="start",
-                    ellipsization="end",
-                ),
+                Label(label=dev_name, h_expand=True, h_align="start", ellipsization="end"),
             ],
         )
+
+        self._act_box = Box(orientation="horizontal", spacing=4)
+        
+        self.btn_conn = Button(name="bluetooth-connect", on_clicked=self._on_connect_click)
+        self.btn_del = Button(
+            name="bluetooth-delete",
+            child=Label(name="bluetooth-delete-label", markup=icons.trash),
+            tooltip_text="Forget device",
+            on_clicked=self._on_delete_click
+        )
+        
+        self._act_box.add(self.btn_conn)
+        self._act_box.add(self.btn_del)
         self.end_children = self._act_box
 
-        self._sig_ids = [
-            self.dev.connect("notify::connected", self._on_state_change),
-            self.dev.connect("notify::connecting", self._on_state_change),
-            self.dev.connect("notify::paired", self._on_state_change),
-        ]
-
-        # trusted сигнал может не существовать
-        try:
-            self._sig_ids.append(
-                self.dev.connect("notify::trusted", self._on_state_change)
-            )
-        except Exception:
-            pass
-
-        try:
-            self._sig_ids.append(
-                self.dev.connect("notify::closed", self._on_closed)
-            )
-        except Exception:
-            pass
+        self._sig_ids = []
+        for sig in ("notify::connected", "notify::connecting", "notify::paired", "notify::trusted", "notify::closed"):
+            try:
+                if sig == "notify::closed":
+                    handler_id = self.dev.connect(sig, self._on_closed)
+                else:
+                    handler_id = self.dev.connect(sig, self._on_state_change)
+                self._sig_ids.append(handler_id)
+            except TypeError:
+                pass
 
         self._upd()
 
     def _on_closed(self, dev, *_):
-        try:
-            if dev.closed:
-                self._cleanup_and_destroy()
-        except Exception:
-            self._cleanup_and_destroy()
+        if getattr(dev, "closed", False):
+            GLib.idle_add(self._cleanup_and_destroy)
 
     def _on_state_change(self, *_):
-        if self._busy or self._destroyed:
-            return
-        GLib.idle_add(self._deferred_state_change)
+        if not self._busy and not self._destroyed:
+            GLib.idle_add(self._deferred_state_change)
 
     def _deferred_state_change(self):
-        if self._destroyed:
-            return False
-        if self._cb:
-            self._cb(self)
-        self._upd()
+        if not self._destroyed:
+            if self._cb:
+                self._cb(self)
+            self._upd()
         return False
 
     def is_known(self):
-        """Устройство известно (paired или trusted)."""
         return _is_dev_known(self.dev)
 
     def _upd(self):
         if self._destroyed:
             return
 
-        try:
-            c = self.dev.connected
-            g = self.dev.connecting
-            p = self.dev.paired
-        except Exception:
-            return
+        c = getattr(self.dev, "connected", False)
+        g = getattr(self.dev, "connecting", False)
+        p = getattr(self.dev, "paired", False)
+        t = getattr(self.dev, "trusted", False)
 
-        try:
-            t = self.dev.trusted
-        except Exception:
-            t = False
-
-        if self._lc == c and self._lg == g and self._lp == p and self._lt == t:
+        if (self._lc, self._lg, self._lp, self._lt) == (c, g, p, t):
             return
         self._lc, self._lg, self._lp, self._lt = c, g, p, t
 
-        for child in self._act_box.get_children():
-            child.destroy()
-
         known = p or t
 
-        # === Кнопка Connect / Disconnect ===
-        btn = Button(name="bluetooth-connect")
-        btn.connect("clicked", self._on_connect_click)
-
         if c:
-            btn.set_label("Disconnect")
-            btn.add_style_class("connected")
+            self.btn_conn.set_label("Disconnect")
+            self.btn_conn.add_style_class("connected")
+            self.btn_conn.set_sensitive(not self._busy)
         elif g or self._busy:
-            btn.set_label("...")
-            btn.set_sensitive(False)
+            self.btn_conn.set_label("...")
+            self.btn_conn.remove_style_class("connected")
+            self.btn_conn.set_sensitive(False)
         else:
-            btn.set_label("Connect")
+            self.btn_conn.set_label("Connect")
+            self.btn_conn.remove_style_class("connected")
+            self.btn_conn.set_sensitive(True)
 
-        self._act_box.add(btn)
-
-        # === Кнопка Delete (для known устройств) ===
-        if known:
-            btn_del = Button(
-                name="bluetooth-delete",
-                child=Label(name="bluetooth-delete-label", markup=icons.trash),
-                tooltip_text="Forget device",
-            )
-            btn_del.connect("clicked", self._on_delete_click)
-            self._act_box.add(btn_del)
-
-        self._act_box.show_all()
+        self.btn_del.set_visible(known)
+        self.btn_del.set_sensitive(not self._busy)
 
     def _on_connect_click(self, btn):
-        if self._busy or self._destroyed:
-            return
-
+        if self._busy or self._destroyed: return
         self._busy = True
-        btn.set_sensitive(False)
-        btn.set_label("...")
-
-        addr = self.dev.address
-        was_connected = self._lc
-        was_known = self.is_known()
+        self._upd()
 
         threading.Thread(
             target=self._connect_thread,
-            args=(addr, was_connected, was_known),
+            args=(self.dev.address, self._lc, self.is_known()),
             daemon=True,
         ).start()
 
     def _connect_thread(self, addr, was_connected, was_known):
-        try:
-            if was_connected:
-                _bt_cmd("disconnect", addr, timeout=8)
-            else:
-                if not was_known:
-                    _bt_cmd("trust", addr, timeout=5)
-                    _bt_cmd("pair", addr, timeout=15)
-                    time.sleep(1.5)
-                _bt_cmd("connect", addr, timeout=10)
-        except Exception as e:
-            print(f"BT connect error: {e}")
-        finally:
-            GLib.idle_add(self._connect_done)
+        if was_connected:
+            _bt_cmd("disconnect", addr, timeout=8)
+        else:
+            if not was_known:
+                _bt_cmd("trust", addr, timeout=5)
+                _bt_cmd("pair", addr, timeout=15)
+                time.sleep(1)
+            _bt_cmd("connect", addr, timeout=10)
+        GLib.idle_add(self._op_done)
 
-    def _connect_done(self):
+    def _on_delete_click(self, btn):
+        if self._busy or self._destroyed: return
+        self._busy = True
+        self._upd()
+
+        threading.Thread(target=self._delete_thread, args=(self.dev.address,), daemon=True).start()
+
+    def _delete_thread(self, addr):
+        _bt_cmd("disconnect", addr, timeout=5)
+        _bt_cmd("untrust", addr, timeout=5)
+        _bt_cmd("remove", addr, timeout=5)
+        GLib.idle_add(self._op_done)
+
+    def _op_done(self):
         self._busy = False
         self._lc = self._lg = self._lp = self._lt = None
         self._upd()
@@ -235,63 +187,24 @@ class BluetoothDeviceSlot(CenterBox):
             self._cb(self)
         return False
 
-    def _on_delete_click(self, btn):
-        if self._busy or self._destroyed:
-            return
-
-        self._busy = True
-        btn.set_sensitive(False)
-        addr = self.dev.address
-
-        threading.Thread(
-            target=self._delete_thread,
-            args=(addr,),
-            daemon=True,
-        ).start()
-
-    def _delete_thread(self, addr):
-        _bt_cmd("disconnect", addr, timeout=5)
-        _bt_cmd("untrust", addr, timeout=5)
-        time.sleep(0.3)
-        _bt_cmd("remove", addr, timeout=5)
-        GLib.idle_add(self._delete_done)
-
-    def _delete_done(self):
-        self._busy = False
-        return False
-
     def _cleanup_and_destroy(self):
-        if self._destroyed:
-            return
+        if self._destroyed: return
         self._destroyed = True
 
-        if self._watch_id:
-            GLib.source_remove(self._watch_id)
-            self._watch_id = None
-
-        try:
-            for sig_id in self._sig_ids:
+        for sig_id in self._sig_ids:
+            if self.dev.handler_is_connected(sig_id):
                 self.dev.disconnect(sig_id)
-        except Exception:
-            pass
         self._sig_ids.clear()
-
         self.destroy()
 
 
 class BluetoothConnections(Box):
     def __init__(self, **kwargs):
-        w = kwargs.pop("widgets", None)
+        self._w = kwargs.pop("widgets", None)
         super().__init__(name="bluetooth", spacing=4, orientation="vertical", **kwargs)
 
-        self._w = w
-        try:
-            self._btns = w.buttons.bluetooth_button
-        except Exception:
-            self._btns = None
-
-        self._le = None
-        self._ls = None
+        self._btns = getattr(self._w.buttons, "bluetooth_button", None) if self._w else None
+        self._le = self._ls = None
         self._known_addrs = set()
         self._bt_system_addrs = set()
         self._load_retries = 0
@@ -315,28 +228,23 @@ class BluetoothConnections(Box):
         back_btn = Button(
             name="bluetooth-back",
             child=Label(name="bluetooth-back-label", markup=icons.chevron_left),
-        )
-        if self._w:
-            back_btn.connect("clicked", lambda *_: self._w.show_notif())
-
-        content = Box(
-            spacing=4,
-            orientation="vertical",
-            children=[
-                Label(name="bluetooth-section", label="Connected"),
-                self._saved_box,
-                Label(name="bluetooth-section", label="Accessible"),
-                self._access_box,
-            ],
+            on_clicked=lambda *_: self._w.show_notif() if self._w else None
         )
 
         self.scroll = ScrolledWindow(
             name="bluetooth-devices",
             min_content_size=(-1, -1),
-            child=content,
             v_expand=True,
             propagate_width=False,
             propagate_height=False,
+            child=Box(
+                spacing=4,
+                orientation="vertical",
+                children=[
+                    Label(name="bluetooth-section", label="Connected"), self._saved_box,
+                    Label(name="bluetooth-section", label="Accessible"), self._access_box,
+                ],
+            )
         )
 
         self.children = [
@@ -351,150 +259,95 @@ class BluetoothConnections(Box):
 
         self._cl.connect("notify::enabled", self._on_en)
         self._cl.connect("notify::scanning", self._on_sc)
-
         self._on_en()
         self._on_sc()
 
-        # Получаем список известных устройств из системы в фоне
         threading.Thread(target=self._prefetch_known, daemon=True).start()
-
-        # Первая попытка загрузки с задержкой
         GLib.timeout_add(500, self._load_initial_devices)
 
     def _prefetch_known(self):
-        """Получаем адреса из bluetoothctl devices до загрузки."""
         self._bt_system_addrs = _bt_known_addrs()
 
     def _load_initial_devices(self):
-        self._load_retries += 1
+        devices = getattr(self._cl, "devices", None)
+        if not devices:
+            self._load_retries += 1
+            return self._load_retries < 6
 
-        if not hasattr(self._cl, "devices") or not self._cl.devices:
-            if self._load_retries < 6:
-                GLib.timeout_add(1000, self._load_initial_devices)
-            return False
-
-        try:
-            devs = sorted(
-                self._cl.devices.values(),
-                key=lambda d: (
-                    not getattr(d, "connected", False),
-                    not _is_dev_known(d),
-                ),
-            )
-            for dev in devs:
-                self._add_existing_dev(dev)
-        except Exception as e:
-            print(f"BT load error: {e}")
-            if self._load_retries < 6:
-                GLib.timeout_add(1000, self._load_initial_devices)
-
+        devs = sorted(
+            devices.values(),
+            key=lambda d: (not getattr(d, "connected", False), not _is_dev_known(d))
+        )
+        for dev in devs:
+            self._add_existing_dev(dev)
+            
         return False
 
     def _add_dev_callback(self, client, address):
         if client:
-            try:
-                dev = client.get_device(address)
+            dev = client.get_device(address)
+            if dev:
                 GLib.idle_add(self._add_existing_dev, dev)
-            except Exception:
-                pass
 
     def _add_existing_dev(self, dev):
-        if not dev:
+        addr = getattr(dev, "address", None)
+        if not addr or addr in self._known_addrs:
             return False
-        try:
-            addr = dev.address
-        except Exception:
-            return False
-
-        if addr in self._known_addrs:
-            return False
+            
         self._known_addrs.add(addr)
-
         slot = BluetoothDeviceSlot(dev, self._cl, on_pos_change=self._repos)
         slot.connect("destroy", lambda s: self._known_addrs.discard(addr))
 
-        is_known = _is_dev_known(dev) or addr in self._bt_system_addrs
-
-        target = self._saved_box if is_known else self._access_box
+        target = self._saved_box if (_is_dev_known(dev) or addr in self._bt_system_addrs) else self._access_box
         target.add(slot)
-        slot.show_all()
         return False
 
     def _repos(self, slot):
-        if slot._destroyed:
-            return
-        try:
-            is_known = slot.is_known()
-        except Exception:
-            return
-
-        target = self._saved_box if is_known else self._access_box
+        if slot._destroyed: return
+        target = self._saved_box if slot.is_known() else self._access_box
         parent = slot.get_parent()
 
         if parent and parent != target:
             parent.remove(slot)
             target.add(slot)
-            slot.show_all()
 
     def _on_en(self, *_):
-        try:
-            en = self._cl.enabled
-        except Exception:
-            return
-        if self._le == en:
-            return
+        en = getattr(self._cl, "enabled", False)
+        if self._le == en: return
         self._le = en
 
-        if not self._btns:
-            return
-        try:
-            b = self._btns
-            m = "remove_style_class" if en else "add_style_class"
+        if not self._btns: return
+        
+        m = "remove_style_class" if en else "add_style_class"
+        for attr in ("bluetooth_status_text", "bluetooth_status_button", "bluetooth_icon"):
+            item = getattr(self._btns, attr, None)
+            if item: getattr(item, m)("disabled")
 
-            for attr in ("bluetooth_status_text", "bluetooth_status_button", "bluetooth_icon"):
-                item = getattr(b, attr, None)
-                if item:
-                    getattr(item, m)("disabled")
+        txt = getattr(self._btns, "bluetooth_status_text", None)
+        if txt: txt.set_label("Enabled" if en else "Disabled")
 
-            txt = getattr(b, "bluetooth_status_text", None)
-            if txt:
-                txt.set_label("Enabled" if en else "Disabled")
-
-            ico = getattr(b, "bluetooth_icon", None)
-            if ico:
-                ico.set_markup(icons.bluetooth if en else icons.bluetooth_off)
-        except Exception:
-            pass
+        ico = getattr(self._btns, "bluetooth_icon", None)
+        if ico: ico.set_markup(icons.bluetooth if en else icons.bluetooth_off)
 
     def _on_sc(self, *_):
-        try:
-            sc = self._cl.scanning
-        except Exception:
-            return
-        if self._ls == sc:
-            return
+        sc = getattr(self._cl, "scanning", False)
+        if self._ls == sc: return
         self._ls = sc
 
-        try:
-            m = "add_style_class" if sc else "remove_style_class"
-            getattr(self._sl, m)("scanning")
-            getattr(self._sb, m)("scanning")
-            self._sb.set_tooltip_text("Stop scanning" if sc else "Scan Bluetooth")
-        except Exception:
-            pass
+        m = "add_style_class" if sc else "remove_style_class"
+        getattr(self._sl, m)("scanning")
+        getattr(self._sb, m)("scanning")
+        self._sb.set_tooltip_text("Stop scanning" if sc else "Scan Bluetooth")
 
     def cleanup(self):
-        try:
-            self._known_addrs.clear()
-            self._bt_system_addrs.clear()
-            for box in (self._saved_box, self._access_box):
-                for c in box.get_children():
-                    if hasattr(c, "_cleanup_and_destroy"):
-                        c._cleanup_and_destroy()
-                    else:
-                        c.destroy()
-            self._cl = None
-            self._w = None
-            self._btns = None
-        except Exception:
-            pass
+        self._known_addrs.clear()
+        self._bt_system_addrs.clear()
+        
+        for box in (self._saved_box, self._access_box):
+            for c in box.get_children():
+                if hasattr(c, "_cleanup_and_destroy"):
+                    c._cleanup_and_destroy()
+                else:
+                    c.destroy()
+        
+        self._cl = self._w = self._btns = None

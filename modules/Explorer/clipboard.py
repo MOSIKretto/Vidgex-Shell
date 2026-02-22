@@ -40,14 +40,18 @@ class ClipboardMixin:
         pasted = 0
         errors = 0
         is_cut = self._clipboard_is_cut
+        dest_resolved = dest_folder.resolve()
 
         for src in self._clipboard_paths[:]:
             if not src.exists():
                 continue
 
             if src.is_dir():
+                src_resolved = src.resolve()
+                if src_resolved == dest_resolved:
+                    continue
                 try:
-                    dest_folder.resolve().relative_to(src.resolve())
+                    dest_resolved.relative_to(src_resolved)
                     self.status_label.set_label(f"Cannot paste '{src.name}' into itself")
                     continue
                 except ValueError:
@@ -72,7 +76,7 @@ class ClipboardMixin:
                 errors += 1
 
         if is_cut and pasted > 0:
-            self._clipboard_paths = []
+            self._clipboard_paths.clear()
             self._clipboard_is_cut = False
 
         if pasted > 0:
@@ -86,4 +90,7 @@ class ClipboardMixin:
     def _can_paste(self) -> bool:
         if not self._clipboard_paths:
             return False
-        return any(p.exists() for p in self._clipboard_paths)
+        for p in self._clipboard_paths:
+            if p.exists():
+                return True
+        return False
