@@ -2,6 +2,9 @@ import os
 import threading
 import time
 import weakref
+import subprocess
+import psutil
+
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.circularprogressbar import CircularProgressBar
@@ -10,7 +13,6 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
 from gi.repository import GLib
-import subprocess
 
 from services.network import NetworkClient
 from services.upower import UPowerManager
@@ -31,64 +33,81 @@ class MetricsProvider:
     __slots__ = (
         'cpu', 'mem', 'disk', 'gpu', 'temp',
         'bat_pct', 'bat_chg', 'bat_time', 'net_dl', 'net_ul',
-        '_ci', '_ct', '_nr', '_ns', '_nt',
-        '_gt', '_gp', '_tp', '_up', '_dd', '_run'
+        '_nr', '_ns', '_nt', 'gpus',
+        '_up', '_dd', '_run'
     )
 
     def __init__(self):
         self.cpu = self.mem = self.temp = self.bat_pct = self.bat_time = 0.0
         self.net_dl = self.net_ul = 0.0
-        self.disk, self.gpu = [0.0], []
+        self.disk = [0.0]
+        self.gpu = []
+        self.gpus = [] # Список найденных видеокарт
         self.bat_chg = None
-        self._ci = self._ct = self._nr = self._ns = 0
+        
+        self._nr = self._ns = 0
         self._nt = time.monotonic()
-        self._gt, self._gp, self._tp = 0, [], None
         
         self._up = UPowerManager()
         self._dd = self._up.get_display_device()
+        
+        try:
+            net = psutil.net_io_counters()
+            self._nr, self._ns = net.bytes_recv, net.bytes_sent
+        except Exception: pass
+
         self._detect_hw()
-        self._init_net()
         
         self._run = True
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _detect_hw(self):
-        for p in ('/sys/class/thermal/thermal_zone0/temp', '/sys/class/hwmon/hwmon0/temp1_input'):
-            if os.path.exists(p):
-                self._tp = p
-                break
-
-        try:
-            if 'GPU' in subprocess.run(['nvidia-smi', '-L'], capture_output=True, text=True).stdout:
-                self._gt, self.gpu = 1, [0.0]
-                return
-        except Exception: pass
-
         for i in range(8):
             amd_path = f'/sys/class/drm/card{i}/device/gpu_busy_percent'
             if os.path.exists(amd_path):
-                try:
-                    with open(amd_path) as f: int(f.read().strip())
-                    self._gt, self._gp, self.gpu = 2, [amd_path], [0.0]
-                    return
-                except Exception: pass
+                self.gpus.append({'type': 'amd', 'name': 'AMD', 'path': amd_path})
+                self.gpu.append(0.0)
+
+        try:
+            if subprocess.run(['nvidia-smi'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                out = subprocess.check_output(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], text=True)
+                for line in out.strip().split('\n'):
+                    if line:
+                        self.gpus.append({'type': 'nvidia', 'name': 'NVIDIA'})
+                        self.gpu.append(0.0)
+        except Exception: pass
 
         if os.system('which intel_gpu_top >/dev/null 2>&1') == 0:
-            self._gt, self.gpu = 3, [0.0]
+            self.gpus.append({'type': 'intel', 'name': 'INTEL'})
+            self.gpu.append(0.0)
+            idx = len(self.gpu) - 1
+            threading.Thread(target=self._intel_gpu_reader, args=(idx,), daemon=True).start()
 
-    def _init_net(self):
+    def _intel_gpu_reader(self, idx):
         try:
-            with open('/proc/net/dev', 'r') as f:
-                r = s = 0
-                for ln in f.readlines()[2:]:
-                    if 'lo:' not in ln:
-                        p = ln.split()
-                        r += int(p[1])
-                        s += int(p[9])
-                self._nr, self._ns = r, s
+            proc = subprocess.Popen(
+                ['intel_gpu_top', '-J', '-s', '2000'], 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+            in_render = False
+            for line in proc.stdout:
+                if not self._run: break
+                
+                if '"Render/3D"' in line or '"Render/3D/0"' in line:
+                    in_render = True
+                elif in_render and '"busy"' in line:
+                    try:
+                        val = float(line.split(':')[1].replace(',', '').strip())
+                        self.gpu[idx] = max(0.0, min(100.0, val))
+                    except Exception: pass
+                    in_render = False
         except Exception: pass
 
     def _worker(self):
+        psutil.cpu_percent(interval=None)
+        
         while self._run:
             if not _subs:
                 GLib.idle_add(self.cleanup)
@@ -99,35 +118,23 @@ class MetricsProvider:
             time.sleep(2.0)
 
     def _gather_metrics(self):
-        try:
-            with open('/proc/stat', 'r') as f:
-                p = f.readline().split()
-            idle = int(p[4])
-            total = sum(int(x) for x in p[1:8])
-            di, dt = idle - self._ci, total - self._ct
-            self._ci, self._ct = idle, total
-            self.cpu = (1.0 - di / dt) * 100.0 if dt else 0.0
+        try: self.cpu = psutil.cpu_percent(interval=None)
+        except Exception: pass
+
+        try: self.mem = psutil.virtual_memory().percent
+        except Exception: pass
+
+        try: self.disk[0] = psutil.disk_usage('/').percent
         except Exception: pass
 
         try:
-            with open('/proc/meminfo', 'r') as f:
-                txt = f.read()
-                mt = int(txt[txt.find('MemTotal:'):].split()[1])
-                ma = int(txt[txt.find('MemAvailable:'):].split()[1])
-            self.mem = (1.0 - ma / mt) * 100.0 if mt else 0.0
+            temps = psutil.sensors_temperatures()
+            max_t = 0.0
+            for name, entries in temps.items():
+                for entry in entries:
+                    if entry.current > max_t: max_t = entry.current
+            self.temp = max_t
         except Exception: pass
-
-        try:
-            st = os.statvfs('/')
-            t = st.f_blocks * st.f_frsize
-            self.disk[0] = (1.0 - (st.f_bfree * st.f_frsize) / t) * 100.0 if t else 0.0
-        except Exception: pass
-
-        if self._tp:
-            try:
-                with open(self._tp, 'r') as f:
-                    self.temp = int(f.read()) * 0.001
-            except Exception: pass
 
         if self._dd:
             try:
@@ -145,44 +152,30 @@ class MetricsProvider:
         dt = now - self._nt
         if dt > 0:
             try:
-                with open('/proc/net/dev', 'r') as f:
-                    r = s = 0
-                    for ln in f.readlines()[2:]:
-                        if 'lo:' not in ln:
-                            p = ln.split()
-                            r += int(p[1])
-                            s += int(p[9])
-                self.net_dl, self.net_ul = (r - self._nr) / dt, (s - self._ns) / dt
-                self._nr, self._ns, self._nt = r, s, now
+                net = psutil.net_io_counters()
+                self.net_dl = (net.bytes_recv - self._nr) / dt
+                self.net_ul = (net.bytes_sent - self._ns) / dt
+                self._nr, self._ns, self._nt = net.bytes_recv, net.bytes_sent, now
             except Exception: pass
 
-        gt = self._gt
-        if gt == 1:
-            try:
-                out = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits', '-i', '0'], capture_output=True, text=True).stdout
-                self.gpu[0] = max(0.0, min(100.0, float(out.strip())))
-            except Exception: pass
-        elif gt == 2:
-            try:
-                with open(self._gp[0]) as f:
-                    self.gpu[0] = max(0.0, min(100.0, float(f.read().strip())))
-            except Exception: pass
-        elif gt == 3:
-            try:
-                out = subprocess.run(['timeout', '0.4', 'intel_gpu_top', '-J', '-s', '100'], capture_output=True, text=True).stdout
-                if out:
-                    # Избавились от Regex. Быстрый строковый поиск
-                    idx = out.rfind('"Render/3D"')
-                    if idx != -1:
-                        busy_idx = out.find('"busy":', idx)
-                        self.gpu[0] = max(0.0, min(100.0, float(out[busy_idx+7:].split(',')[0].strip())))
-                    else:
-                        idx = out.rfind('"rc6"')
-                        if idx != -1:
-                            val_idx = out.find('"value":', idx)
-                            rc6 = float(out[val_idx+8:].split(',')[0].strip())
-                            self.gpu[0] = max(0.0, min(100.0, 100.0 - rc6))
-            except Exception: pass
+        nv_idx = 0
+        for i, gpu in enumerate(self.gpus):
+            if gpu['type'] == 'amd':
+                try:
+                    with open(gpu['path'], 'r') as f:
+                        self.gpu[i] = max(0.0, min(100.0, float(f.read().strip())))
+                except Exception: pass
+            elif gpu['type'] == 'nvidia':
+                try:
+                    out = subprocess.check_output(
+                        ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'], 
+                        text=True
+                    )
+                    vals = [float(x.strip()) for x in out.strip().split('\n') if x.strip()]
+                    if nv_idx < len(vals):
+                        self.gpu[i] = max(0.0, min(100.0, vals[nv_idx]))
+                    nv_idx += 1
+                except Exception: pass
 
     def _notify_ui(self):
         for widget in _subs:
@@ -192,11 +185,11 @@ class MetricsProvider:
         return False
 
     def get_gpu_info(self):
-        return [{}] if self._gt else []
+        return self.gpus
 
     def cleanup(self):
         self._run = False
-        self.gpu = self.disk = self._gp = []
+        self.gpu = self.disk = self.gpus = []
         self._up = self._dd = None
         global _prov
         _prov = None
@@ -253,7 +246,8 @@ class Metrics(Box):
         self.disk = [SingularMetric('disk', 'ДИСК', icons.disk)]
         self.ram = SingularMetric('ram', 'ОЗУ', icons.memory)
         self.cpu = SingularMetric('cpu', 'ЦП', icons.cpu)
-        self.gpu = [SingularMetric('gpu', 'GPU', icons.gpu) for _ in (_prov.get_gpu_info() if _prov else [])]
+        
+        self.gpu = [SingularMetric('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
                    
         for m in (self.temp,) + tuple(self.disk) + (self.ram, self.cpu) + tuple(self.gpu):
             self.add(m.box)
@@ -281,7 +275,8 @@ class MetricsSmall(Button):
         self.disk = [SingularMetricSmall('disk', 'ДИСК', icons.disk)]
         self.cpu = SingularMetricSmall('cpu', 'ЦП', icons.cpu)
         self.ram = SingularMetricSmall('ram', 'ОЗУ', icons.memory)
-        self.gpu = [SingularMetricSmall('gpu', 'GPU', icons.gpu) for _ in (_prov.get_gpu_info() if _prov else [])]
+        self.gpu = [SingularMetricSmall('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
+        
         self._all = [self.temp] + self.disk + [self.ram, self.cpu] + self.gpu
         
         for w in self._all:
@@ -513,7 +508,6 @@ class NetworkApplet(Button):
     def _upd(self):
         if not _prov: return
         
-        # ОПТИМИЗАЦИЯ: Не форматируем строки и не дергаем GTK, если виджет скрыт (Revealer закрыт)
         if self.hov or self.dlr.get_child_revealed():
             fdl = self._fmt(_prov.net_dl)
             ful = self._fmt(_prov.net_ul)
