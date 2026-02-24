@@ -1,4 +1,3 @@
-/* ОБЩИЕ СТИЛИ ДЛЯ ВСЕХ КНОПОК */
 #bluetooth-scan,
 #bluetooth-back,
 #network-scan,
@@ -8,7 +7,7 @@
 #wifi-delete,
 #bluetooth-delete {
   background-color: var(--surface);
-  border-radius: 8px;
+  border-radius: 8px; 
   padding: 8px;
   margin: 2px;
   border: 1px solid var(--surface-bright);
@@ -16,11 +15,10 @@
   font-weight: bold;
 }
 
-/* Стили для недоступных Wi-Fi сетей */
 #wifi-unavailable,
 .unavailable-network {
   background-color: transparent;
-  border-radius: 8px;
+  border-radius: 8px; 
   padding: 8px;
   margin: 2px;
   border: 1px solid var(--surface-bright);
@@ -29,14 +27,12 @@
   transition: none;
 }
 
-/* Стили для слотов устройств */
 #bluetooth-device-slot,
 #wifi-network-slot {
-    margin-bottom: 4px;
-    padding: 2px;
+  margin-bottom: 4px;
+  padding: 2px;
 }
 
-/* Стили для иконок в кнопках */
 #bluetooth-back-label,
 #network-back-label,
 #bluetooth-scan-label,
@@ -47,7 +43,6 @@
   font-size: 20px;
 }
 
-/* Hover эффекты для всех активных кнопок */
 #bluetooth-scan:hover,
 #bluetooth-back:hover,
 #network-scan:hover,
@@ -58,7 +53,6 @@
   border-color: var(--primary);
 }
 
-/* Стили для текста */
 #bluetooth-text,
 #network-text,
 #bluetooth-section,
@@ -69,45 +63,36 @@
 #bluetooth-section,
 #network-section {
   background-color: var(--surface);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 8px;
   margin: 4px 0;
 }
 
-/* === СТИЛИ ДЛЯ ПОДКЛЮЧЕННЫХ СОСТОЯНИЙ === */
-
-/* Зеленая кнопка при подключении */
 #wifi-connect.connected,
 #bluetooth-connect.connected {
   background-color: var(--green);
 }
 
-/* Черный текст и иконки на зеленой кнопке */
 #bluetooth-connect.connected,
 #bluetooth-connect.connected label  {
   color: var(--shadow);
 }
 
-/* Стили для плашки "Подключено" в Wi-Fi */
 #wifi-connected-label {
   background-color: var(--green);
   color: var(--shadow);
-  border-radius: 8px;
+  border-radius: 8px; 
   padding: 8px;
   font-weight: bold;
   margin: 2px;
 }
 
-/* === ЦВЕТНЫЕ АКЦЕНТЫ === */
-
-/* Цвет иконок при сканировании */
 #bluetooth-scan-label,
 #network-scan-label {
   font-size: 20px;
   color: var(--primary);
 }
 
-/* АНИМАЦИЯ СКАНИРОВАНИЯ */
 #bluetooth-scan.scanning,
 #network-scan.scanning {
   background: linear-gradient(90deg, 
@@ -137,9 +122,6 @@
   }
 }
 
-/* === НАЖАТИЕ КНОПОК (ACTIVE/PRESSED) === */
-
-/* Стандартные кнопки */
 #bluetooth-scan.pressed,
 #bluetooth-back.pressed,
 #network-scan.pressed,
@@ -157,7 +139,6 @@
   color: var(--cursor);
 }
 
-/* Кнопки удаления (Красные при нажатии/ховере) */
 #wifi-delete.pressed,
 #bluetooth-delete.pressed,
 #wifi-delete:active,
@@ -169,7 +150,6 @@
   color: var(--cursor);
 }
 
-/* Подключенные кнопки (Зеленые -> Темные при нажатии) */
 #bluetooth-connect.connected.pressed,
 #bluetooth-connect.connected:active {
   background-color: var(--shadow);
@@ -181,8 +161,6 @@
 #bluetooth-connect.connected:active label {
   color: var(--cursor);
 }
-
-/* === КОНТЕЙНЕР ПАРОЛЯ WI-FI (из исходника) === */
 
 #password-entry-container {
   background-color: var(--surface);
@@ -209,7 +187,7 @@
 
 #password-entry-container button {
   background-color: var(--surface);
-  border-radius: 8px;
+  border-radius: 8px; 
   padding: 8px;
   margin: 2px;
   border: 1px solid var(--surface-bright);
@@ -217,13 +195,11 @@
   font-weight: bold;
 }
 
-/* Кнопка Отмена */
 #password-entry-container button:nth-child(1) {
   color: var(--red);
   border-color: var(--red);
 }
 
-/* Кнопка ОК */
 #password-entry-container button:nth-child(2) {
   color: var(--primary);
   border-color: var(--primary);

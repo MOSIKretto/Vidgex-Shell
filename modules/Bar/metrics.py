@@ -18,6 +18,7 @@ from services.network import NetworkClient
 from services.upower import UPowerManager
 import services.icons as icons
 
+
 _prov = None
 _subs = weakref.WeakSet()
 

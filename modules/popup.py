@@ -1,5 +1,7 @@
 from fabric.widgets.box import Box
+
 from modules.Notifications.history import NotificationHistory, NotificationContainer
+
 from services.wayland import WaylandWindow as Window
 
 

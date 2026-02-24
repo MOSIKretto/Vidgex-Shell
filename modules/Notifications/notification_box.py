@@ -1,7 +1,6 @@
 import os
 import weakref
 import shutil
-import gc
 from threading import Thread
 from queue import Queue
 

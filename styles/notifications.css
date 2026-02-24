@@ -1,11 +1,10 @@
-/* Пустое состояние: нет уведомлений */
 #no-notif {
   font-size: 96px;
   color: var(--surface);
 }
 
 #action-button {
-  border-radius: 16px;
+  border-radius: 12px;
   background-color: var(--surface);
   padding: 8px;
   margin-top: 8px;
@@ -24,7 +23,7 @@
 }
 
 #notification-image image {
-  border-radius: 16px;
+  border-radius: 12px;
 }
 
 #notification-summary,
@@ -44,9 +43,8 @@
   color: var(--outline);
 }
 
-/* Popup уведомления */
 #notification-stack-box {
-  border-radius: 32px;
+  border-radius: 12px;
   padding: 16px;
   border: 2px solid var(--primary);
   background-color: var(--shadow);
@@ -61,7 +59,7 @@
 
 #notif-close-button {
   background-color: var(--surface);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 8px;
 }
 
@@ -77,7 +75,7 @@
 
 #nav-button {
   padding: 8px;
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--shadow);
   border: 2px solid var(--primary);
   margin-top: -12px;
@@ -140,7 +138,7 @@
 
 #notif-sep {
   padding: 2px;
-  border-radius: 16px;
+  border-radius: 12px;
   background-color: var(--surface-bright);
   margin: 0 8px;
 }
@@ -156,15 +154,9 @@
   font-weight: bold;
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   ГРУППЫ УВЕДОМЛЕНИЙ  –  GNOME 49-style stacking
-   ══════════════════════════════════════════════════════════════════════ */
-
 #notification-group {
   margin-bottom: 4px;
 }
-
-/* ── Header (Box = expand-button + round close-button) ─────────────── */
 
 #notification-group-header {
   background-color: var(--surface);
@@ -180,14 +172,12 @@
   border-color: var(--primary);
 }
 
-/* expand / collapse button  –  transparent inside header */
 #group-expand-button {
   background: transparent;
   border: none;
   border-radius: 8px;
   padding: 4px 8px;
 }
-
 
 #group-header-content {
   min-height: 24px;
@@ -214,7 +204,6 @@
   font-size: 14px;
 }
 
-/* expanded text colours */
 #notification-group-header.expanded #group-app-name,
 #notification-group-header.expanded #group-count-label,
 #notification-group-header.expanded #group-expand-icon {
@@ -225,7 +214,6 @@
   background-color: rgba(0, 0, 0, 0.2);
 }
 
-/* round close button inside expanded header */
 #notification-group-header.expanded > #notif-close-button {
   background-color: rgba(0, 0, 0, 0.15);
 }
@@ -237,8 +225,6 @@
 #notification-group-header.expanded > #notif-close-button #notif-close-label {
   color: var(--shadow);
 }
-
-/* ── Stack indicators  –  «card edges» behind the first card ──────── */
 
 #stack-indicators {
   margin-top: -4px;
@@ -262,8 +248,6 @@
   opacity: 0.5;
 }
 
-/* ── Stacked (expanded) container ─────────────────────────────────── */
-
 #group-stacked-container {
   margin-top: 4px;
 }
@@ -278,8 +262,6 @@
   opacity: 1;
   border-color: var(--primary);
 }
-
-/* ── Spacing between groups and date separators ───────────────────── */
 
 #notification-group + #notification-group {
   margin-top: 8px;

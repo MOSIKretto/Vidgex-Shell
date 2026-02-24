@@ -2,6 +2,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Gio
 
+from fabric.utils import exec_shell_command_async
+
 import os
 import shutil
 import subprocess
@@ -10,7 +12,6 @@ import urllib.parse
 from pathlib import Path
 from typing import Optional
 
-from fabric.utils import exec_shell_command_async
 
 
 class ActionsMixin:

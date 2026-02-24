@@ -1,29 +1,21 @@
-/* ============================================
-   DOCK MAIN CONTAINER
-   ============================================ */
-
 #dock {
   background-color: var(--shadow);
   padding: 8px;
   margin: 8px 8px 0 8px;
-  border-radius: 20px 20px 0 0;
+  border-radius: 12px 12px 0 0;
 }
 
 #dock.integrated {
   background-color: var(--shadow);
   padding: 4px;
   margin: 0;
-  border-radius: 16px;
+  border-radius: 12px;
   border: none;
 }
 
 #dock-full {
   opacity: 1;
 }
-
-/* ============================================
-   DOCK APP BUTTON
-   ============================================ */
 
 #dock-app-button {
   padding: 6px;
@@ -84,10 +76,6 @@
   border-radius: 12px;
 }
 
-/* ============================================
-   ICON LIFT ANIMATION
-   ============================================ */
-
 #dock-icon {
   transition: all 150ms ease-out;
 }
@@ -110,10 +98,6 @@
 #dock-icon-image {
   transition: all 150ms ease-out;
 }
-
-/* ============================================
-   WINDOW COUNT DOTS (VERTICAL)
-   ============================================ */
 
 #dock-dots-wrapper {
   padding-left: 3px;
@@ -145,13 +129,9 @@
   box-shadow: 0 0 4px var(--primary);
 }
 
-/* ============================================
-   CORNERS & SEPARATOR
-   ============================================ */
-
 #dock-separator {
   padding: 2px;
-  border-radius: 16px;
+  border-radius: 12px;
   background-color: var(--surface-bright);
 }
 

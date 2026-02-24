@@ -1,6 +1,7 @@
 import os
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+import cairo
 
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
@@ -9,8 +10,8 @@ from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
 
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
-import cairo
 import services.icons as icons
+
 
 _HOME = GLib.get_home_dir()
 _WALLS = f"{_HOME}/.config/Vidgex-Shell/wallpapers/"

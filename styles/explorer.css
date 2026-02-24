@@ -1,5 +1,3 @@
-/* ==================== EXPLORER WINDOW ==================== */
-
 #explorer-window {
     background: transparent;
 }
@@ -30,8 +28,6 @@
     margin-right: 8px;
 }
 
-/* ==================== HEADER ==================== */
-
 #explorer-header {
     padding: 8px 12px;
     background-color: var(--shadow);
@@ -49,17 +45,15 @@
 
 #explorer-nav-box {
     background-color: var(--surface);
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 4px;
 }
-
-/* ==================== NAV BUTTONS ==================== */
 
 #explorer-nav-btn {
     min-width: 28px;
     min-height: 28px;
     padding: 4px;
-    border-radius: 6px;
+    border-radius: 8px;
     background-color: transparent;
     border: 1px solid transparent;
     transition: all 150ms ease-in-out;
@@ -93,13 +87,11 @@
     color: var(--on-primary);
 }
 
-/* ==================== EJECT BUTTON IN HEADER ==================== */
-
 #explorer-eject-header-btn {
     min-width: 28px;
     min-height: 28px;
     padding: 4px;
-    border-radius: 6px;
+    border-radius: 8px;
     background-color: transparent;
     border: 1px solid transparent;
     transition: all 150ms ease-in-out;
@@ -127,7 +119,6 @@
     opacity: 0.4;
 }
 
-/* ==================== PATH BAR ==================== */
 
 #explorer-path-bar {
     padding: 12px 12px;
@@ -161,7 +152,7 @@
 
 #explorer-path-part {
     padding: 2px 8px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: transparent;
     border: 1px solid transparent;
     min-height: 20px;
@@ -225,12 +216,10 @@
 
 #explorer-path-scroll scrollbar slider {
     background-color: var(--primary);
-    border-radius: 2px;
+    border-radius: 12px;
     min-height: 4px;
     opacity: 0.5;
 }
-
-/* ==================== SIDEBAR ==================== */
 
 #explorer-sidebar {
     min-width: 160px;
@@ -268,8 +257,6 @@
     margin: 0px;
     padding: 0px;
 }
-
-/* ==================== CLEAR TRASH BUTTON ==================== */
 
 #explorer-clear-trash-btn {
     padding: 8px 10px;
@@ -310,11 +297,9 @@
     color: var(--on-primary);
 }
 
-/* ==================== FILE ROW ==================== */
-
 #explorer-file-row {
     padding: 8px 12px;
-    border-radius: 8px;
+    border-radius: 12px;
     background-color: var(--surface);
     border: 1px solid transparent;
     transition: all 150ms ease-in-out;
@@ -346,8 +331,6 @@
     color: var(--on-primary);
 }
 
-/* ==================== DEFAULT APP HIGHLIGHT ==================== */
-
 #explorer-file-row.default-app {
     border-color: alpha(var(--primary), 0.3);
 }
@@ -362,8 +345,6 @@
 #explorer-file-row:checked .default-app-label {
     color: var(--on-primary);
 }
-
-/* ==================== DEVICE STYLES ==================== */
 
 #explorer-file-row.device {
     background-color: var(--surface);
@@ -421,8 +402,6 @@
     color: var(--on-primary);
 }
 
-/* ==================== BOOKMARK ICONS ==================== */
-
 #explorer-bookmark-icon {
     color: var(--primary);
     min-width: 24px;
@@ -434,8 +413,6 @@
 #explorer-file-row.selected #explorer-bookmark-icon {
     color: var(--on-primary);
 }
-
-/* ==================== FILE ICONS ==================== */
 
 #explorer-file-icon {
     color: var(--on-surface-variant);
@@ -463,8 +440,6 @@
 #explorer-file-row.directory.selected #explorer-file-icon {
     color: var(--on-primary);
 }
-
-/* ==================== DRAG & DROP ==================== */
 
 #explorer-file-row.dragging {
     opacity: 0.4;
@@ -494,13 +469,11 @@
     box-shadow: inset 0 0 20px var(--shadow);
 }
 
-/* ==================== DND INDICATOR ==================== */
-
 #explorer-dnd-indicator {
     font-size: 11px;
     font-weight: 600;
     padding: 4px 12px;
-    border-radius: 6px;
+    border-radius: 12px;
     opacity: 0;
     transition: all 200ms ease-out;
 }
@@ -522,8 +495,6 @@
     color: var(--on-surface);
     border: 1px solid var(--on-surface-variant);
 }
-
-/* ==================== FILE INFO ==================== */
 
 #explorer-file-name {
     font-size: 13px;
@@ -559,8 +530,6 @@
     color: var(--on-primary);
 }
 
-/* ==================== FILE VIEW ==================== */
-
 #explorer-file-view {
     background-color: var(--shadow);
     border-radius: 12px;
@@ -571,8 +540,6 @@
 #explorer-files-container {
     padding: 4px;
 }
-
-/* ==================== STATUS BAR ==================== */
 
 #explorer-status-bar {
     padding: 12px 12px;
@@ -599,8 +566,6 @@
     min-height: 400px;
 }
 
-/* ==================== EMPTY STATE ==================== */
-
 #explorer-empty-state {
     padding: 60px 20px;
 }
@@ -617,13 +582,11 @@
     opacity: 0.6;
 }
 
-/* ==================== SCROLLBARS ==================== */
-
 #explorer-sidebar scrollbar,
 #explorer-file-view scrollbar {
     background: var(--surface);
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     margin: 4px;
     min-width: 8px;
 }
@@ -631,14 +594,14 @@
 #explorer-sidebar scrollbar trough,
 #explorer-file-view scrollbar trough {
     background: transparent;
-    border-radius: 6px;
+    border-radius: 12px;
     min-width: 8px;
 }
 
 #explorer-sidebar scrollbar slider,
 #explorer-file-view scrollbar slider {
     background-color: var(--primary);
-    border-radius: 6px;
+    border-radius: 12px;
     min-width: 8px;
     min-height: 40px;
     margin: 2px;
@@ -679,8 +642,6 @@
     background: none;
 }
 
-/* ==================== CONTEXT MENU ==================== */
-
 #explorer-context-menu,
 #explorer-window menu,
 menu {
@@ -691,18 +652,33 @@ menu {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+menuitem {
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: all 150ms ease-in-out;
+    color: var(--on-surface);
+}
+
+menuitem:hover {
+    background-color: var(--primary);
+    color: var(--on-primary);
+}
+
+menuitem:hover label,
+menuitem:hover * {
+    color: var(--on-primary);
+}
+
 menu separator {
     background-color: var(--primary);
     margin: 4px 8px;
     min-height: 1px;
 }
 
-/* ==================== INLINE RENAME ==================== */
-
 #explorer-rename-container {
     background-color: var(--surface);
     border: 1px solid var(--primary);
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 8px 10px;
     margin: 4px 0px;
 }
@@ -710,7 +686,7 @@ menu separator {
 #explorer-rename-entry {
     background-color: var(--shadow);
     border: 1px solid var(--surface-bright);
-    border-radius: 6px;
+    border-radius: 12px;
     color: var(--on-surface);
     padding: 6px 10px;
     font-size: 13px;
@@ -734,7 +710,7 @@ menu separator {
 
 #explorer-rename-btn {
     background-color: var(--surface);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 4px 12px;
     border: 1px solid var(--surface-bright);
     transition: all 0.1s ease;
@@ -782,19 +758,15 @@ menu separator {
     opacity: 0.6;
 }
 
-/* ==================== REVEALER ==================== */
-
 #explorer-revealer {
     background: transparent;
 }
-
-/* ==================== APP CHOOSER (INLINE LIST) ==================== */
 
 #explorer-app-chooser-header {
     padding: 8px 12px;
     margin-bottom: 4px;
     background-color: var(--surface);
-    border-radius: 8px;
+    border-radius: 12px;
     border: 1px solid var(--primary);
 }
 
@@ -805,11 +777,9 @@ menu separator {
     margin-left: 4px;
 }
 
-/* ==================== APP CHOOSER BACK BUTTON ==================== */
-
 #explorer-app-back {
     background-color: var(--surface);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 8px;
     margin: 2px;
     border: 1px solid var(--surface-bright);
@@ -840,12 +810,10 @@ menu separator {
     color: var(--on-primary);
 }
 
-/* ==================== APP CHOOSER SEARCH ==================== */
-
 #explorer-app-search {
     background-color: var(--surface);
     border: 1px solid var(--surface-bright);
-    border-radius: 8px;
+    border-radius: 12px;
     color: var(--on-surface);
     padding: 8px 12px;
     font-size: 13px;
@@ -876,8 +844,6 @@ menu separator {
     color: var(--primary);
     opacity: 1;
 }
-
-/* ==================== APP CHOOSER LIST ==================== */
 
 #explorer-app-list {
     padding: 0px;

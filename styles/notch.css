@@ -91,7 +91,6 @@ tooltip {
   padding: 0 8px;
   border-radius: 12px 0 0 12px;
   min-height: 36px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #power-battery-container #language-indicator #lang-label {
@@ -105,7 +104,6 @@ tooltip {
   background-color: transparent;
   padding: 0 8px;
   min-height: 36px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #power-battery-container #date-time label {
@@ -129,7 +127,6 @@ tooltip {
   min-width: 36px;
 }
 
-/* Workspaces */
 #workspaces,
 #workspaces-num {
   background-color: var(--shadow);
@@ -156,7 +153,6 @@ tooltip {
   font-weight: bold;
 }
 
-/* Control Widgets */
 #control,
 #metrics {
   background-color: var(--shadow);
@@ -165,7 +161,6 @@ tooltip {
   min-height: 36px;
 }
 
-/* Общие стили для жирного текста */
 #network label,
 #control label,
 #metrics label,

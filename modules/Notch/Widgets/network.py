@@ -10,6 +10,7 @@ from gi.repository import Gtk, NM, GLib
 import services.icons as icons
 from services.network import NetworkClient
 
+
 class WifiSlot(Gtk.Box):
     __slots__ = ('nc', 'parent_list', 'rcb', 'ssid', 'saved', 'conn',
                  'icon', 'name_lbl', 'str_lbl', 'act_box',

@@ -1,6 +1,7 @@
 import subprocess
 import time
 import threading
+
 from gi.repository import GLib
 from fabric.bluetooth import BluetoothClient, BluetoothDevice
 from fabric.widgets.box import Box
@@ -9,6 +10,7 @@ from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
+
 import services.icons as icons
 
 

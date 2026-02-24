@@ -32,7 +32,7 @@
 }
 
 #control-slider slider {
-  border-radius: 2px;
+  border-radius: 12px;
   background-color: var(--primary);
   min-width: 4px;
   min-height: 40px;
@@ -68,8 +68,6 @@
   border-radius: 12px;
 }
 
-/* Отключение hover эффектов для кнопок mute (яркость, громкость, микрофон) */
-/* Маленькие виджеты в баре (VolumeSmall, MicSmall, BrightnessSmall) */
 #button-volume button:hover,
 #button-mic button:hover,
 #button-brightness button:hover,
@@ -135,7 +133,7 @@
 }
 
 #mixer-section {
-  border-radius: 20px;
+  border-radius: 12px;
   border: 4px solid var(--surface);
   padding: 4px;
 }
@@ -154,6 +152,6 @@
 }
 
 #mixer-stream-label {
-  color: var(--primaryT);
+  color: var(--primary);
   font-weight: bold;
 }

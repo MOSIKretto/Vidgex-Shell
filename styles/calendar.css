@@ -1,5 +1,5 @@
 #calendar {
-  border-radius: 20px;
+  border-radius: 12px;
   border: 4px solid var(--surface);
   padding: 4px;
 }
@@ -12,7 +12,7 @@
 
 #weekday-row {
   background-color: var(--surface);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 4px;
 }
 
@@ -39,21 +39,27 @@
 }
 
 #calendar-grid {
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 4px;
 }
 
 #day-label.current-day {
   background-color: var(--primary);
   color: var(--shadow);
-  border-radius: 20px;
+  border-radius: 12px;
 }
 
 #prev-month-button,
 #next-month-button {
   background-color: var(--surface);
-  border-radius: 8px;
+  border-radius: 24px; 
   padding: 4px;
+  transition: border-radius 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease;
+}
+
+#prev-month-button:active,
+#next-month-button:active {
+  border-radius: 12px;
 }
 
 #month-button-label {

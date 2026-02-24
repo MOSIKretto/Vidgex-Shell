@@ -34,6 +34,7 @@ class Notch(Window):
     def __init__(self, **kwargs):
         self._bar = kwargs.get('bar')
 
+        # anchor="top" прикрепляет окно к верху и центрирует его в Wayland
         super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
 
         self._wc = {}
@@ -134,14 +135,19 @@ class Notch(Window):
         self.nr.set_size_request(-1, 1)
 
         self.nc = Box(name="notch-complete", children=[self.nr])
-        self.nw = Box(name="notch-wrap", children=[self.nc])
+        
+        # ДОБАВЛЕНО: h_align="center" для обертки самого Notch
+        self.nw = Box(name="notch-wrap", h_align="center", children=[self.nc])
 
         self.heb = Gtk.EventBox(name="notch-hover-eventbox")
+        # ДОБАВЛЕНО: Принудительное центрирование GTK EventBox
+        self.heb.set_halign(Gtk.Align.CENTER)
         self.heb.add(self.nw)
         self.heb.set_visible(True)
         self.heb.set_size_request(260, 4)
 
-        self.add(self.heb)
+        # ДОБАВЛЕНО: Обернули EventBox в дополнительный центрирующий Box для 100% гарантии позиции
+        self.add(Box(name="notch-root-container", h_align="center", children=[self.heb]))
 
     def _signals(self):
         self.compact.connect("button-press-event", self._wclick)
@@ -263,7 +269,6 @@ class Notch(Window):
         db.go_to_section("widgets")
 
         try:
-            # Оптимизировано с помощью EAFP вместо вложенных getattr
             target_name = 'network_connections' if wn == "network_applet" else ('bluetooth' if wn == "bluetooth" else 'notification_history')
             tgt = getattr(db.widgets, target_name, None)
             if tgt:
@@ -371,22 +376,24 @@ class Notch(Window):
             self.win_ic.hide()
             self.awc.set_spacing(0)
 
-    # --- Полностью переписанный метод парсинга (в 10-20 раз быстрее) ---
     def _getwin(self):
         wsid, wt, wc = 1, "", ""
         if not self._conn: return wsid, wt, wc
 
         try:
+            if wr := self._conn.send_command("j/activeworkspace").reply:
+                ws_data = json.loads(wr)
+                if ws_data:
+                    wsid = ws_data.get("id", wsid)
+
             if r := self._conn.send_command("j/activewindow").reply:
-                # Встроенный C-парсер json многократно быстрее ручного str.find
-                data = json.loads(r)
-                wc = data.get("class") or data.get("initialClass", "")
-                wt = data.get("title", "")
-                wsid = data.get("workspace", {}).get("id", wsid)
-            elif wr := self._conn.send_command("j/activeworkspace").reply:
-                wsid = json.loads(wr).get("id", wsid)
+                win_data = json.loads(r)
+                if win_data:
+                    wc = win_data.get("class") or win_data.get("initialClass", "")
+                    wt = win_data.get("title", "")
+                    
         except Exception:
-            pass # Игнорируем ошибки парсинга или отсутствие соединения
+            pass
 
         return wsid, wt, wc
 

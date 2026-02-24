@@ -4,7 +4,7 @@
 #caffeine-button,
 #eyes-hands-button {
   min-height: 52px;
-  border-radius: 16px;
+  border-radius: 12px;
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -25,7 +25,7 @@
 #caffeine-button.disabled,
 #eyes-hands-button.disabled {
   background-color: var(--surface);
-  border-radius: 26px;
+  border-radius: 24px; 
 }
 
 #network-status-button,
@@ -45,7 +45,7 @@
 
 #network-menu-button:active,
 #bluetooth-menu-button:active {
-  border-radius: 0 26px 26px 0;
+  border-radius: 0 24px 24px 0; 
 }
 
 #network-status-button.disabled,
@@ -53,23 +53,23 @@
 #bluetooth-status-button.disabled,
 #bluetooth-menu-button.disabled {
   background-color: var(--surface);
-  border-radius: 26px 0 0 26px;
+  border-radius: 24px 0 0 24px; 
 }
 
 #network-menu-button.disabled,
 #bluetooth-menu-button.disabled {
   border-left: 1px solid var(--surface-bright);
-  border-radius: 0 26px 26px 0;
+  border-radius: 0 24px 24px 0; 
 }
 
 #network-status-button,
 #bluetooth-status-button {
-  border-radius: 16px 0 0 16px;
+  border-radius: 12px 0 0 12px; 
 }
 
 #network-menu-button,
 #bluetooth-menu-button {
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 12px 12px 0; 
 }
 
 #network-icon,
@@ -126,7 +126,6 @@
   font-size: 12px;
 }
 
-/* === Hover: акцент foreground (виджеты в баре) === */
 #network-status-button:hover,
 #network-menu-button:hover,
 #bluetooth-status-button:hover,
@@ -138,18 +137,15 @@
   background-color: var(--foreground);
 }
 
-/* === Общие transition и состояния кнопок (лаунчер, панели, календарь и т.д.) === */
 button,
 #close-button,
 #clear-button,
-#config-button,
 #new-session-button,
 #random-wall-button,
 #update-button,
 #later-button,
 #toggle-updater-button,
 #power-menu-button,
-#toolbox-button,
 #action-button,
 #notif-close-button,
 #nav-button,
@@ -162,14 +158,12 @@ button,
 button:hover,
 #close-button:hover,
 #clear-button:hover,
-#config-button:hover,
 #new-session-button:hover,
 #random-wall-button:hover,
 #update-button:hover,
 #later-button:hover,
 #toggle-updater-button:hover,
 #power-menu-button:hover,
-#toolbox-button:hover,
 #action-button:hover,
 #notif-close-button:hover,
 #nav-button:hover,
@@ -189,14 +183,12 @@ button:hover,
 button:active,
 #close-button:active,
 #clear-button:active,
-#config-button:active,
 #new-session-button:active,
 #random-wall-button:active,
 #update-button:active,
 #later-button:active,
 #toggle-updater-button:active,
 #power-menu-button:active,
-#toolbox-button:active,
 #action-button:active,
 #notif-close-button:active,
 #nav-button:active,

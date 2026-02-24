@@ -1,10 +1,10 @@
+from pathlib import Path
 import os
 
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gio
 
-from pathlib import Path
 
 _ATTR_CHANGED = Gio.FileMonitorEvent.ATTRIBUTE_CHANGED
 _WATCH_MOVES  = Gio.FileMonitorFlags.WATCH_MOVES

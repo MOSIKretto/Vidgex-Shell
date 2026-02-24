@@ -28,7 +28,7 @@
 }
 
 #overview-workspace-bg {
-  border-radius: 20px;
+  border-radius: 12px;
 }
 
 #overview-workspace-box {
@@ -44,7 +44,7 @@
 #overview-workspace-label {
   font-weight: bold;
   background-color: var(--surface);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 4px;
   margin-bottom: 4px;
 }
