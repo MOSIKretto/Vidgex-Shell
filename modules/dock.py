@@ -1,3 +1,5 @@
+import random
+
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
@@ -519,6 +521,82 @@ class Dock(Window):
             btn._icon_box.remove_style_class("lifted")
         return False
 
+    def _switch_workspace(self, target_ws, on_complete=None):
+        try:
+            ws_data = self._parse("j/activeworkspace")
+            active_ws = ws_data.get("id", 1) if ws_data else 1
+        except Exception:
+            active_ws = 1
+
+        if not (1 <= active_ws <= 9):
+            active_ws = 5
+
+        def finish_action():
+            if on_complete:
+                on_complete()
+
+        if active_ws == target_ws:
+            finish_action()
+            return
+
+        cur_row = (active_ws - 1) // 3
+        cur_col = (active_ws - 1) % 3
+
+        target_row = (target_ws - 1) // 3
+        target_col = (target_ws - 1) % 3
+
+        ANIM_TIME_MS = 200
+
+        def move_vert(ws):
+            cmd = f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; dispatch workspace {ws} ; keyword animation workspaces,1,6,overshot,slide"
+            self.conn.send_command(cmd)
+
+        steps = []
+        r, c = cur_row, cur_col
+        
+        horiz_first = random.choice([True, False])
+
+        if horiz_first:
+            step_c = 1 if target_col > c else -1
+            while c != target_col:
+                c += step_c
+                steps.append((r * 3 + c + 1, False))
+                
+            step_r = 1 if target_row > r else -1
+            while r != target_row:
+                r += step_r
+                steps.append((r * 3 + c + 1, True))
+        else:
+            step_r = 1 if target_row > r else -1
+            while r != target_row:
+                r += step_r
+                steps.append((r * 3 + c + 1, True))
+                
+            step_c = 1 if target_col > c else -1
+            while c != target_col:
+                c += step_c
+                steps.append((r * 3 + c + 1, False))
+
+        def run_next_step():
+            if not steps:
+                return False
+                
+            next_ws, is_vert = steps.pop(0)
+            
+            if is_vert:
+                move_vert(next_ws)
+            else:
+                self.conn.send_command(f"dispatch workspace {next_ws}")
+                
+            if steps:
+                GLib.timeout_add(ANIM_TIME_MS, run_next_step)
+            else:
+                GLib.timeout_add(ANIM_TIME_MS, finish_action)
+                
+            return False
+
+        run_next_step()
+
     def _on_btn_click(self, btn):
         if self._drag_active:
             return
@@ -535,8 +613,19 @@ class Dock(Window):
         focused = aw.get("address", "") if aw else ""
         
         idx = next((i for i, x in enumerate(insts) if x["address"] == focused), -1)
-        addr = insts[(idx + 1) % len(insts)]["address"]
-        exec_shell_command(f"hyprctl dispatch focuswindow address:{addr}")
+        target_inst = insts[(idx + 1) % len(insts)]
+        addr = target_inst["address"]
+        
+        ws_info = target_inst.get("workspace", {})
+        target_ws_id = ws_info.get("id") if isinstance(ws_info, dict) else ws_info
+
+        def focus_window():
+            exec_shell_command(f"hyprctl dispatch focuswindow address:{addr}")
+
+        if isinstance(target_ws_id, int) and 1 <= target_ws_id <= 9:
+            self._switch_workspace(target_ws_id, on_complete=focus_window)
+        else:
+            focus_window()
 
     def _sync_active(self):
         aw = self._parse("j/activewindow")
