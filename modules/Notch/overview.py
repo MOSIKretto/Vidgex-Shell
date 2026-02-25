@@ -70,44 +70,57 @@ def _switch_workspace(target_ws, on_complete=None):
     target_row = (target_ws - 1) // 3
     target_col = (target_ws - 1) % 3
 
-    ANIM_TIME_MS = 200
+    ANIM_TIME_MS = 200 # Время стоянки/анимации на каждом промежуточном столе
 
     def move_vert(ws):
         cmd = f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; dispatch workspace {ws} ; keyword animation workspaces,1,6,overshot,slide"
         _conn.send_command(cmd)
 
-    if cur_row != target_row and cur_col != target_col:        
-        if random.choice([True, False]):
-            inter_ws = cur_row * 3 + target_col + 1
+    steps = []
+    r, c = cur_row, cur_col
+    
+    horiz_first = random.choice([True, False])
+
+    if horiz_first:
+        step_c = 1 if target_col > c else -1
+        while c != target_col:
+            c += step_c
+            steps.append((r * 3 + c + 1, False))
             
-            _conn.send_command(f"dispatch workspace {inter_ws}")
-
-            def step_two_v():
-                move_vert(target_ws)
-                finish_action()
-                return False
-                
-            GLib.timeout_add(ANIM_TIME_MS, step_two_v)
-
-        else:
-            inter_ws = target_row * 3 + cur_col + 1
-            
-            move_vert(inter_ws)
-
-            def step_two_h():
-                _conn.send_command(f"dispatch workspace {target_ws}")
-
-                finish_action()
-                return False
-                
-            GLib.timeout_add(ANIM_TIME_MS, step_two_h)
-
-    elif cur_row != target_row:
-        move_vert(target_ws)
-        finish_action()
+        step_r = 1 if target_row > r else -1
+        while r != target_row:
+            r += step_r
+            steps.append((r * 3 + c + 1, True))
     else:
-        _conn.send_command(f"dispatch workspace {target_ws}")
-        finish_action()
+        step_r = 1 if target_row > r else -1
+        while r != target_row:
+            r += step_r
+            steps.append((r * 3 + c + 1, True))
+            
+        step_c = 1 if target_col > c else -1
+        while c != target_col:
+            c += step_c
+            steps.append((r * 3 + c + 1, False))
+
+    def run_next_step():
+        if not steps:
+            return False
+            
+        next_ws, is_vert = steps.pop(0)
+        
+        if is_vert:
+            move_vert(next_ws)
+        else:
+            _conn.send_command(f"dispatch workspace {next_ws}")
+            
+        if steps:
+            GLib.timeout_add(ANIM_TIME_MS, run_next_step)
+        else:
+            finish_action()
+            
+        return False
+
+    run_next_step()
 
 
 class HyprlandWindowButton(Button):
