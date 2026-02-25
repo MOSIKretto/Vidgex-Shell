@@ -3,6 +3,7 @@
   color: var(--surface-bright);
 }
 
+/* --- ACTION BUTTON --- */
 #action-button {
   border-radius: 12px;
   background-color: var(--surface);
@@ -18,8 +19,9 @@
   background-color: var(--primary);
 }
 
+/* Явно обращаемся к Label внутри кнопки */
 #action-button:active #button-label {
-  color: var(--shadow);
+  color: var(--on-primary);
 }
 
 #notification-image image {
@@ -57,6 +59,7 @@
   padding: 16px;
 }
 
+/* --- CLOSE BUTTON --- */
 #notif-close-button {
   background-color: var(--surface);
   border-radius: 12px;
@@ -68,11 +71,20 @@
   background-color: var(--surface-bright);
 }
 
+#notif-close-button:active {
+  background-color: var(--primary);
+}
+
+#notif-close-button:active #notif-close-label {
+  color: var(--on-primary);
+}
+
 #notif-close-label {
   color: var(--outline);
   font-size: 16px;
 }
 
+/* --- NAVIGATION BUTTONS (< x >) --- */
 #nav-button {
   padding: 8px;
   border-radius: 12px;
@@ -93,6 +105,15 @@
 #nav-button:hover #nav-button-label.close,
 #nav-button:hover #nav-button-label {
   color: var(--primary);
+}
+
+#nav-button:active {
+  background-color: var(--primary);
+}
+
+#nav-button:active #nav-button-label.close,
+#nav-button:active #nav-button-label {
+  color: var(--on-primary);
 }
 
 #notification-box-hist {
@@ -116,6 +137,7 @@
   font-weight: bold;
 }
 
+/* --- TRASH BUTTON (NHH-BUTTON) --- */
 #nhh-button {
   border-radius: 8px;
   background-color: var(--surface);
@@ -124,6 +146,14 @@
 
 #nhh-button:hover {
   background-color: var(--surface-bright);
+}
+
+#nhh-button:active {
+  background-color: var(--primary);
+}
+
+#nhh-button:active #nhh-button-label {
+  color: var(--on-primary);
 }
 
 #nhh-button-label {
@@ -154,6 +184,7 @@
   font-weight: bold;
 }
 
+/* --- NOTIFICATION GROUPS --- */
 #notification-group {
   margin-bottom: 4px;
 }
@@ -204,10 +235,11 @@
   font-size: 14px;
 }
 
+/* Явно красим все элементы шапки при раскрытии в --on-primary */
 #notification-group-header.expanded #group-app-name,
 #notification-group-header.expanded #group-count-label,
 #notification-group-header.expanded #group-expand-icon {
-  color: var(--shadow);
+  color: var(--on-primary);
 }
 
 #notification-group-header.expanded #group-count-label {
@@ -222,8 +254,13 @@
   background-color: rgba(0, 0, 0, 0.3);
 }
 
+#notification-group-header.expanded > #notif-close-button:active {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Крестик в открытой группе тоже становится --on-primary */
 #notification-group-header.expanded > #notif-close-button #notif-close-label {
-  color: var(--shadow);
+  color: var(--on-primary);
 }
 
 #stack-indicators {

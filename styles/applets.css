@@ -43,6 +43,7 @@
   font-size: 20px;
 }
 
+/* --- HOVER STATES --- */
 #bluetooth-scan:hover,
 #bluetooth-back:hover,
 #network-scan:hover,
@@ -68,13 +69,14 @@
   margin: 4px 0;
 }
 
+/* --- CONNECTED STATE (GREEN) --- */
 #wifi-connect.connected,
 #bluetooth-connect.connected {
   background-color: var(--green);
 }
 
-#bluetooth-connect.connected,
-#bluetooth-connect.connected label  {
+#wifi-connect.connected *,
+#bluetooth-connect.connected * {
   color: var(--shadow);
 }
 
@@ -93,6 +95,7 @@
   color: var(--primary);
 }
 
+/* --- SCANNING ANIMATION --- */
 #bluetooth-scan.scanning,
 #network-scan.scanning {
   background: linear-gradient(90deg, 
@@ -108,20 +111,14 @@
 }
 
 @keyframes scanning-shine {
-  0% {
-    background-position: 200% 0;
-    border-width: 1px;
-  }
-  50% {
-    background-position: -200% 0;
-    border-width: 2px;
-  }
-  100% {
-    background-position: 200% 0;
-    border-width: 1px;
-  }
+  0% { background-position: 200% 0; border-width: 1px; }
+  50% { background-position: -200% 0; border-width: 2px; }
+  100% { background-position: 200% 0; border-width: 1px; }
 }
 
+/* =========================================================
+   PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) 
+   ========================================================= */
 #bluetooth-scan.pressed,
 #bluetooth-back.pressed,
 #network-scan.pressed,
@@ -136,9 +133,27 @@
 #wifi-connect:active {
   background-color: var(--primary);
   border-color: var(--primary);
-  color: var(--cursor);
+  color: var(--on-primary);
 }
 
+#bluetooth-scan.pressed *, #bluetooth-scan.pressed label,
+#bluetooth-back.pressed *, #bluetooth-back.pressed label,
+#network-scan.pressed *,   #network-scan.pressed label,
+#network-back.pressed *,   #network-back.pressed label,
+#bluetooth-connect.pressed *, #bluetooth-connect.pressed label,
+#wifi-connect.pressed *,   #wifi-connect.pressed label,
+#bluetooth-scan:active *,  #bluetooth-scan:active label,
+#bluetooth-back:active *,  #bluetooth-back:active label,
+#network-scan:active *,    #network-scan:active label,
+#network-back:active *,    #network-back:active label,
+#bluetooth-connect:active *, #bluetooth-connect:active label,
+#wifi-connect:active *,    #wifi-connect:active label {
+  color: var(--on-primary);
+}
+
+/* =========================================================
+   RED BACKGROUND STATE (DELETE BUTTONS)
+   ========================================================= */
 #wifi-delete.pressed,
 #bluetooth-delete.pressed,
 #wifi-delete:active,
@@ -147,9 +162,20 @@
 #bluetooth-delete:hover {
   background-color: var(--red);
   border-color: var(--red);
-  color: var(--cursor);
+  color: var(--on-primary);
 }
 
+/* Красим иконки мусорки в --on-primary (явно обращаемся к их ID) */
+#wifi-delete.pressed *, #wifi-delete.pressed label, #wifi-delete.pressed #wifi-delete-label,
+#bluetooth-delete.pressed *, #bluetooth-delete.pressed label, #bluetooth-delete.pressed #bluetooth-delete-label,
+#wifi-delete:active *, #wifi-delete:active label, #wifi-delete:active #wifi-delete-label,
+#bluetooth-delete:active *, #bluetooth-delete:active label, #bluetooth-delete:active #bluetooth-delete-label,
+#wifi-delete:hover *, #wifi-delete:hover label, #wifi-delete:hover #wifi-delete-label,
+#bluetooth-delete:hover *, #bluetooth-delete:hover label, #bluetooth-delete:hover #bluetooth-delete-label {
+  color: var(--on-primary);
+}
+
+/* --- CONNECTED + PRESSED OVERRIDE --- */
 #bluetooth-connect.connected.pressed,
 #bluetooth-connect.connected:active {
   background-color: var(--shadow);
@@ -157,11 +183,14 @@
   color: var(--cursor);
 }
 
-#bluetooth-connect.connected.pressed label,
-#bluetooth-connect.connected:active label {
+#bluetooth-connect.connected.pressed *,
+#bluetooth-connect.connected:active * {
   color: var(--cursor);
 }
 
+/* =========================================================
+   PASSWORD ENTRY CONTAINER
+   ========================================================= */
 #password-entry-container {
   background-color: var(--surface);
   border-radius: 12px;
@@ -195,44 +224,55 @@
   font-weight: bold;
 }
 
-#password-entry-container button:nth-child(1) {
+/* Кнопка Cancel (первая) */
+#password-entry-container button:first-child {
   color: var(--red);
   border-color: var(--red);
 }
 
-#password-entry-container button:nth-child(2) {
+#password-entry-container button:first-child:hover {
+  background-color: var(--surface-bright);
+  border-color: var(--red);
+}
+
+#password-entry-container button:first-child:active {
+  background-color: var(--red);
+  border-color: var(--red);
+  color: var(--on-primary); /* Исправлено с --cursor на --on-primary */
+}
+
+#password-entry-container button:first-child:active *,
+#password-entry-container button:first-child:active label {
+  color: var(--on-primary); /* Исправлено с --cursor на --on-primary */
+}
+
+/* Кнопка OK (последняя) */
+#password-entry-container button:last-child {
   color: var(--primary);
   border-color: var(--primary);
 }
 
-#password-entry-container button:nth-child(1):hover,
-#password-entry-container button:nth-child(2):hover {
+#password-entry-container button:last-child:hover {
   background-color: var(--surface-bright);
   border-color: var(--primary);
 }
 
-#password-entry-container button:nth-child(1):hover {
-  border-color: var(--red);
-}
-
-#password-entry-container button:nth-child(2):disabled {
+#password-entry-container button:last-child:disabled {
   background-color: transparent;
   border-color: var(--surface-bright);
   color: var(--outline);
   opacity: 0.6;
 }
 
-#password-entry-container button:nth-child(1):active,
-#password-entry-container button:nth-child(2):active {
+#password-entry-container button:last-child:active {
   background-color: var(--primary);
   border-color: var(--primary);
-  color: var(--cursor);
+  color: var(--on-primary);
 }
 
-#password-entry-container button:nth-child(1):active {
-  background-color: var(--red);
-  border-color: var(--red);
-  color: var(--cursor);
+#password-entry-container button:last-child:active *,
+#password-entry-container button:last-child:active label {
+  color: var(--on-primary);
 }
 
 #bluetooth-devices-scroll,
