@@ -86,6 +86,7 @@ class Explorer(
         self._pending_hide: Optional[int] = None
         self._mon_w = 1920
         self._mon_h = 1080
+        self._top_margin_closed = 50
 
         home = Path.home()
         self._current_path = home
@@ -190,7 +191,7 @@ class Explorer(
         ]
 
         super().__init__(
-            name="explorer-window", layer="top", anchor="left top bottom",
+            name="explorer-window", layer="overlay", anchor="left top bottom",
             margin="0px 0px 0px 0px", exclusivity="none", monitor=monitor_id,
             visible=False, **kwargs,
         )
@@ -199,6 +200,14 @@ class Explorer(
         self._update_monitor()
         self._init_ui()
         _timeout_add(100, self._delayed_show)
+
+    # Динамический отступ окна, чтобы не закрывать собой верхний левый угол когда закрыт
+    def _update_window_margin(self, is_open):
+        try:
+            m = 0 if is_open else self._top_margin_closed
+            GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, m)
+        except Exception as e:
+            print(f"Margin error: {e}")
 
     def _set_keyboard_interactive(self, enabled: bool):
         try:
@@ -221,10 +230,19 @@ class Explorer(
                 geom = monitor.get_geometry()
                 self._mon_w = geom.width
                 self._mon_h = geom.height
+        
+        self._top_margin_closed = int(self._mon_h * 0.08)
 
     def _init_ui(self):
         self.activator = EventBox(name="explorer-activator")
-        self.activator.set_size_request(8, -1)
+        self.activator.add(Box(style="background: transparent;"))
+        
+        # ИЗМЕНЕНО: активатор занимает область ниже зарезервированной для панели
+        activator_height = max(1, self._mon_h - self._top_margin_closed)
+        self.activator.set_size_request(15, activator_height)
+        self.activator.set_valign(Gtk.Align.START)
+        self.activator.set_margin_top(self._top_margin_closed)
+
         self.activator.connect("enter-notify-event", self._on_activator_enter)
         self.activator.connect("leave-notify-event", self._on_activator_leave)
         self._setup_activator_drop_target()
@@ -254,6 +272,9 @@ class Explorer(
             children=[self.activator, self.revealer],
         )
         self.add(main_box)
+        
+        # При старте Эксплорер закрыт, поэтому окно отступает сверху
+        self._update_window_margin(False)
 
     def _get_cursor_position(self):
         try:
@@ -364,6 +385,8 @@ class Explorer(
     def _on_activator_hover_timeout(self):
         self._activator_hover_timer = None
         if self._cursor_over_activator:
+            # При открытии растягиваем окно на весь экран
+            self._update_window_margin(True)
             self.revealer.set_reveal_child(True)
         return False
 
@@ -399,6 +422,23 @@ class Explorer(
             _source_remove(t)
             self._pending_hide = None
 
+    def _force_restore_margin(self):
+        """Принудительно скрыть окно и восстановить отступ, игнорируя флаги (кроме pinned)."""
+        if self._is_pinned:
+            return False
+        # Сбрасываем проблемные флаги
+        self._menu_open = False
+        self._drag_in_progress = False
+        self._post_drag_grace = False
+        self._pending_drop_source = None
+        self._navigation_lock = False
+        # Скрываем, если ещё не скрыто
+        if self.revealer.get_child_revealed():
+            self.revealer.set_reveal_child(False)
+        # Восстанавливаем отступ
+        self._update_window_margin(False)
+        return False
+
     def _do_hide(self):
         self._pending_hide = None
         if (
@@ -409,11 +449,35 @@ class Explorer(
             or self._post_drag_grace
             or self._navigation_lock
         ):
+            # Если не можем скрыть сейчас, запланируем повторную попытку через 500 мс
+            if not hasattr(self, '_retry_hide_id') or not self._retry_hide_id:
+                self._retry_hide_id = _timeout_add(500, self._retry_hide)
             return False
         if self._is_cursor_over_explorer():
             self._cursor_inside = True
             return False
+            
         self.revealer.set_reveal_child(False)
+        # Ждем пока окно закроется и восстанавливаем отступ в 5%
+        GLib.timeout_add(350, self._check_and_restore_margin)
+        return False
+
+    def _retry_hide(self):
+        """Повторная попытка скрыть окно, игнорируя временные флаги."""
+        self._retry_hide_id = None
+        if self._is_pinned:
+            return False
+        if not self._is_cursor_over_explorer():
+            # Принудительно закрываем
+            self._force_restore_margin()
+        return False
+        
+    def _check_and_restore_margin(self):
+        if not self.revealer.get_child_revealed() and not self._is_pinned and not self._cursor_inside:
+            self._update_window_margin(False)
+        else:
+            # Если окно не скрыто или курсор внутри, но прошло много времени – форсируем
+            self._force_restore_margin()
         return False
 
     @staticmethod
@@ -888,5 +952,7 @@ class Explorer(
         t = self._navigation_lock_timer
         if t:
             _source_remove(t)
+        if hasattr(self, '_retry_hide_id') and self._retry_hide_id:
+            _source_remove(self._retry_hide_id)
         self._volume_monitor = None
         super().destroy()

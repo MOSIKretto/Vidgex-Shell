@@ -1,6 +1,9 @@
+import json
+import random
+
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, Gtk, GLib
 
 from fabric.hyprland.service import Hyprland
 from fabric.widgets.box import Box
@@ -33,23 +36,88 @@ def _get_monitors():
     try:
         return _conn.get_monitors()
     except Exception:
-        return __import__("json").loads(_conn.send_command("j/monitors").reply)
+        return json.loads(_conn.send_command("j/monitors").reply)
 
 
 def _get_clients():
     try:
         return _conn.get_clients()
     except Exception:
-        return __import__("json").loads(_conn.send_command("j/clients").reply)
+        return json.loads(_conn.send_command("j/clients").reply)
+
+
+def _switch_workspace(target_ws, on_complete=None):
+    try:
+        res = _conn.send_command("j/activeworkspace")
+        active_ws = json.loads(res.reply)["id"] if hasattr(res, "reply") else json.loads(res)["id"]
+    except Exception:
+        active_ws = 1
+
+    if not (1 <= active_ws <= 9):
+        active_ws = 5
+
+    def finish_action():
+        if on_complete:
+            on_complete()
+
+    if active_ws == target_ws:
+        finish_action()
+        return
+
+    cur_row = (active_ws - 1) // 3
+    cur_col = (active_ws - 1) % 3
+
+    target_row = (target_ws - 1) // 3
+    target_col = (target_ws - 1) % 3
+
+    ANIM_TIME_MS = 200
+
+    def move_vert(ws):
+        cmd = f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; dispatch workspace {ws} ; keyword animation workspaces,1,6,overshot,slide"
+        _conn.send_command(cmd)
+
+    if cur_row != target_row and cur_col != target_col:        
+        if random.choice([True, False]):
+            inter_ws = cur_row * 3 + target_col + 1
+            
+            _conn.send_command(f"dispatch workspace {inter_ws}")
+
+            def step_two_v():
+                move_vert(target_ws)
+                finish_action()
+                return False
+                
+            GLib.timeout_add(ANIM_TIME_MS, step_two_v)
+
+        else:
+            inter_ws = target_row * 3 + cur_col + 1
+            
+            move_vert(inter_ws)
+
+            def step_two_h():
+                _conn.send_command(f"dispatch workspace {target_ws}")
+
+                finish_action()
+                return False
+                
+            GLib.timeout_add(ANIM_TIME_MS, step_two_h)
+
+    elif cur_row != target_row:
+        move_vert(target_ws)
+        finish_action()
+    else:
+        _conn.send_command(f"dispatch workspace {target_ws}")
+        finish_action()
 
 
 class HyprlandWindowButton(Button):
-    __slots__ = ("addr", "_px")
+    __slots__ = ("addr", "_px", "wid")
 
-    def __init__(self, addr, aid, title, sz):
+    def __init__(self, addr, aid, title, sz, wid):
         app = _app_resolver.find_app(aid)
         self._px = _app_resolver.get_icon(aid, int(min(sz) * 0.5), app)
         self.addr = addr
+        self.wid = wid
 
         super().__init__(
             name="overview-client-box",
@@ -64,7 +132,10 @@ class HyprlandWindowButton(Button):
         self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, _TG, Gdk.DragAction.COPY)
 
     def _foc(self, *_):
-        _conn.send_command(f"/dispatch focuswindow address:{self.addr}")
+        def focus_window():
+            _conn.send_command(f"/dispatch focuswindow address:{self.addr}")
+        
+        _switch_workspace(self.wid, on_complete=focus_window)
 
     def _press(self, _, e):
         if e.button == 3:
@@ -78,9 +149,10 @@ class HyprlandWindowButton(Button):
 
 
 class WorkspaceEventBox(EventBox):
-    __slots__ = ()
+    __slots__ = ("wid",)
 
     def __init__(self, wid, fixed):
+        self.wid = wid
         super().__init__(
             name="overview-workspace-bg",
             size=(_SW, _SH),
@@ -90,13 +162,19 @@ class WorkspaceEventBox(EventBox):
                 h_expand=True, 
                 v_expand=True
             ),
-            on_drag_data_received=lambda *a: _conn.send_command(
-                f"/dispatch movetoworkspacesilent {wid},address:{a[4].get_data().decode()}"
-            ),
+            on_drag_data_received=self._on_drop,
+            on_button_press_event=self._on_click,
         )
         self.drag_dest_set(Gtk.DestDefaults.ALL, _TG, Gdk.DragAction.COPY)
         if fixed:
             fixed.show_all()
+
+    def _on_drop(self, _, __, ___, ____, data, _____):
+        _conn.send_command(f"/dispatch movetoworkspacesilent {self.wid},address:{data.get_data().decode()}")
+
+    def _on_click(self, _, event):
+        if event.button == 1:
+            _switch_workspace(self.wid)
 
 
 class Overview(Box):
@@ -148,7 +226,7 @@ class Overview(Box):
             aid = c["initialClass"]
             sz = (int(c["size"][0] * _BS), int(c["size"][1] * _BS))
 
-            btn = HyprlandWindowButton(addr, aid, c["title"], sz)
+            btn = HyprlandWindowButton(addr, aid, c["title"], sz, wid)
             self.cli[addr] = btn
 
             if wid not in self.wsb:

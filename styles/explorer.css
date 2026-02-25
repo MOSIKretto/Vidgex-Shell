@@ -1,11 +1,9 @@
-#explorer-window {
-    background: transparent;
-}
+/* ============================================== */
+/* ОСНОВНЫЕ ОКНА */
+/* ============================================== */
 
-#explorer-main {
-    background: transparent;
-}
-
+#explorer-window,
+#explorer-main,
 #explorer-eventbox {
     background: transparent;
 }
@@ -42,6 +40,10 @@
     color: var(--on-surface);
     margin-left: 8px;
 }
+
+/* ============================================== */
+/* НАВИГАЦИЯ И КНОПКИ */
+/* ============================================== */
 
 #explorer-nav-box {
     background-color: var(--surface);
@@ -112,13 +114,16 @@
 }
 
 #explorer-eject-header-btn:active * {
-    color: var(--foreground);
+    color: var(--on-primary);
 }
 
 #explorer-eject-header-btn:disabled {
     opacity: 0.4;
 }
 
+/* ============================================== */
+/* ПУТЬ К ФАЙЛУ */
+/* ============================================== */
 
 #explorer-path-bar {
     padding: 12px 12px;
@@ -180,10 +185,6 @@
     font-family: monospace;
 }
 
-#explorer-path-part:active #explorer-path-part-label,
-#explorer-path-part:checked #explorer-path-part-label,
-#explorer-path-part:active label,
-#explorer-path-part:checked label,
 #explorer-path-part:active *,
 #explorer-path-part:checked * {
     color: var(--on-primary);
@@ -221,6 +222,10 @@
     opacity: 0.5;
 }
 
+/* ============================================== */
+/* САЙДБАР */
+/* ============================================== */
+
 #explorer-sidebar {
     min-width: 160px;
     background-color: var(--shadow);
@@ -248,11 +253,7 @@
     min-height: 1px;
 }
 
-#explorer-trash-container {
-    margin: 0px;
-    padding: 0px;
-}
-
+#explorer-trash-container,
 #explorer-devices-container {
     margin: 0px;
     padding: 0px;
@@ -278,13 +279,13 @@
 
 #explorer-clear-trash-btn:active,
 #explorer-clear-trash-btn:checked {
-    background-color: var(--surface-bright);
+    background-color: var(--primary);
     border-color: var(--primary);
 }
 
 #explorer-clear-trash-btn:active *,
 #explorer-clear-trash-btn:checked * {
-    color: var(--primary);
+    color: var(--on-primary);
 }
 
 #explorer-clear-icon {
@@ -296,6 +297,10 @@
     font-weight: bold;
     color: var(--on-primary);
 }
+
+/* ============================================== */
+/* ФАЙЛЫ */
+/* ============================================== */
 
 #explorer-file-row {
     padding: 8px 12px;
@@ -366,11 +371,6 @@
     color: var(--on-primary);
 }
 
-#explorer-file-row.device:active #explorer-bookmark-icon,
-#explorer-file-row.device:checked #explorer-bookmark-icon {
-    color: var(--on-primary);
-}
-
 #explorer-file-row.unmounted {
     opacity: 0.7;
     border: 1px dashed var(--on-surface-variant);
@@ -394,11 +394,6 @@
 
 #explorer-file-row.unmounted:active *,
 #explorer-file-row.unmounted:checked * {
-    color: var(--on-primary);
-}
-
-#explorer-file-row.unmounted:active #explorer-bookmark-icon,
-#explorer-file-row.unmounted:checked #explorer-bookmark-icon {
     color: var(--on-primary);
 }
 
@@ -428,16 +423,9 @@
     color: var(--primary);
 }
 
-#explorer-file-row.directory:hover #explorer-file-icon {
-    color: var(--primary);
-}
-
 #explorer-file-row:active #explorer-file-icon,
 #explorer-file-row:checked #explorer-file-icon,
-#explorer-file-row.selected #explorer-file-icon,
-#explorer-file-row.directory:active #explorer-file-icon,
-#explorer-file-row.directory:checked #explorer-file-icon,
-#explorer-file-row.directory.selected #explorer-file-icon {
+#explorer-file-row.selected #explorer-file-icon {
     color: var(--on-primary);
 }
 
@@ -450,17 +438,13 @@
 #explorer-file-row.drag-over {
     background-color: var(--surface-bright);
     border: 2px dashed var(--primary);
-    box-shadow: 
-        inset 0 0 15px var(--shadow),
-        0 0 8px var(--primary);
+    box-shadow: inset 0 0 15px var(--shadow), 0 0 8px var(--primary);
 }
 
 #explorer-file-row.drag-hover-pending {
     background-color: var(--surface-bright);
     border: 2px solid var(--primary);
-    box-shadow: 
-        inset 0 0 10px var(--shadow),
-        0 0 12px var(--primary);
+    box-shadow: inset 0 0 10px var(--shadow), 0 0 12px var(--primary);
 }
 
 #explorer-file-view.drag-over {
@@ -582,6 +566,10 @@
     opacity: 0.6;
 }
 
+/* ============================================== */
+/* СКРОЛЛБАРЫ */
+/* ============================================== */
+
 #explorer-sidebar scrollbar,
 #explorer-file-view scrollbar {
     background: var(--surface);
@@ -642,9 +630,24 @@
     background: none;
 }
 
-#explorer-context-menu,
-#explorer-window menu,
-menu {
+/* ============================================== */
+/* МЕНЮ И ПОДМЕНЮ (ПОЛНОСТЬЮ ИСПРАВЛЕНО) */
+/* ============================================== */
+
+window.popup,
+window.popup decoration {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+/* Контейнеры */
+menu,
+.popup,
+.context-menu,
+menu > menu,
+menu submenu,
+submenu {
     background-color: var(--surface);
     border: 1px solid var(--primary);
     border-radius: 12px;
@@ -652,28 +655,46 @@ menu {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+
+/* Элементы меню - БАЗОВЫЙ СТИЛЬ */
 menuitem {
+    background-color: transparent;
     padding: 4px 8px;
     border-radius: 8px;
     transition: all 150ms ease-in-out;
-    color: var(--on-surface);
+    color: var(--foreground); /* Основной цвет текста по умолчанию */
 }
 
+/* Дети (текст и стрелки) наследуют цвет родителя */
+menuitem label,
+menuitem arrow,
+menuitem accelerator {
+    color: inherit;
+}
+
+/* Элементы меню - ПРИ НАВЕДЕНИИ */
 menuitem:hover {
     background-color: var(--primary);
-    color: var(--on-primary);
+    color: var(--on-primary); /* Меняем цвет текста на контрастный */
 }
 
+/* Для надежности, при наведении заставляем детей наследовать (или красим явно) */
 menuitem:hover label,
-menuitem:hover * {
-    color: var(--on-primary);
+menuitem:hover arrow,
+menuitem:hover accelerator {
+    color: inherit;
 }
 
+/* Разделители */
 menu separator {
     background-color: var(--primary);
     margin: 4px 8px;
     min-height: 1px;
 }
+
+/* ============================================== */
+/* ПЕРЕИМЕНОВАНИЕ И ПРОЧЕЕ */
+/* ============================================== */
 
 #explorer-rename-container {
     background-color: var(--surface);

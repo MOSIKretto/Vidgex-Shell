@@ -55,6 +55,7 @@
   font-size: 0px;
 }
 
+/* --- Базовые состояния (активный / неактивный) --- */
 #workspaces-top > button.empty,
 #workspaces-left > button.empty {
   background-color: var(--surface-bright);
@@ -69,6 +70,18 @@
   min-height: 48px;
   background-color: var(--primary);
 }
+
+/* --- Наведение ТОЛЬКО для пустых (неактивных) точек --- */
+#workspaces-top > button.empty:hover {
+  min-width: 20px; 
+  background-color: var(--foreground);
+}
+
+#workspaces-left > button.row-dot.empty:hover {
+  min-height: 20px;
+  background-color: var(--foreground);
+}
+/* -------------------------------------------------------- */
 
 #workspaces-num-top > button {
   min-width: 20px;

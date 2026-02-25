@@ -15,15 +15,16 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.eventbox import EventBox
 
-from gi.repository import Gdk, GLib
+from gi.repository import Gdk, GLib, Gtk
 
 from modules.Bar.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
 
+
 _CD = 0.2
-_TH = 0.3
+_TH = 0.5
 _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
 _cursor_hand = None
 
@@ -54,74 +55,110 @@ def _get_active_ws(conn):
         pass
     return 1
 
-def _dispatch_exact(conn, r, c, cur_row):
-    next_ws = r * 3 + c + 1
-    is_vert = (r != cur_row)
-    if is_vert:
-        conn.send_command(f"keyword animation workspaces,1,6,overshot,slidevert; dispatch workspace {next_ws}; keyword animation workspaces,1,6,overshot,slide")
+def _dispatch_exact(conn, target_row, target_col, is_vertical=False):
+    next_ws = target_row * 3 + target_col + 1
+    
+    if is_vertical:
+        cmd = (
+            f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; "
+            f"dispatch workspace {next_ws} ; "
+            f"keyword animation workspaces,1,6,overshot,slide"
+        )
+        conn.send_command(cmd)
     else:
         conn.send_command(f"dispatch workspace {next_ws}")
 
 _LST = 0.0
-def _handle_scroll(conn, e):
+
+def _check_scroll_cooldown(e, axis=None):
+    """Определяет направление: +1 (Next), -1 (Prev), 0 (Игнор)."""
     global _LST
     now = time()
-    if now - _LST < _CD: return True
+    if now - _LST < _CD: 
+        return 0
     
+    direction = 0
     d = e.direction
-    cmd = None
     res, dx, dy = e.get_scroll_deltas()
 
-    if d == Gdk.ScrollDirection.UP or (res and dy < -_TH): cmd = "U"
-    elif d == Gdk.ScrollDirection.DOWN or (res and dy > _TH): cmd = "D"
-    elif d == Gdk.ScrollDirection.LEFT or (res and dx < -_TH): cmd = "L"
-    elif d == Gdk.ScrollDirection.RIGHT or (res and dx > _TH): cmd = "R"
+    if axis == 'y':
+        if d == Gdk.ScrollDirection.UP or (res and dy < -_TH): 
+            direction = -1
+        elif d == Gdk.ScrollDirection.DOWN or (res and dy > _TH): 
+            direction = 1 
+    
+    elif axis == 'x':
+        if d == Gdk.ScrollDirection.RIGHT or (res and dx > _TH):
+            direction = 1
+        elif d == Gdk.ScrollDirection.LEFT or (res and dx < -_TH):
+            direction = -1
 
-    if cmd:
+    if direction != 0:
         _LST = now
-        ws = _get_active_ws(conn)
-        if ws < 1 or ws > 9: ws = 5
         
-        r = cur_row = (ws - 1) // 3
-        c = (ws - 1) % 3
-        
-        if cmd == "R": c = (c + 1) % 3
-        elif cmd == "L": c = (c + 2) % 3
-        elif cmd == "D": r = (r + 1) % 3
-        elif cmd == "U": r = (r + 2) % 3
-            
-        _dispatch_exact(conn, r, c, cur_row)
-    return True
-
+    return direction
 
 class TopWorkspaces(Box):
     def __init__(self, conn, **kwargs):
         super().__init__(name="workspaces-container-top", orientation="h", **kwargs)
         self.conn = conn
         
-        self.lbl_num = Label(label="3")
+        self.inner_box = Box(orientation="h", spacing=0)
+
+        self.lbl_num = Label(label="1")
         self.btn_num = Button(child=self.lbl_num, h_align="center", v_align="center", can_focus=False)
         self.btn_num.add_style_class("active") 
         
         self.num_box = Box(name="workspaces-num-top", children=[self.btn_num])
-        self.add(self.num_box)
+        self.inner_box.add(self.num_box)
         
         self.dots_box = Box(name="workspaces-top", orientation="h", spacing=8)
         self.dots = []
-        for i in range(3):
+        for col in range(3):
             btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
+            btn.connect("clicked", lambda _, c=col: self._on_dot_clicked(c))
+            # Скролл на кнопках
+            btn.add_events(_SM)
+            btn.connect("scroll-event", self._on_scroll)
+            _hov(btn)
             self.dots.append(btn)
             self.dots_box.add(btn)
         
-        self.add(self.dots_box)
+        self.inner_box.add(self.dots_box)
         
-        self.add_events(_SM)
-        self.connect("scroll-event", lambda _, e: _handle_scroll(self.conn, e))
+        # Оборачиваем все в EventBox
+        self.event_box = EventBox(child=self.inner_box)
+        self.event_box.add_events(_SM)
+        self.event_box.connect("scroll-event", self._on_scroll)
+        
+        self.add(self.event_box)
+        
         self.conn.connect("event::workspace", self._update_ui)
         self._update_ui()
 
+    def _on_scroll(self, _, event):
+        direction = _check_scroll_cooldown(event, axis='x')
+        if direction == 0: return False
+
+        ws = _get_active_ws(self.conn)
+        cur_row = (ws - 1) // 3
+        cur_col = (ws - 1) % 3
+
+        target_col = (cur_col + direction) % 3
+
+        _dispatch_exact(self.conn, cur_row, target_col, is_vertical=False)
+        return True
+
+    def _on_dot_clicked(self, target_col):
+        ws = _get_active_ws(self.conn)
+        if ws < 1 or ws > 9: ws = 5
+        current_row = (ws - 1) // 3
+        _dispatch_exact(self.conn, current_row, target_col, is_vertical=False)
+
     def _update_ui(self, *_):
         ws = _get_active_ws(self.conn)
+        self.lbl_num.set_label(str(ws) if 1 <= ws <= 9 else "?")
+        
         cur_col = (ws - 1) % 3
         in_bounds = (1 <= ws <= 9)
 
@@ -139,20 +176,51 @@ class LeftWorkspaces(Box):
         super().__init__(name="workspaces-container-left", orientation="v", **kwargs)
         self.conn = conn
         
+        self.inner_box = Box(orientation="v", spacing=0)
+
         self.dots_box = Box(name="workspaces-left", orientation="v", spacing=8)
         self.dots = []
-        for i in range(3):
+        for row in range(3):
             btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
             btn.add_style_class("row-dot") 
+            btn.connect("clicked", lambda _, r=row: self._on_dot_clicked(r))
+            # Скролл на кнопках
+            btn.add_events(_SM)
+            btn.connect("scroll-event", self._on_scroll)
+            _hov(btn)
             self.dots.append(btn)
             self.dots_box.add(btn)
             
-        self.add(self.dots_box)
+        self.inner_box.add(self.dots_box)
 
-        self.add_events(_SM)
-        self.connect("scroll-event", lambda _, e: _handle_scroll(self.conn, e))
+        self.event_box = EventBox(child=self.inner_box)
+        self.event_box.add_events(_SM)
+        self.event_box.connect("scroll-event", self._on_scroll)
+
+        self.add(self.event_box)
+
         self.conn.connect("event::workspace", self._update_ui)
         self._update_ui()
+
+    def _on_scroll(self, _, event):
+        # Ограничиваем только осью Y
+        direction = _check_scroll_cooldown(event, axis='y')
+        if direction == 0: return False
+
+        ws = _get_active_ws(self.conn)
+        cur_row = (ws - 1) // 3
+        cur_col = (ws - 1) % 3
+
+        target_row = (cur_row + direction) % 3
+
+        _dispatch_exact(self.conn, target_row, cur_col, is_vertical=True)
+        return True
+
+    def _on_dot_clicked(self, target_row):
+        ws = _get_active_ws(self.conn)
+        if ws < 1 or ws > 9: ws = 5
+        current_col = (ws - 1) % 3
+        _dispatch_exact(self.conn, target_row, current_col, is_vertical=True)
 
     def _update_ui(self, *_):
         ws = _get_active_ws(self.conn)
@@ -171,7 +239,7 @@ class LeftWorkspaces(Box):
 class SideBarWindow(Window):
     def __init__(self, conn, monitor_id=0):
         super().__init__(exclusivity="none", layer="top", monitor_id=monitor_id)
-        self.anchor = "left top bottom"
+        self.anchor = "left top"
         self.margin = "-4px -4px -8px -4px" 
         
         self.conn = conn
@@ -200,32 +268,39 @@ class SideBarWindow(Window):
         self.wrapper = Box(name="bar-inner", children=[self.ws], v_expand=True, orientation="v")
         self.wrapper.connect("size-allocate", self._on_size_allocate)
 
+        self.content_eb = EventBox()
+        self.content_eb.add(self.wrapper)
+        self.content_eb.connect("enter-notify-event", self._on_hover_enter)
+        self.content_eb.connect("leave-notify-event", self._on_hover_leave)
+
         self.revealer = Revealer(
             name="sidebar-revealer",
             transition_type="slide-right",
             child_revealed=True,
-            child=self.wrapper,
+            child=self.content_eb,
         )
 
         self.activator = EventBox()
-        self.activator.add(Box())
-        self.activator.set_size_request(6, -1) 
+        self.activator.add(Box(style="background: transparent;"))
+        
+        display = Gdk.Display.get_default()
+        monitor = display.get_monitor(self.monitor_id) if display else None
+        mon_h = monitor.get_geometry().height if monitor else 1080
+        
+        self.activator.set_size_request(15, mon_h)
+        self.activator.set_valign(Gtk.Align.FILL)
+        
+        self.activator.connect("enter-notify-event", self._on_hover_enter)
+        self.activator.connect("leave-notify-event", self._on_hover_leave)
 
         layout_box = Box(orientation="h", children=[self.revealer, self.activator])
-
-        self.root_eb = EventBox()
-        self.root_eb.add(layout_box)
-        self.root_eb.connect("enter-notify-event", self._on_hover_enter)
-        self.root_eb.connect("leave-notify-event", self._on_hover_leave)
-
-        self.add(self.root_eb)
+        self.add(layout_box)
 
     def _on_size_allocate(self, _, alloc):
-        if not self._is_hidden and alloc.width > 10:
+        if not self._is_hidden and alloc.width > 15:
             self._bar_width = alloc.width
 
     def _trigger_ws_switch(self, *_):
-        """Вызывается при переходе на новый воркспейс. Открывает док и ставит таймер."""
         self._ws_switch_active = True
         self._is_hidden = False
         self.revealer.set_reveal_child(True)
@@ -236,7 +311,6 @@ class SideBarWindow(Window):
         self._ws_switch_timer_id = GLib.timeout_add(1000, self._on_ws_switch_timeout)
 
     def _on_ws_switch_timeout(self):
-        """Таймер бездействия (сработал спустя 1 с)"""
         self._ws_switch_active = False
         self._ws_switch_timer_id = None
         self._schedule_occlusion()

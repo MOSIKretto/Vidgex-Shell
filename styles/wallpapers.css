@@ -177,7 +177,7 @@ menuitem {
 
 menuitem:hover {
   background-color: var(--primary);
-  color: var(--shadow);
+  color: var(--on-primary); 
 }
 
 #wallpaper-carousel {
