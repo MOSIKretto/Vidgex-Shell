@@ -95,7 +95,7 @@ def _check_scroll_cooldown(e, axis=None):
 
     if direction != 0:
         _LST = now
-        
+
     return direction
 
 class TopWorkspaces(Box):
