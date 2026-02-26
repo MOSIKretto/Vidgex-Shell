@@ -1,9 +1,7 @@
 from fabric.widgets.box import Box
 
 from modules.Notifications.history import NotificationHistory, NotificationContainer
-
 from services.wayland import WaylandWindow as Window
-
 
 class NotificationPopup(Window):
     __slots__ = ('notification_history', 'notification_container', '_spacer')
@@ -27,11 +25,18 @@ class NotificationPopup(Window):
         self.add(Box(name="notification-popup-box", orientation="v", children=[self.notification_container, self._spacer]))
 
     def destroy(self):
-        if getattr(self, 'notification_container', None):
+        # Корректное рекурсивное удаление дочерних элементов
+        if self.notification_container:
             self.notification_container.destroy()
             self.notification_container = None
-        if getattr(self, '_spacer', None):
+            
+        if self._spacer:
             self._spacer.destroy()
             self._spacer = None
+            
+        if self.notification_history and not self.notification_history.get_parent():
+            # Если история не прикреплена к другому окну, уничтожаем её
+            self.notification_history.destroy()
+            
         self.notification_history = None
         super().destroy()

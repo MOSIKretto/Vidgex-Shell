@@ -1,6 +1,8 @@
 import os
 import weakref
 import shutil
+import queue
+import hashlib
 from threading import Thread
 from queue import Queue
 
@@ -26,6 +28,28 @@ GROUP_ANIMATION_DURATION = 200
 _history_ignored_apps = frozenset()
 def get_history_ignored_apps(): return _history_ignored_apps
 
+def get_safe_image_path(uuid):
+    safe_id = hashlib.md5(str(uuid).encode()).hexdigest()
+    return os.path.join(PERSISTENT_IMAGES_DIR, f"{safe_id}.png")
+
+def is_safe_image_file(path):
+    if not path or not path.startswith("/") or not os.path.isfile(path): return False
+    
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return False
+
+    if not (0 < size < 10 * 1024 * 1024): return False
+    
+    file_info = GdkPixbuf.Pixbuf.get_file_info(path)
+    if not file_info: return False
+    
+    fmt, width, height = file_info
+    if not fmt or width > 2048 or height > 2048: return False
+    
+    return True
+
 class _IOWorker:
     __slots__ = ('_queue', '_thread')
     def __init__(self):
@@ -37,56 +61,102 @@ class _IOWorker:
         while True:
             task = self._queue.get(block=True)
             if task is None: break
-            try: task()
-            except Exception: pass
-            finally: self._queue.task_done()
+            task()
+            self._queue.task_done()
     
-    def submit(self, task): self._queue.put(task)
+    def submit(self, task): 
+        self._queue.put_nowait(task)
+        
+    def shutdown(self):
+        self._queue.put_nowait(None)
 
 _io_worker = _IOWorker()
 def submit_io_task(task): _io_worker.submit(task)
 
-def create_micro_thumbnail(notification, uuid):
-    pixbuf = getattr(notification, 'image_pixbuf', None)
+def cleanup_orphan_images(active_ids):
+    if not os.path.isdir(PERSISTENT_IMAGES_DIR): return
+    valid_filenames = {f"{hashlib.md5(str(uid).encode()).hexdigest()}.png" for uid in active_ids}
+    
+    try:
+        dir_contents = os.listdir(PERSISTENT_IMAGES_DIR)
+    except OSError:
+        return
+
+    for filename in dir_contents:
+        if filename.endswith(".png") and filename not in valid_filenames:
+            full_path = os.path.join(PERSISTENT_IMAGES_DIR, filename)
+            if os.path.isfile(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
+
+def create_micro_thumbnail(notification, uuid, on_success_callback=None):
+    image_path = get_safe_image_path(uuid)
+    
+    pb_to_save = None
+    if getattr(notification, 'image_pixbuf', None):
+        pb_to_save = notification.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
+        
     icon_path = getattr(notification, 'app_icon', None)
-    
-    image_path = os.path.join(PERSISTENT_IMAGES_DIR, f"{uuid}.png")
-    
+
     def process_and_save():
-        os.makedirs(PERSISTENT_IMAGES_DIR, exist_ok=True)
-        pb = None
         try:
-            if pixbuf:
-                pb = pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
-            elif icon_path:
-                path = icon_path[7:] if icon_path.startswith("file://") else icon_path
-                if os.path.exists(path):
-                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
-            
-            if pb:
-                pb.savev(image_path, "png", [], [])
-        except Exception:
+            os.makedirs(PERSISTENT_IMAGES_DIR, exist_ok=True)
+        except OSError:
             pass
-        finally:
-            if pb: del pb # Очистка С-памяти в фоне
+
+        local_pb = pb_to_save
+        if not local_pb and icon_path:
+            path = icon_path[7:] if icon_path.startswith("file://") else icon_path
+            if is_safe_image_file(path):
+                try: 
+                    local_pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
+                except GLib.Error: 
+                    pass
+        
+        if local_pb:
+            try: 
+                local_pb.savev(image_path, "png", [], [])
+            except GLib.Error: 
+                pass
+            
+            if on_success_callback and os.path.exists(image_path):
+                GLib.idle_add(on_success_callback, image_path, priority=GLib.PRIORITY_LOW)
 
     _io_worker.submit(process_and_save)
     return image_path
 
 def delete_notification_image(uuid):
     def do_delete():
-        try:
-            p = os.path.join(PERSISTENT_IMAGES_DIR, f"{uuid}.png")
-            if os.path.exists(p): os.remove(p)
-        except OSError: pass
+        p = get_safe_image_path(uuid)
+        if os.path.isfile(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
     _io_worker.submit(do_delete)
 
 def clear_all_notification_images():
     def do_clear():
-        try:
-            if os.path.exists(PERSISTENT_IMAGES_DIR): shutil.rmtree(PERSISTENT_IMAGES_DIR, ignore_errors=True)
-        except Exception: pass
+        if os.path.isdir(PERSISTENT_IMAGES_DIR): 
+            shutil.rmtree(PERSISTENT_IMAGES_DIR, ignore_errors=True)
     _io_worker.submit(do_clear)
+
+
+class HistoricalNotification:
+    # Добавлен image_pixbuf для In-Memory рендера во время работы программы
+    __slots__ = ('id', 'app_icon', 'summary', 'body', 'app_name', 'timestamp', 'actions', 'image_pixbuf')
+    def __init__(self, id, app_icon, summary, body, app_name, timestamp):
+        self.id = id
+        self.app_icon = app_icon
+        self.summary = summary
+        self.body = body
+        self.app_name = app_name
+        self.timestamp = timestamp
+        self.actions = []
+        self.image_pixbuf = None
+
 
 class ActionButton(Button):
     __slots__ = ('action', '_nb_ref', '_handlers')
@@ -106,9 +176,11 @@ class ActionButton(Button):
     def _on_enter(self, *_):
         nb = self._nb_ref()
         if nb and not getattr(nb, '_destroyed', True): nb.hover_button(self)
+        
     def _on_leave(self, *_):
         nb = self._nb_ref()
         if nb and not getattr(nb, '_destroyed', True): nb.unhover_button(self)
+        
     def _on_clicked(self, *_):
         if self.action:
             self.action.invoke()
@@ -116,8 +188,8 @@ class ActionButton(Button):
 
     def destroy(self):
         for hid in self._handlers:
-            try: self.disconnect(hid)
-            except Exception: pass
+            if self.handler_is_connected(hid):
+                self.disconnect(hid)
         self.action = None
         self._nb_ref = None
         super().destroy()
@@ -125,7 +197,8 @@ class ActionButton(Button):
 class NotificationBox(Box):
     __slots__ = (
         'notification', 'uuid', 'timeout_ms', '_timeout_id', '_container_ref',
-        '_destroyed', '_is_history', '_hover_handlers', '_action_buttons', '_thumb_path'
+        '_destroyed', '_is_history', '_hover_handlers', '_action_buttons', '_thumb_path',
+        'image_box'
     )
 
     def __init__(self, notification, timeout_ms=5000, **kwargs):
@@ -138,8 +211,7 @@ class NotificationBox(Box):
         self._is_history = False
         self._action_buttons = []
         
-        # Фон генерирует и сохраняет легкий PNG
-        self._thumb_path = create_micro_thumbnail(notification, self.uuid) if not isinstance(notification, HistoricalNotification) else getattr(notification, 'app_icon', None)
+        self._thumb_path = get_safe_image_path(self.uuid)
 
         live_timeout = getattr(notification, "timeout", -1)
         self.timeout_ms = 0 if timeout_ms == 0 else (live_timeout if live_timeout != -1 else timeout_ms)
@@ -151,39 +223,43 @@ class NotificationBox(Box):
 
         self._hover_handlers = (self.connect("enter-notify-event", self._on_hover_enter), self.connect("leave-notify-event", self._on_hover_leave))
 
+        if not isinstance(notification, HistoricalNotification):
+            create_micro_thumbnail(notification, self.uuid, self._on_thumb_ready)
+
+    def _on_thumb_ready(self, saved_path):
+        if self._destroyed: return
+        self._thumb_path = saved_path
+
     def set_is_history(self, value): self._is_history = value
     def set_container(self, container): self._container_ref = weakref.ref(container) if container else None
     def get_container(self): return self._container_ref() if self._container_ref else None
 
     def _create_content(self):
         notif = self.notification
-        image_box = Box(name="notification-image", orientation="v")
+        self.image_box = Box(name="notification-image", orientation="v")
         
         pb = None
-        is_live = not isinstance(notif, HistoricalNotification)
-
-        # 1. Для МОМЕНТАЛЬНОГО попапа берем картинку из ОЗУ
-        if is_live and getattr(notif, 'image_pixbuf', None):
+        
+        # Обновленная каскадная логика: ОЗУ -> Кэш -> Исходник
+        if getattr(notif, 'image_pixbuf', None):
             pb = notif.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
-        # 2. Для ИСТОРИИ (или если ОЗУ-картинки нет) берем легкий PNG с диска
-        elif self._thumb_path and os.path.exists(self._thumb_path):
-            try: pb = GdkPixbuf.Pixbuf.new_from_file(self._thumb_path)
-            except Exception: pass
-        # 3. Запасной вариант - иконка приложения
-        elif is_live and getattr(notif, 'app_icon', None):
-            path = notif.app_icon[7:] if notif.app_icon.startswith("file://") else notif.app_icon
-            if os.path.exists(path):
-                try: pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
-                except Exception: pass
+        else:
+            if self._thumb_path and is_safe_image_file(self._thumb_path):
+                try: pb = GdkPixbuf.Pixbuf.new_from_file(self._thumb_path)
+                except GLib.Error: pass
+                
+            if not pb and getattr(notif, 'app_icon', None):
+                path = notif.app_icon[7:] if notif.app_icon.startswith("file://") else notif.app_icon
+                if is_safe_image_file(path):
+                    try: pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
+                    except GLib.Error: pass
 
         if pb:
-            # ВОЗВРАЩЕНО: CustomImage для сохранения ваших стилей верстки
             img = CustomImage(pixbuf=pb)
             img.set_valign(Gtk.Align.START)
-            image_box.add(img)
-            del pb # МГНОВЕННОЕ УНИЧТОЖЕНИЕ Pixbuf (Секрет низкого ОЗУ)
+            self.image_box.add(img)
             
-        image_box.add(Box(v_expand=True))
+        self.image_box.add(Box(v_expand=True))
 
         summary_str = str(getattr(notif, 'summary', ''))[:80]
         app_name_str = str(getattr(notif, 'app_name', 'Unknown'))[:20]
@@ -207,7 +283,7 @@ class NotificationBox(Box):
         close_btn.connect("leave-notify-event", self._on_close_hover_leave)
 
         return Box(name="notification-content", spacing=8, h_expand=True, children=[
-            image_box, text_box, Box(orientation="v", v_align="center", children=[close_btn])
+            self.image_box, text_box, Box(orientation="v", v_align="center", children=[close_btn])
         ])
 
     def _create_action_buttons(self):
@@ -225,24 +301,30 @@ class NotificationBox(Box):
 
     def _on_close_hover_enter(self, btn, _): self.hover_button(btn)
     def _on_close_hover_leave(self, btn, _): self.unhover_button(btn)
+    
     def start_timeout(self):
         self.stop_timeout()
         if self.timeout_ms > 0: self._timeout_id = GLib.timeout_add(self.timeout_ms, self._close_notification)
+        
     def stop_timeout(self):
         if self._timeout_id is not None:
             GLib.source_remove(self._timeout_id)
             self._timeout_id = None
+            
     def _close_notification(self):
         if not self._destroyed and self.notification and hasattr(self.notification, 'close'): 
             self.notification.close("expired")
         self.stop_timeout()
         return GLib.SOURCE_REMOVE
+        
     def _on_hover_enter(self, *_):
         cont = self.get_container()
         if cont and hasattr(cont, 'pause_and_reset_all_timeouts'): cont.pause_and_reset_all_timeouts()
+        
     def _on_hover_leave(self, *_):
         cont = self.get_container()
         if cont and hasattr(cont, 'resume_all_timeouts'): cont.resume_all_timeouts()
+        
     def hover_button(self, *_): self._on_hover_enter()
     def unhover_button(self, *_): self._on_hover_leave()
 
@@ -251,13 +333,13 @@ class NotificationBox(Box):
         self._destroyed = True
 
         for hid in self._hover_handlers:
-            try: self.disconnect(hid)
-            except Exception: pass
+            if self.handler_is_connected(hid):
+                self.disconnect(hid)
         self._hover_handlers = ()
 
         for btn in self._action_buttons:
-            try: btn.destroy()
-            except Exception: pass
+            if btn.get_parent():
+                btn.destroy()
         self._action_buttons.clear()
 
         self.stop_timeout()
@@ -265,22 +347,11 @@ class NotificationBox(Box):
         self._container_ref = None
 
         for child in self.get_children():
-            try:
+            if child.get_parent() == self:
                 self.remove(child)
                 child.destroy()
-            except Exception: pass
         super().destroy()
 
-class HistoricalNotification:
-    __slots__ = ('id', 'app_icon', 'summary', 'body', 'app_name', 'timestamp', 'actions')
-    def __init__(self, id, app_icon, summary, body, app_name, timestamp):
-        self.id = id
-        self.app_icon = app_icon
-        self.summary = summary
-        self.body = body
-        self.app_name = app_name
-        self.timestamp = timestamp
-        self.actions = []
 
 class NotificationGroup(Box):
     __slots__ = (
@@ -368,10 +439,11 @@ class NotificationGroup(Box):
         if self._is_destroyed: return
         self.clear_btn.set_sensitive(False)
         history = self._history_ref()
-        if history and not getattr(history, '_is_destroyed', False): GLib.idle_add(self._trigger_history_clear, history)
+        if history: GLib.idle_add(self._trigger_history_clear, history)
 
     def _trigger_history_clear(self, history):
-        if hasattr(history, 'clear_history_for_app'): history.clear_history_for_app(self.app_name)
+        if not getattr(history, '_is_destroyed', True) and hasattr(history, 'clear_history_for_app'): 
+            history.clear_history_for_app(self.app_name)
         return GLib.SOURCE_REMOVE
 
     def _update_stack_indicators(self, count):
@@ -381,7 +453,6 @@ class NotificationGroup(Box):
 
     def update_display(self, containers_by_id):
         if self._is_destroyed: return
-        self.clear_containers()
         if not self.notification_ids: return
 
         valid_containers = [c for nid in self.notification_ids if (c := containers_by_id.get(nid)) is not None]
@@ -389,9 +460,13 @@ class NotificationGroup(Box):
         if not valid_containers: return
 
         for i, container in enumerate(valid_containers):
+            target_box = self.first_container_box if i == 0 else self.stacked_container
             parent = container.get_parent()
-            if parent: parent.remove(container)
-            (self.first_container_box if i == 0 else self.stacked_container).add(container)
+            
+            if parent != target_box:
+                if parent:
+                    parent.remove(container)
+                target_box.add(container)
 
         count = len(valid_containers)
         is_multi = count > 1
@@ -413,6 +488,7 @@ class NotificationGroup(Box):
     def add_notification_id(self, nid, arrival_time):
         if nid not in self.notification_ids: self.notification_ids.insert(0, nid)
         if self.latest_arrival_time is None or arrival_time > self.latest_arrival_time: self.latest_arrival_time = arrival_time
+        
     def remove_notification_id(self, nid):
         if nid in self.notification_ids: self.notification_ids.remove(nid)
         return len(self.notification_ids) == 0
@@ -423,20 +499,20 @@ class NotificationGroup(Box):
 
     def clear_containers(self):
         for box in (self.first_container_box, self.stacked_container):
-            for child in box.get_children(): box.remove(child)
+            for child in box.get_children():
+                if child.get_parent() == box:
+                    box.remove(child)
 
     def destroy(self):
         if self._is_destroyed: return
         self._is_destroyed = True
         
-        if self._expand_handler and self.header:
-            try: self.header.disconnect(self._expand_handler)
-            except Exception: pass
+        if self._expand_handler and self.header and self.header.handler_is_connected(self._expand_handler):
+            self.header.disconnect(self._expand_handler)
             self._expand_handler = None
 
-        if self._clear_handler and self.clear_btn:
-            try: self.clear_btn.disconnect(self._clear_handler)
-            except Exception: pass
+        if self._clear_handler and self.clear_btn and self.clear_btn.handler_is_connected(self._clear_handler):
+            self.clear_btn.disconnect(self._clear_handler)
             self._clear_handler = None
 
         self.clear_containers()
