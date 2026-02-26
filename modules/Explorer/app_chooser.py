@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 class AppChooserMixin:
-
     def _show_app_chooser(self, path: Path):
         self._close_app_chooser()
         self._app_chooser_path = path

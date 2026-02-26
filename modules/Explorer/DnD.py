@@ -8,7 +8,6 @@ from pathlib import Path
 
 
 class DnDMixin:
-
     def _setup_activator_drop_target(self):
         self.activator.drag_dest_set(
             Gtk.DestDefaults.MOTION,
@@ -56,14 +55,20 @@ class DnDMixin:
         GLib.timeout_add(100, self._check_drag_hide)
 
     def _check_drag_still_over(self) -> bool:
+        if self._drag_in_progress or self._post_drag_grace or self._pending_drop_source:
+            return False
+            
         if not self._drag_over_explorer and not self._is_pinned:
-            if not self._is_cursor_over_explorer() and not self._pending_drop_source:
+            if not self._is_cursor_over_explorer():
                 self._schedule_hide()
         return False
 
     def _check_drag_hide(self) -> bool:
-        if self._is_pinned or self._pending_drop_source or self._post_drag_grace or self._navigation_lock:
+        if (self._is_pinned or self._pending_drop_source or 
+            self._post_drag_grace or self._navigation_lock or 
+            self._drag_in_progress):
             return False
+            
         if not self._is_cursor_over_explorer():
             self._schedule_hide()
         return False
@@ -408,8 +413,11 @@ class DnDMixin:
         if self._pending_drop_source:
             self._drag_in_progress = False
             return
+            
         self._drag_source_path = None
         self._drag_in_progress = False
+        self._drag_over_explorer = False
+        
         self.dnd_indicator.set_label("")
         ctx = self.dnd_indicator.get_style_context()
         ctx.remove_class("active")
@@ -424,8 +432,11 @@ class DnDMixin:
         if self._pending_drop_source:
             self._drag_in_progress = False
             return False
+            
         self._drag_source_path = None
         self._drag_in_progress = False
+        self._drag_over_explorer = False
+        
         self.dnd_indicator.set_label("")
         self.dnd_indicator.get_style_context().remove_class("active")
         self._cancel_drag_hover_timer()
@@ -471,7 +482,10 @@ class DnDMixin:
     def _on_drag_data_received(self, widget, context, x, y, selection, info, time, target_path=None):
         widget.get_style_context().remove_class("drag-over")
         self._cancel_drag_hover_timer()
+        self._drag_over_explorer = False
+        
         self._handle_drop_data(context, selection, info, time, target_path or self._current_path)
+        self._start_post_drag_grace()
 
     def _update_dnd_indicator(self, action, dest_name: str):
         action_text = "Copy" if action == Gdk.DragAction.COPY else "Move"
@@ -584,7 +598,11 @@ class DnDMixin:
         target_path = getattr(widget, '_drop_path', None)
         widget.get_style_context().remove_class("drag-over")
         self._cancel_drag_hover_timer()
+        self._drag_over_explorer = False
+        
         if target_path:
             self._handle_drop_data(context, selection, info, time, target_path)
         else:
             Gtk.drag_finish(context, False, False, time)
+            
+        self._start_post_drag_grace()

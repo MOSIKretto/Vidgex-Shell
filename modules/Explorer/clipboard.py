@@ -5,7 +5,6 @@ from typing import List
 
 
 class ClipboardMixin:
-    
     def _copy_to_clipboard(self, paths: List[Path], is_cut: bool = False):
         self._clipboard_paths = [p for p in paths if p.exists()]
         self._clipboard_is_cut = is_cut

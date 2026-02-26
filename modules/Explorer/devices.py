@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 class DevicesMixin:
-
     def _setup_volume_monitor(self):
         try:
             self._volume_monitor = Gio.VolumeMonitor.get()

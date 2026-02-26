@@ -13,7 +13,6 @@ _timeout_add   = GLib.timeout_add
 
 
 class NavigationMixin:
-
     def _set_navigation_lock(self):
         self._navigation_lock = True
         self._cancel_pending_hide()
@@ -64,7 +63,7 @@ class NavigationMixin:
                 hist.append(path)
                 self._history_index = len(hist) - 1
 
-        idx      = self._history_index
+        idx = self._history_index
         hist_len = len(self._history)
         self.btn_back.set_sensitive(idx > 0)
         self.btn_forward.set_sensitive(idx < hist_len - 1)
@@ -79,7 +78,7 @@ class NavigationMixin:
     def _setup_file_monitor(self):
         self._cleanup_file_monitor()
         try:
-            gfile   = Gio.File.new_for_path(str(self._current_path))
+            gfile = Gio.File.new_for_path(str(self._current_path))
             monitor = gfile.monitor_directory(_WATCH_MOVES, None)
             monitor.connect("changed", self._on_directory_changed)
             self._file_monitor = monitor

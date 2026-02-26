@@ -201,7 +201,6 @@ class Explorer(
         self._init_ui()
         _timeout_add(100, self._delayed_show)
 
-    # Динамический отступ окна, чтобы не закрывать собой верхний левый угол когда закрыт
     def _update_window_margin(self, is_open):
         try:
             m = 0 if is_open else self._top_margin_closed
@@ -237,7 +236,6 @@ class Explorer(
         self.activator = EventBox(name="explorer-activator")
         self.activator.add(Box(style="background: transparent;"))
         
-        # ИЗМЕНЕНО: активатор занимает область ниже зарезервированной для панели
         activator_height = max(1, self._mon_h - self._top_margin_closed)
         self.activator.set_size_request(15, activator_height)
         self.activator.set_valign(Gtk.Align.START)
@@ -273,7 +271,6 @@ class Explorer(
         )
         self.add(main_box)
         
-        # При старте Эксплорер закрыт, поэтому окно отступает сверху
         self._update_window_margin(False)
 
     def _get_cursor_position(self):
@@ -344,7 +341,7 @@ class Explorer(
                 ok, wx, wy = widget.translate_coordinates(self, 0, 0)
                 if not ok:
                     continue
-                ax, ay = win_x + wx, win_y + wy
+                ax, ay = win_x + wx, wy + win_y
                 if ax <= root_x <= ax + alloc.width and ay <= root_y <= ay + alloc.height:
                     return path
             except Exception:
@@ -385,7 +382,6 @@ class Explorer(
     def _on_activator_hover_timeout(self):
         self._activator_hover_timer = None
         if self._cursor_over_activator:
-            # При открытии растягиваем окно на весь экран
             self._update_window_margin(True)
             self.revealer.set_reveal_child(True)
         return False
@@ -404,6 +400,7 @@ class Explorer(
             self._is_pinned
             or self._menu_open
             or self._drag_in_progress
+            or self._drag_over_explorer
             or self._pending_drop_source
             or self._post_drag_grace
             or self._navigation_lock
@@ -424,18 +421,16 @@ class Explorer(
 
     def _force_restore_margin(self):
         """Принудительно скрыть окно и восстановить отступ, игнорируя флаги (кроме pinned)."""
-        if self._is_pinned:
+        if (self._is_pinned or self._drag_in_progress or 
+            self._drag_over_explorer or self._pending_drop_source or 
+            self._post_drag_grace):
             return False
-        # Сбрасываем проблемные флаги
+
         self._menu_open = False
-        self._drag_in_progress = False
-        self._post_drag_grace = False
-        self._pending_drop_source = None
         self._navigation_lock = False
-        # Скрываем, если ещё не скрыто
+
         if self.revealer.get_child_revealed():
             self.revealer.set_reveal_child(False)
-        # Восстанавливаем отступ
         self._update_window_margin(False)
         return False
 
@@ -445,38 +440,45 @@ class Explorer(
             self._is_pinned
             or self._menu_open
             or self._drag_in_progress
+            or self._drag_over_explorer
             or self._pending_drop_source
             or self._post_drag_grace
             or self._navigation_lock
         ):
-            # Если не можем скрыть сейчас, запланируем повторную попытку через 500 мс
             if not hasattr(self, '_retry_hide_id') or not self._retry_hide_id:
                 self._retry_hide_id = _timeout_add(500, self._retry_hide)
             return False
+
         if self._is_cursor_over_explorer():
             self._cursor_inside = True
             return False
             
         self.revealer.set_reveal_child(False)
-        # Ждем пока окно закроется и восстанавливаем отступ в 5%
         GLib.timeout_add(350, self._check_and_restore_margin)
         return False
 
     def _retry_hide(self):
         """Повторная попытка скрыть окно, игнорируя временные флаги."""
         self._retry_hide_id = None
-        if self._is_pinned:
+        
+        if (self._is_pinned or self._drag_in_progress or 
+            self._drag_over_explorer or self._pending_drop_source or 
+            self._post_drag_grace or self._navigation_lock):
             return False
+
         if not self._is_cursor_over_explorer():
-            # Принудительно закрываем
             self._force_restore_margin()
         return False
         
     def _check_and_restore_margin(self):
+        if (self._is_pinned or self._drag_in_progress or 
+            self._drag_over_explorer or self._pending_drop_source or 
+            self._post_drag_grace):
+            return False
+
         if not self.revealer.get_child_revealed() and not self._is_pinned and not self._cursor_inside:
             self._update_window_margin(False)
         else:
-            # Если окно не скрыто или курсор внутри, но прошло много времени – форсируем
             self._force_restore_margin()
         return False
 
