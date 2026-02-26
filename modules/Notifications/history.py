@@ -129,30 +129,16 @@ class NotificationHistory(Box):
         notif = notification_box.notification
         image_box = Box(name="notification-image")
         
-        pb = None
-        # 1. Сначала пробуем получить картинку прямо из ОЗУ (мгновенно для DND режима)
-        if getattr(notif, 'image_pixbuf', None):
-            pb = notif.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
-        else:
-            # 2. Если в ОЗУ нет, пробуем прочитать готовый кэш (когда загружаем из файла)
-            thumb_path = getattr(notification_box, '_thumb_path', None)
-            if thumb_path and is_safe_image_file(thumb_path):
-                try: pb = GdkPixbuf.Pixbuf.new_from_file(thumb_path)
-                except GLib.Error: pass
-            
-            # 3. Если кэш ещё не записан на диск, пробуем прочитать оригинальный путь иконки
-            if not pb:
-                app_icon = getattr(notif, 'app_icon', None)
-                if app_icon:
-                    path = app_icon[7:] if app_icon.startswith("file://") else app_icon
-                    if is_safe_image_file(path):
-                        try: pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
-                        except GLib.Error: pass
-
-        if pb:
-            img = CustomImage(pixbuf=pb)
-            img.set_valign(Gtk.Align.START)
-            image_box.add(img)
+        thumb_path = getattr(notification_box, '_thumb_path', getattr(notif, 'app_icon', None))
+        if thumb_path and is_safe_image_file(thumb_path):
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file(thumb_path)
+                img = CustomImage(pixbuf=pb)
+                img.set_valign(Gtk.Align.START)
+                image_box.add(img)
+            except GLib.Error:
+                # Фоллбэк: если картинка битая, игнорируем ее загрузку, UI покажет просто текст
+                pass
 
         summary_box = Box(name="notification-summary-box", orientation="h", children=[
             Label(name="notification-summary", markup=str(getattr(notif, 'summary', ''))[:40], h_align="start", max_chars_width=18, ellipsization="end"),
@@ -267,6 +253,7 @@ class NotificationHistory(Box):
                 with open(PERSISTENT_HISTORY_FILE, "r", encoding="utf-8") as f: 
                     data = json.load(f)
             except (json.JSONDecodeError, OSError):
+                # Фоллбэк: если файл сломан или нет доступа, начинаем с пустой истории
                 data = []
         GLib.idle_add(self._on_loaded, data, priority=GLib.PRIORITY_LOW)
 
@@ -345,11 +332,10 @@ class NotificationHistory(Box):
             notification_box.destroy(from_history_delete=True)
             return
 
-        # Сохраняем оригинальный путь до иконки для бэкапа
-        orig_app_icon = getattr(notif, 'app_icon', None)
+        img_path = getattr(notification_box, '_thumb_path', None)
 
         hist_data = {
-            "id": uuid, "app_icon": orig_app_icon, "summary": str(getattr(notif, 'summary', ''))[:80],
+            "id": uuid, "app_icon": img_path, "summary": str(getattr(notif, 'summary', ''))[:80],
             "body": str(getattr(notif, 'body', ''))[:150], "app_name": app_name,
             "timestamp": now.isoformat()
         }
@@ -357,12 +343,9 @@ class NotificationHistory(Box):
         self._schedule_save()
 
         hist_notif = HistoricalNotification(
-            id=uuid, app_icon=orig_app_icon, summary=hist_data["summary"],
+            id=uuid, app_icon=img_path, summary=hist_data["summary"],
             body=hist_data["body"], app_name=app_name, timestamp=hist_data["timestamp"]
         )
-        
-        # Захватываем пиксели из оперативной памяти для режима "Не беспокоить"
-        hist_notif.image_pixbuf = getattr(notif, 'image_pixbuf', None)
 
         notification_box.destroy(from_history_delete=True)
 
@@ -428,6 +411,7 @@ class NotificationHistory(Box):
                 os.fsync(f.fileno()) 
             os.replace(tmp_file, PERSISTENT_HISTORY_FILE)
         except (OSError, TypeError, ValueError):
+            # Если сломалось во время записи, удаляем битый .tmp файл
             if os.path.isfile(tmp_file):
                 try:
                     os.remove(tmp_file)
@@ -448,7 +432,6 @@ class NotificationHistory(Box):
             
         self.clear_history()
         super().destroy()
-
 
 class NotificationContainer(Box):
     __slots__ = (

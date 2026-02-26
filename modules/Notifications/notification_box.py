@@ -1,7 +1,6 @@
 import os
 import weakref
 import shutil
-import queue
 import hashlib
 from threading import Thread
 from queue import Queue
@@ -143,21 +142,6 @@ def clear_all_notification_images():
             shutil.rmtree(PERSISTENT_IMAGES_DIR, ignore_errors=True)
     _io_worker.submit(do_clear)
 
-
-class HistoricalNotification:
-    # Добавлен image_pixbuf для In-Memory рендера во время работы программы
-    __slots__ = ('id', 'app_icon', 'summary', 'body', 'app_name', 'timestamp', 'actions', 'image_pixbuf')
-    def __init__(self, id, app_icon, summary, body, app_name, timestamp):
-        self.id = id
-        self.app_icon = app_icon
-        self.summary = summary
-        self.body = body
-        self.app_name = app_name
-        self.timestamp = timestamp
-        self.actions = []
-        self.image_pixbuf = None
-
-
 class ActionButton(Button):
     __slots__ = ('action', '_nb_ref', '_handlers')
 
@@ -239,20 +223,18 @@ class NotificationBox(Box):
         self.image_box = Box(name="notification-image", orientation="v")
         
         pb = None
-        
-        # Обновленная каскадная логика: ОЗУ -> Кэш -> Исходник
-        if getattr(notif, 'image_pixbuf', None):
+        is_live = not isinstance(notif, HistoricalNotification)
+
+        if is_live and getattr(notif, 'image_pixbuf', None):
             pb = notif.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
-        else:
-            if self._thumb_path and is_safe_image_file(self._thumb_path):
-                try: pb = GdkPixbuf.Pixbuf.new_from_file(self._thumb_path)
+        elif not is_live and self._thumb_path and is_safe_image_file(self._thumb_path):
+            try: pb = GdkPixbuf.Pixbuf.new_from_file(self._thumb_path)
+            except GLib.Error: pass
+        elif is_live and getattr(notif, 'app_icon', None):
+            path = notif.app_icon[7:] if notif.app_icon.startswith("file://") else notif.app_icon
+            if is_safe_image_file(path):
+                try: pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
                 except GLib.Error: pass
-                
-            if not pb and getattr(notif, 'app_icon', None):
-                path = notif.app_icon[7:] if notif.app_icon.startswith("file://") else notif.app_icon
-                if is_safe_image_file(path):
-                    try: pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
-                    except GLib.Error: pass
 
         if pb:
             img = CustomImage(pixbuf=pb)
@@ -352,6 +334,16 @@ class NotificationBox(Box):
                 child.destroy()
         super().destroy()
 
+class HistoricalNotification:
+    __slots__ = ('id', 'app_icon', 'summary', 'body', 'app_name', 'timestamp', 'actions')
+    def __init__(self, id, app_icon, summary, body, app_name, timestamp):
+        self.id = id
+        self.app_icon = app_icon
+        self.summary = summary
+        self.body = body
+        self.app_name = app_name
+        self.timestamp = timestamp
+        self.actions = []
 
 class NotificationGroup(Box):
     __slots__ = (
