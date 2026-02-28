@@ -18,7 +18,7 @@ from fabric.widgets.image import Image
 
 
 class TerminalMixin:
-
+    
     @staticmethod
     def _algo_wrap_index(index: int, length: int, delta: int) -> Optional[int]:
         return (index + delta) % length if length > 0 else None
@@ -217,7 +217,6 @@ class TerminalMixin:
         tab_eb.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         tab_eb.connect("button-press-event", self._h_tab_click, term_id)
 
-        # --- Register & Spawn ---
         self.terminals[term_id] = {
             'vte': term, 'box': term_box, 'tab': tab_eb, 
             'name_stack': name_stack, 'lbl': lbl, 'entry': entry,
@@ -356,7 +355,7 @@ class TerminalMixin:
         name_stack.set_visible_child_name("label")
         self._grab_terminal_focus(term_id)
         return False
-
+    
     def _do_terminal_search(self, text: str):
         if not self.active_terminal_id or self.active_terminal_id not in self.terminals: return
             
@@ -380,26 +379,27 @@ class TerminalMixin:
         tid = term_id or self.active_terminal_id
         if not tid or tid not in self.terminals: return
 
-        self._set_keyboard_interactive(True)
         tinfo = self.terminals[tid]
         term = tinfo['vte']
 
         def force_focus():
+            if self.active_terminal_id != tid:
+                return False
+                
             ns = tinfo.get('name_stack')
-            if ns and ns.get_visible_child_name() == "entry": return False
+            if ns and ns.get_visible_child_name() == "entry": 
+                return False
+                
             try:
+                self._set_keyboard_interactive(True)
                 self.present()
                 self.set_focus(term)
                 term.grab_focus()
             except Exception: pass
             return False
 
-        # Пытаемся захватить сразу
         GLib.idle_add(force_focus)
-        # И для Wayland: делаем пару контрольных захватов, 
-        # когда композитор уже точно отдал нам клавиатуру после закрытия меню.
-        GLib.timeout_add(50, force_focus)
-        GLib.timeout_add(150, force_focus)
+        GLib.timeout_add(100, force_focus)
 
     def _update_terminal_placeholder(self):
         if not self.active_terminal_id or self.active_terminal_id not in self.terminals: return
@@ -429,7 +429,7 @@ class TerminalMixin:
             if adj: adj.set_value(adj.get_upper() - adj.get_page_size())
         except Exception: pass
         return False
-    
+
     def _is_terminal_open(self) -> bool:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
@@ -449,11 +449,12 @@ class TerminalMixin:
         
         if hasattr(self, '_cancel_pending_hide'): self._cancel_pending_hide()
 
+        if not self.terminals:
+            self._add_terminal_tab()
+
         if cwd is not None:
             folder_name = Path(cwd).name or "Terminal"
             self._add_terminal_tab(cwd=cwd, force_name=folder_name)
-        elif not self.terminals:
-            self._add_terminal_tab()
         elif self.active_terminal_id:
             self._update_terminal_placeholder()
             self._scroll_to_active_tab(self.active_terminal_id)
