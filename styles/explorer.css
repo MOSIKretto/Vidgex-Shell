@@ -152,6 +152,17 @@ window.popup decoration {
     margin-right: 8px;
 }
 
+#explorer-path-part-label {
+    color: inherit;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+#explorer-path-part:active *,
+#explorer-path-part:checked * {
+    color: var(--on-primary);
+}
+
 #explorer-path-part {
     padding: 2px 8px;
     border-radius: 8px;
@@ -174,18 +185,12 @@ window.popup decoration {
     border-color: var(--primary);
 }
 
-#explorer-path-part:active *,
-#explorer-path-part:checked * { color: var(--on-primary); }
-
-#explorer-path-part-label { font-size: 12px; font-family: monospace; }
-
 #explorer-path-separator {
     color: var(--on-surface-variant);
     opacity: 0.5;
     margin: 0 2px;
     font-size: 12px;
 }
-
 #explorer-sidebar {
     min-width: 160px;
     background-color: var(--shadow);
@@ -349,6 +354,7 @@ window.popup decoration {
     border: 1px solid var(--primary);
 }
 
+#explorer-content { min-height: 400px; }
 #explorer-status-label { font-size: 11px; color: var(--on-surface-variant); opacity: 0.8; }
 #explorer-size-label { font-size: 11px; color: var(--on-surface-variant); font-family: monospace; opacity: 0.8; }
 
@@ -454,10 +460,6 @@ menu separator {
 #explorer-rename-btn.confirm:hover { background-color: var(--surface-bright); }
 #explorer-rename-btn.confirm:active { background-color: var(--primary); color: var(--on-primary); }
 #explorer-rename-btn.confirm:disabled { border-color: var(--surface-bright); color: var(--outline); opacity: 0.6; }
-
-/* ============================================== */
-/* ВЫБОР ПРИЛОЖЕНИЯ (APP CHOOSER)                 */
-/* ============================================== */
 
 #explorer-app-chooser-header {
     padding: 8px 12px;

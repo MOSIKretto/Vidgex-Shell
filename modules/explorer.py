@@ -686,7 +686,13 @@ class Explorer(
         self.path_scroll.set_name("explorer-path-scroll")
         self.path_scroll.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
         self.path_scroll.set_min_content_height(28)
+        self.path_scroll.set_hexpand(True)
         self.path_scroll.set_propagate_natural_width(False)
+
+        # Перехватываем момент, когда GTK реально вычисляет ширину новых кнопок
+        adj = self.path_scroll.get_hadjustment()
+        adj.connect("changed", self._on_path_adj_changed)
+        self._force_path_scroll = False
 
         viewport = Gtk.Viewport()
         viewport.set_shadow_type(Gtk.ShadowType.NONE)
@@ -701,33 +707,37 @@ class Explorer(
         scroll_eb.connect("scroll-event", self._on_path_scroll)
         scroll_eb.connect("button-press-event", self._clear_focus_on_click)
 
-        path_wrapper = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        path_wrapper.set_hexpand(True)
-        path_wrapper.pack_start(scroll_eb, True, True, 0)
-
         bar = Box(name="explorer-path-bar", orientation="h", spacing=4)
         bar.pack_start(path_icon, False, False, 0)
-        bar.pack_start(path_wrapper, True, True, 0)
+        # Кладем напрямую, как в терминале, без лишних оберток
+        bar.pack_start(scroll_eb, True, True, 0)
         return bar
+    
+    def _on_path_adj_changed(self, adj):
+        # Откидываем скролл в самый конец только если мы обновили путь
+        if getattr(self, '_force_path_scroll', False):
+            target = max(adj.get_lower(), adj.get_upper() - adj.get_page_size())
+            adj.set_value(target)
+            self._force_path_scroll = False
 
     def _on_path_scroll(self, widget, event):
         adj = self.path_scroll.get_hadjustment()
-        if not adj:
+        if not adj: 
             return False
 
-        delta = 0
-        if event.direction == Gdk.ScrollDirection.UP: delta = -30
-        elif event.direction == Gdk.ScrollDirection.DOWN: delta = 30
-        elif event.direction == Gdk.ScrollDirection.LEFT: delta = -30
-        elif event.direction == Gdk.ScrollDirection.RIGHT: delta = 30
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+        dx, dy = 0.0, 0.0
+        if event.direction == Gdk.ScrollDirection.SMOOTH:
             _, dx, dy = event.get_scroll_deltas()
-            delta = int((dx if dx else dy) * 30)
+
+        step = 30
+        delta = 0
+        if event.direction in (Gdk.ScrollDirection.UP, Gdk.ScrollDirection.LEFT): delta = -step
+        elif event.direction in (Gdk.ScrollDirection.DOWN, Gdk.ScrollDirection.RIGHT): delta = step
+        elif event.direction == Gdk.ScrollDirection.SMOOTH: delta = int((dx if dx != 0 else dy) * step)
 
         if delta:
-            adj.set_value(max(adj.get_lower(),
-                              min(adj.get_value() + delta,
-                                  adj.get_upper() - adj.get_page_size())))
+            new_val = max(adj.get_lower(), min(adj.get_value() + delta, adj.get_upper() - adj.get_page_size()))
+            adj.set_value(new_val)
             return True
         return False
 
@@ -769,8 +779,10 @@ class Explorer(
             self._setup_path_part_as_drop_target(btn, part)
             pack(btn, False, False, 0)
 
+        # ИСПРАВЛЕНИЕ: Ставим флаг для автопрокрутки. 
+        # Сигнал 'changed' сам откинет скролл в конец, когда UI обновится.
+        self._force_path_scroll = True
         container.show_all()
-        GLib.idle_add(self._scroll_path_to_end)
 
     def _scroll_path_to_end(self):
         try:
