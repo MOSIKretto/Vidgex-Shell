@@ -18,7 +18,7 @@ from fabric.widgets.image import Image
 
 
 class TerminalMixin:
-    
+
     @staticmethod
     def _algo_wrap_index(index: int, length: int, delta: int) -> Optional[int]:
         return (index + delta) % length if length > 0 else None
@@ -61,7 +61,16 @@ class TerminalMixin:
 
     @staticmethod
     def _algo_resolve_shell() -> str:
-        return shutil.which("fish") or os.environ.get("SHELL", "/bin/bash")
+        env_shell = os.environ.get("SHELL")
+        if env_shell and os.access(env_shell, os.X_OK):
+            return env_shell
+            
+        for shell in ("zsh", "fish", "bash", "sh"):
+            path = shutil.which(shell)
+            if path:
+                return path
+                
+        return "/bin/bash"
 
     @staticmethod
     def _algo_clamp_scroll(value: float, lower: float, upper: float, page: float) -> float:
