@@ -48,6 +48,7 @@ PACKAGES=(
   # GTK/GObject
   gobject-introspection
   python-gobject
+  vte3
 
   # Утилиты
   kitty

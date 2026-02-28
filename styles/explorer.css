@@ -185,6 +185,7 @@ window.popup decoration {
     margin: 0 2px;
     font-size: 12px;
 }
+
 #explorer-sidebar {
     min-width: 160px;
     background-color: var(--shadow);
@@ -454,6 +455,10 @@ menu separator {
 #explorer-rename-btn.confirm:hover { background-color: var(--surface-bright); }
 #explorer-rename-btn.confirm:active { background-color: var(--primary); color: var(--on-primary); }
 #explorer-rename-btn.confirm:disabled { border-color: var(--surface-bright); color: var(--outline); opacity: 0.6; }
+
+/* ============================================== */
+/* ВЫБОР ПРИЛОЖЕНИЯ (APP CHOOSER)                 */
+/* ============================================== */
 
 #explorer-app-chooser-header {
     padding: 8px 12px;

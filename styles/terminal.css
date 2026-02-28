@@ -1,16 +1,5 @@
-#explorer-terminal-box {
-    background-color: var(--shadow); 
-    border-radius: 12px;
-    padding: 4px;
-    border: 1px solid var(--primary);
-}
-
-#explorer-terminal {
-    color: var(--primary);
-}
-
 #explorer-terminal-tab-bar {
-    padding: 6px 8px;
+    padding: 4px 8px;
     background-color: var(--shadow);
     border-radius: 12px;
     margin-top: 8px;
@@ -113,4 +102,23 @@
 .terminal-tab-entry selection {
     background-color: var(--primary);
     color: var(--on-primary);
+}
+
+#explorer-terminal-box {
+    background-color: #000000;
+    border-radius: 12px;
+    padding: 4px;
+    border: 1px solid var(--primary);
+}
+
+#explorer-terminal-bg-ascii {
+    color: var(--surface-bright); 
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.6; 
+}
+
+#explorer-terminal {
+    background-color: #000000;
+    color: #cdd6f4;
 }
