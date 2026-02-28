@@ -450,17 +450,14 @@ class TerminalMixin:
         
         if hasattr(self, '_cancel_pending_hide'): self._cancel_pending_hide()
 
-        # 1. Если нет терминалов, ВСЕГДА создаем бессмертную базовую вкладку "Home"
         if not self.terminals:
             self._add_terminal_tab()
 
-        # 2. Если нас попросили открыть конкретную папку, открываем её КАК ВТОРУЮ ВКЛАДКУ
         if cwd is not None:
             cwd_str = str(cwd)
             folder_name = Path(cwd_str).name or "Terminal"
             self._add_terminal_tab(cwd=cwd_str, force_name=folder_name)
             
-        # 3. Иначе просто фокусируемся на открытой вкладке
         elif self.active_terminal_id:
             self._update_terminal_placeholder()
             self._scroll_to_active_tab(self.active_terminal_id)
