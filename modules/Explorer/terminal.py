@@ -394,9 +394,12 @@ class TerminalMixin:
             except Exception: pass
             return False
 
-        # Пытаемся захватить фокус сразу (работает для обычных кликов)
+        # Пытаемся захватить сразу
         GLib.idle_add(force_focus)
-        GLib.timeout_add(100, force_focus)
+        # И для Wayland: делаем пару контрольных захватов, 
+        # когда композитор уже точно отдал нам клавиатуру после закрытия меню.
+        GLib.timeout_add(50, force_focus)
+        GLib.timeout_add(150, force_focus)
 
     def _update_terminal_placeholder(self):
         if not self.active_terminal_id or self.active_terminal_id not in self.terminals: return
@@ -446,12 +449,11 @@ class TerminalMixin:
         
         if hasattr(self, '_cancel_pending_hide'): self._cancel_pending_hide()
 
-        if not self.terminals:
-            self._add_terminal_tab()
-
         if cwd is not None:
             folder_name = Path(cwd).name or "Terminal"
             self._add_terminal_tab(cwd=cwd, force_name=folder_name)
+        elif not self.terminals:
+            self._add_terminal_tab()
         elif self.active_terminal_id:
             self._update_terminal_placeholder()
             self._scroll_to_active_tab(self.active_terminal_id)
