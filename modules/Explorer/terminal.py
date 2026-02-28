@@ -56,8 +56,9 @@ class TerminalMixin:
 
     @staticmethod
     def _algo_tab_name(counter: int, is_home: bool, force_name: str = None) -> str:
+        if force_name: return force_name
         if is_home: return "Home"
-        return force_name or f"Terminal {counter}"
+        return f"Terminal {counter}"
 
     @staticmethod
     def _algo_resolve_shell() -> str:
@@ -163,7 +164,7 @@ class TerminalMixin:
         except Exception as e:
             print(f"Error spawning terminal: {e}")
 
-    def _add_terminal_tab(self, cwd: str = None, force_name: str = None):
+    def _add_terminal_tab(self, cwd=None, force_name: str = None):
         term_id = str(uuid.uuid4())
         is_home = len(self.terminals) == 0
 
@@ -221,7 +222,14 @@ class TerminalMixin:
         self.tabs_box.pack_start(tab_eb, False, False, 0)
         self.tabs_box.show_all()
 
-        work_dir = str(Path.home()) if is_home else (cwd or str(self._current_path))
+        # ИСПРАВЛЕНИЕ: гарантируем, что work_dir - это строка (str)
+        if cwd is not None:
+            work_dir = str(cwd)
+        elif is_home:
+            work_dir = str(Path.home())
+        else:
+            work_dir = str(self._current_path)
+
         self._spawn_shell(term, work_dir)
         
         self._switch_to_terminal_tab(term_id)
@@ -428,7 +436,7 @@ class TerminalMixin:
     def _is_terminal_open(self) -> bool:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
-    def _open_terminal(self, cwd: str = None):
+    def _open_terminal(self, cwd=None):
         self.stack.set_visible_child_name("terminal")
         self.bottom_bar_stack.set_visible_child_name("terminal")
         self.path_bar.hide()
@@ -444,12 +452,12 @@ class TerminalMixin:
         
         if hasattr(self, '_cancel_pending_hide'): self._cancel_pending_hide()
 
-        if not self.terminals:
-            self._add_terminal_tab()
-
         if cwd is not None:
-            folder_name = Path(cwd).name or "Terminal"
-            self._add_terminal_tab(cwd=cwd, force_name=folder_name)
+            cwd_str = str(cwd)
+            folder_name = Path(cwd_str).name or "Terminal"
+            self._add_terminal_tab(cwd=cwd_str, force_name=folder_name)
+        elif not self.terminals:
+            self._add_terminal_tab()
         elif self.active_terminal_id:
             self._update_terminal_placeholder()
             self._scroll_to_active_tab(self.active_terminal_id)
