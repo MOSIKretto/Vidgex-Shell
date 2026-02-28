@@ -57,6 +57,7 @@ class Explorer(
     DRAG_SCROLL_SPEED_FAST = 50
     DRAG_SCROLL_INTERVAL = 16  # ~60 FPS
 
+
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
         self._mon_w = 1920
@@ -269,10 +270,11 @@ class Explorer(
     def _init_ui(self):
         self.activator = EventBox(name="explorer-activator")
         self.activator.add(Box(style="background: transparent;"))
-        activator_height = max(1, self._mon_h - self._top_margin_closed)
-        self.activator.set_size_request(15, activator_height)
-        self.activator.set_valign(Gtk.Align.START)
+        
+        self.activator.set_size_request(15, -1)
+        self.activator.set_valign(Gtk.Align.FILL)
         self.activator.set_margin_top(self._top_margin_closed)
+        
         self.activator.connect("enter-notify-event", self._on_activator_enter)
         self.activator.connect("leave-notify-event", self._on_activator_leave)
         self._setup_activator_drop_target()
@@ -301,6 +303,7 @@ class Explorer(
             name="explorer-main", orientation="h", v_expand=True,
             children=[self.activator, self.revealer]))
         self._update_window_margin(False)
+
 
     def _get_cursor_position(self) -> Optional[Tuple[int, int]]:
         try:
@@ -371,7 +374,7 @@ class Explorer(
             except Exception:
                 continue
         return None
-    
+
     def _cancel_activator_hover_timer(self):
         if self._activator_hover_timer:
             GLib.source_remove(self._activator_hover_timer)
@@ -410,7 +413,7 @@ class Explorer(
             if tid and tid in self.terminals:
                 GLib.idle_add(self.terminals[tid]['vte'].grab_focus)
         return False
-    
+
     def _on_explorer_enter(self, widget, event):
         self._cancel_pending_hide()
         self._cancel_activator_hover_timer()
@@ -805,6 +808,7 @@ class Explorer(
         return ScrolledWindow(
             name="explorer-sidebar", h_scrollbar_policy="never",
             v_scrollbar_policy="automatic", min_content_width=130,
+            v_expand=True, min_content_height=100,
             child=self.sidebar_eb)
 
     def _create_bookmark_button(self, icon_name, label_text, path):
@@ -899,7 +903,7 @@ class Explorer(
         self.app_chooser_box.set_vexpand(True)
 
         self.file_view_stack = Gtk.Stack()
-        self.file_view_stack.set_homogeneous(False)
+        self.file_view_stack.set_homogeneous(False) # ИСПРАВЛЕНИЕ: Отключаем блокировку высоты
         self.file_view_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.file_view_stack.set_transition_duration(150)
         self.file_view_stack.add_named(self.files_scrolled, "files")
@@ -987,6 +991,7 @@ class Explorer(
             name="explorer-empty-state", orientation="v",
             h_expand=True, v_expand=True, h_align="fill", v_align="fill")
             
+        # ИСПРАВЛЕНИЕ: Убрали жесткие 350px
         wrapper.set_size_request(-1, -1)
         wrapper.pack_start(Box(v_expand=True), True, True, 0)
         wrapper.pack_start(inner, False, False, 0)
