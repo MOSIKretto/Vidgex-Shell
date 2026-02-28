@@ -1,15 +1,22 @@
-/* ============================================== */
-/* ОСНОВНЫЕ ОКНА */
-/* ============================================== */
-
 #explorer-window,
 #explorer-main,
-#explorer-eventbox {
+#explorer-eventbox,
+#explorer-revealer,
+#explorer-path-scroll,
+#explorer-path-container,
+window.popup,
+window.popup decoration {
     background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+#explorer-window scrolledwindow undershoot,
+#explorer-window scrolledwindow overshoot {
+    background: none;
 }
 
 #explorer-activator {
-    background: transparent;
     min-width: 8px;
     transition: all 200ms ease-out;
 }
@@ -21,29 +28,79 @@
 #explorer-container {
     border-radius: 0px 12px 12px 0px;
     padding: 12px;
-    margin-top: 8px;
-    margin-bottom: 8px;
-    margin-right: 8px;
+    margin: 8px 8px 8px 0;
 }
 
-#explorer-header {
+#explorer-header,
+#explorer-path-bar,
+#explorer-status-bar {
     padding: 8px 12px;
     background-color: var(--shadow);
     border-radius: 12px;
-    margin-bottom: 8px;
     border: 1px solid var(--primary);
 }
 
-#explorer-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--on-surface);
-    margin-left: 8px;
+#explorer-header,
+#explorer-path-bar {
+    margin-bottom: 8px;
 }
 
-/* ============================================== */
-/* НАВИГАЦИЯ И КНОПКИ */
-/* ============================================== */
+#explorer-status-bar {
+    margin-top: 8px;
+    padding: 12px;
+}
+
+#explorer-search-entry {
+    background-color: var(--surface);
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: var(--on-surface);
+    padding: 4px 12px; 
+    font-size: 14px; 
+    font-family: monospace; 
+    font-weight: 600;
+    min-height: 28px;
+    caret-color: var(--primary);
+    transition: all 150ms ease-in-out;
+}
+
+#explorer-search-placeholder {
+    color: var(--on-surface-variant);
+    opacity: 0.6; 
+    font-size: 14px; 
+    font-family: monospace; 
+    font-weight: 600;
+    margin-right: 32px; 
+}
+
+#explorer-search-entry:focus {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px alpha(var(--primary), 0.3);
+    outline: none;
+}
+
+#explorer-search-entry selection,
+#explorer-rename-entry selection,
+#explorer-app-search selection {
+    background-color: var(--primary);
+    color: var(--on-primary);
+}
+
+#explorer-search-entry image {
+    color: var(--on-surface-variant);
+    opacity: 0.6;
+    margin: 0 4px;
+}
+
+#explorer-search-entry image.left {
+    margin-right: 14px; 
+}
+
+#explorer-search-entry:focus image {
+    color: var(--primary);
+    opacity: 1;
+}
 
 #explorer-nav-box {
     background-color: var(--surface);
@@ -51,44 +108,7 @@
     padding: 4px;
 }
 
-#explorer-nav-btn {
-    min-width: 28px;
-    min-height: 28px;
-    padding: 4px;
-    border-radius: 8px;
-    background-color: transparent;
-    border: 1px solid transparent;
-    transition: all 150ms ease-in-out;
-}
-
-#explorer-nav-btn:hover {
-    background-color: var(--surface-bright);
-}
-
-#explorer-nav-btn:active,
-#explorer-nav-btn:checked {
-    background-color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-nav-btn:active *,
-#explorer-nav-btn:checked * {
-    color: var(--on-primary);
-}
-
-#explorer-nav-btn:disabled {
-    opacity: 0.4;
-}
-
-#explorer-nav-btn.active {
-    background-color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-nav-btn.active * {
-    color: var(--on-primary);
-}
-
+#explorer-nav-btn,
 #explorer-eject-header-btn {
     min-width: 28px;
     min-height: 28px;
@@ -99,66 +119,42 @@
     transition: all 150ms ease-in-out;
 }
 
+#explorer-nav-btn:hover { background-color: var(--surface-bright); }
+
+#explorer-nav-btn:active,
+#explorer-nav-btn:checked,
+#explorer-nav-btn.active {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+#explorer-nav-btn:active *,
+#explorer-nav-btn:checked *,
+#explorer-nav-btn.active * { color: var(--on-primary); }
+
+#explorer-nav-btn:disabled,
+#explorer-eject-header-btn:disabled { opacity: 0.4; }
+
 #explorer-eject-header-btn:hover {
     background-color: alpha(var(--error), 0.15);
     border-color: var(--error);
 }
-
-#explorer-eject-header-btn:hover * {
-    color: var(--error);
-}
+#explorer-eject-header-btn:hover * { color: var(--error); }
 
 #explorer-eject-header-btn:active {
     background-color: var(--error);
     border-color: var(--error);
 }
-
-#explorer-eject-header-btn:active * {
-    color: var(--on-primary);
-}
-
-#explorer-eject-header-btn:disabled {
-    opacity: 0.4;
-}
-
-/* ============================================== */
-/* ПУТЬ К ФАЙЛУ */
-/* ============================================== */
-
-#explorer-path-bar {
-    padding: 12px 12px;
-    background-color: var(--shadow);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    border: 1px solid var(--primary);
-}
+#explorer-eject-header-btn:active * { color: var(--on-primary); }
 
 #explorer-path-icon {
     color: var(--primary);
     margin-right: 8px;
 }
 
-#explorer-path-scroll {
-    background: transparent;
-    min-height: 24px;
-}
-
-#explorer-path-scroll undershoot.left,
-#explorer-path-scroll undershoot.right,
-#explorer-path-scroll overshoot.left,
-#explorer-path-scroll overshoot.right {
-    background: none;
-}
-
-#explorer-path-container {
-    padding: 0px;
-    background: transparent;
-}
-
 #explorer-path-part {
     padding: 2px 8px;
     border-radius: 8px;
-    background: transparent;
     border: 1px solid transparent;
     min-height: 20px;
     font-size: 12px;
@@ -176,31 +172,12 @@
 #explorer-path-part:checked {
     background-color: var(--primary);
     border-color: var(--primary);
-    color: var(--on-primary);
-}
-
-#explorer-path-part-label {
-    color: inherit;
-    font-size: 12px;
-    font-family: monospace;
 }
 
 #explorer-path-part:active *,
-#explorer-path-part:checked * {
-    color: var(--on-primary);
-}
+#explorer-path-part:checked * { color: var(--on-primary); }
 
-#explorer-path-part.drag-over {
-    background-color: var(--surface-bright);
-    border: 2px dashed var(--primary);
-    box-shadow: 0 0 8px var(--primary);
-}
-
-#explorer-path-part.drag-hover-pending {
-    background-color: var(--surface-bright);
-    border: 2px solid var(--primary);
-    box-shadow: 0 0 12px var(--primary);
-}
+#explorer-path-part-label { font-size: 12px; font-family: monospace; }
 
 #explorer-path-separator {
     color: var(--on-surface-variant);
@@ -208,24 +185,6 @@
     margin: 0 2px;
     font-size: 12px;
 }
-
-#explorer-path-scroll scrollbar {
-    background: transparent;
-    border: none;
-    min-height: 4px;
-}
-
-#explorer-path-scroll scrollbar slider {
-    background-color: var(--primary);
-    border-radius: 12px;
-    min-height: 4px;
-    opacity: 0.5;
-}
-
-/* ============================================== */
-/* САЙДБАР */
-/* ============================================== */
-
 #explorer-sidebar {
     min-width: 160px;
     background-color: var(--shadow);
@@ -233,10 +192,6 @@
     padding: 8px;
     margin-right: 8px;
     border: 1px solid var(--primary);
-}
-
-#explorer-sidebar-content {
-    padding: 4px;
 }
 
 #explorer-sidebar-header {
@@ -253,12 +208,6 @@
     min-height: 1px;
 }
 
-#explorer-trash-container,
-#explorer-devices-container {
-    margin: 0px;
-    padding: 0px;
-}
-
 #explorer-clear-trash-btn {
     padding: 8px 10px;
     border-radius: 8px;
@@ -268,9 +217,11 @@
     margin: 2px 0px;
 }
 
-#explorer-clear-trash-btn * {
-    color: var(--on-primary);
-}
+#explorer-clear-trash-btn *,
+#explorer-clear-icon,
+#explorer-clear-label { color: var(--on-primary); }
+
+#explorer-clear-label { font-size: 13px; font-weight: bold; }
 
 #explorer-clear-trash-btn:hover {
     background-color: var(--error);
@@ -280,27 +231,7 @@
 #explorer-clear-trash-btn:active,
 #explorer-clear-trash-btn:checked {
     background-color: var(--primary);
-    border-color: var(--primary);
 }
-
-#explorer-clear-trash-btn:active *,
-#explorer-clear-trash-btn:checked * {
-    color: var(--on-primary);
-}
-
-#explorer-clear-icon {
-    color: var(--on-primary);
-}
-
-#explorer-clear-label {
-    font-size: 13px;
-    font-weight: bold;
-    color: var(--on-primary);
-}
-
-/* ============================================== */
-/* ФАЙЛЫ */
-/* ============================================== */
 
 #explorer-file-row {
     padding: 8px 12px;
@@ -317,117 +248,54 @@
 }
 
 #explorer-file-row:active,
-#explorer-file-row:checked {
-    background-color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-file-row:active *,
-#explorer-file-row:checked * {
-    color: var(--on-primary);
-}
-
+#explorer-file-row:checked,
 #explorer-file-row.selected {
     background-color: var(--primary);
     border-color: var(--primary);
 }
 
-#explorer-file-row.selected * {
-    color: var(--on-primary);
+#explorer-file-row:active *,
+#explorer-file-row:checked *,
+#explorer-file-row.selected * { color: var(--on-primary); }
+
+#explorer-file-name {
+    font-size: 13px;
+    color: var(--on-surface);
+    min-width: 200px;
 }
 
-#explorer-file-row.default-app {
-    border-color: alpha(var(--primary), 0.3);
-}
-
-.default-app-label {
-    color: var(--primary);
-    font-weight: 600;
-    opacity: 1;
-}
-
-#explorer-file-row:active .default-app-label,
-#explorer-file-row:checked .default-app-label {
-    color: var(--on-primary);
-}
-
-#explorer-file-row.device {
-    background-color: var(--surface);
-}
-
-#explorer-file-row.device:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-}
-
-#explorer-file-row.device:active,
-#explorer-file-row.device:checked {
-    background-color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-file-row.device:active *,
-#explorer-file-row.device:checked * {
-    color: var(--on-primary);
-}
-
-#explorer-file-row.unmounted {
+#explorer-file-size, #explorer-file-date {
+    font-size: 11px;
+    font-family: monospace;
     opacity: 0.7;
-    border: 1px dashed var(--on-surface-variant);
-    background-color: transparent;
 }
 
-#explorer-file-row.unmounted:hover {
-    opacity: 1;
-    border-style: solid;
-    border-color: var(--primary);
-    background-color: var(--surface-bright);
-}
-
-#explorer-file-row.unmounted:active,
-#explorer-file-row.unmounted:checked {
-    opacity: 1;
-    background-color: var(--primary);
-    border-color: var(--primary);
-    border-style: solid;
-}
-
-#explorer-file-row.unmounted:active *,
-#explorer-file-row.unmounted:checked * {
-    color: var(--on-primary);
-}
-
-#explorer-bookmark-icon {
-    color: var(--primary);
-    min-width: 24px;
-    transition: all 150ms ease-out;
-}
-
-#explorer-file-row:active #explorer-bookmark-icon,
-#explorer-file-row:checked #explorer-bookmark-icon,
-#explorer-file-row.selected #explorer-bookmark-icon {
-    color: var(--on-primary);
-}
+#explorer-file-row:hover #explorer-file-size,
+#explorer-file-row:hover #explorer-file-date { opacity: 1; }
 
 #explorer-file-icon {
     color: var(--on-surface-variant);
     min-width: 24px;
     transition: all 150ms ease-out;
 }
+#explorer-file-row:hover #explorer-file-icon { color: var(--on-surface); }
+#explorer-file-row.directory #explorer-file-icon { color: var(--primary); }
 
-#explorer-file-row:hover #explorer-file-icon {
-    color: var(--on-surface);
-}
-
-#explorer-file-row.directory #explorer-file-icon {
+#explorer-bookmark-icon {
     color: var(--primary);
+    min-width: 24px;
 }
 
-#explorer-file-row:active #explorer-file-icon,
-#explorer-file-row:checked #explorer-file-icon,
-#explorer-file-row.selected #explorer-file-icon {
-    color: var(--on-primary);
+#explorer-file-row.default-app { border-color: alpha(var(--primary), 0.3); }
+.default-app-label { color: var(--primary); font-weight: 600; opacity: 1; }
+
+#explorer-file-row.unmounted {
+    opacity: 0.7;
+    border: 1px dashed var(--on-surface-variant);
+    background-color: transparent;
 }
+#explorer-file-row.unmounted:hover,
+#explorer-file-row.unmounted:active { border-style: solid; opacity: 1; }
 
 #explorer-file-row.dragging {
     opacity: 0.4;
@@ -435,13 +303,15 @@
     border: 2px dashed var(--primary);
 }
 
-#explorer-file-row.drag-over {
+#explorer-file-row.drag-over,
+#explorer-path-part.drag-over {
     background-color: var(--surface-bright);
     border: 2px dashed var(--primary);
     box-shadow: inset 0 0 15px var(--shadow), 0 0 8px var(--primary);
 }
 
-#explorer-file-row.drag-hover-pending {
+#explorer-file-row.drag-hover-pending,
+#explorer-path-part.drag-hover-pending {
     background-color: var(--surface-bright);
     border: 2px solid var(--primary);
     box-shadow: inset 0 0 10px var(--shadow), 0 0 12px var(--primary);
@@ -468,51 +338,8 @@
     color: var(--on-surface);
 }
 
-#explorer-dnd-indicator.copy {
-    background-color: var(--surface-bright);
-    color: var(--primary);
-    border: 1px solid var(--primary);
-}
-
-#explorer-dnd-indicator.move {
-    background-color: var(--surface-bright);
-    color: var(--on-surface);
-    border: 1px solid var(--on-surface-variant);
-}
-
-#explorer-file-name {
-    font-size: 13px;
-    color: var(--on-surface);
-    min-width: 200px;
-}
-
-#explorer-file-size {
-    font-size: 11px;
-    min-width: 70px;
-    font-family: monospace;
-    opacity: 0.7;
-}
-
-#explorer-file-date {
-    font-size: 11px;
-    min-width: 120px;
-    font-family: monospace;
-    opacity: 0.7;
-}
-
-#explorer-file-row:hover #explorer-file-size,
-#explorer-file-row:hover #explorer-file-date {
-    opacity: 1;
-}
-
-#explorer-file-row:active #explorer-file-name,
-#explorer-file-row:checked #explorer-file-name,
-#explorer-file-row:active #explorer-file-size,
-#explorer-file-row:checked #explorer-file-size,
-#explorer-file-row:active #explorer-file-date,
-#explorer-file-row:checked #explorer-file-date {
-    color: var(--on-primary);
-}
+#explorer-dnd-indicator.copy { color: var(--primary); border: 1px solid var(--primary); }
+#explorer-dnd-indicator.move { color: var(--on-surface); border: 1px solid var(--on-surface-variant); }
 
 #explorer-file-view {
     background-color: var(--shadow);
@@ -521,57 +348,15 @@
     border: 1px solid var(--primary);
 }
 
-#explorer-files-container {
-    padding: 4px;
-}
+#explorer-content { min-height: 400px; }
+#explorer-status-label { font-size: 11px; color: var(--on-surface-variant); opacity: 0.8; }
+#explorer-size-label { font-size: 11px; color: var(--on-surface-variant); font-family: monospace; opacity: 0.8; }
 
-#explorer-status-bar {
-    padding: 12px 12px;
-    background-color: var(--shadow);
-    border-radius: 12px;
-    margin-top: 8px;
-    border: 1px solid var(--primary);
-}
+#explorer-empty-state { padding: 60px 20px; }
+#explorer-empty-icon { color: var(--on-surface-variant); opacity: 0.4; margin-bottom: 16px; }
+#explorer-empty-label { font-size: 14px; color: var(--on-surface-variant); opacity: 0.6; }
 
-#explorer-status-label {
-    font-size: 11px;
-    color: var(--on-surface-variant);
-    opacity: 0.8;
-}
-
-#explorer-size-label {
-    font-size: 11px;
-    color: var(--on-surface-variant);
-    font-family: monospace;
-    opacity: 0.8;
-}
-
-#explorer-content {
-    min-height: 400px;
-}
-
-#explorer-empty-state {
-    padding: 60px 20px;
-}
-
-#explorer-empty-icon {
-    color: var(--on-surface-variant);
-    opacity: 0.4;
-    margin-bottom: 16px;
-}
-
-#explorer-empty-label {
-    font-size: 14px;
-    color: var(--on-surface-variant);
-    opacity: 0.6;
-}
-
-/* ============================================== */
-/* СКРОЛЛБАРЫ */
-/* ============================================== */
-
-#explorer-sidebar scrollbar,
-#explorer-file-view scrollbar {
+scrollbar {
     background: var(--surface);
     border: none;
     border-radius: 12px;
@@ -579,15 +364,13 @@
     min-width: 8px;
 }
 
-#explorer-sidebar scrollbar trough,
-#explorer-file-view scrollbar trough {
+scrollbar trough {
     background: transparent;
     border-radius: 12px;
     min-width: 8px;
 }
 
-#explorer-sidebar scrollbar slider,
-#explorer-file-view scrollbar slider {
+scrollbar slider {
     background-color: var(--primary);
     border-radius: 12px;
     min-width: 8px;
@@ -597,57 +380,11 @@
     opacity: 0.6;
 }
 
-#explorer-sidebar scrollbar slider:hover,
-#explorer-file-view scrollbar slider:hover {
-    background-color: var(--primary);
-    opacity: 0.9;
-    min-width: 10px;
-}
+scrollbar slider:hover { opacity: 0.9; min-width: 10px; }
+scrollbar slider:active { opacity: 1; }
+scrollbar button { min-width: 0; min-height: 0; padding: 0; border: none; background: transparent; }
 
-#explorer-sidebar scrollbar slider:active,
-#explorer-file-view scrollbar slider:active {
-    background-color: var(--primary);
-    opacity: 1;
-}
-
-#explorer-sidebar scrollbar button,
-#explorer-file-view scrollbar button {
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-}
-
-#explorer-file-view undershoot.top,
-#explorer-file-view undershoot.bottom,
-#explorer-file-view overshoot.top,
-#explorer-file-view overshoot.bottom,
-#explorer-sidebar undershoot.top,
-#explorer-sidebar undershoot.bottom,
-#explorer-sidebar overshoot.top,
-#explorer-sidebar overshoot.bottom {
-    background: none;
-}
-
-/* ============================================== */
-/* МЕНЮ И ПОДМЕНЮ (ПОЛНОСТЬЮ ИСПРАВЛЕНО) */
-/* ============================================== */
-
-window.popup,
-window.popup decoration {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-}
-
-/* Контейнеры */
-menu,
-.popup,
-.context-menu,
-menu > menu,
-menu submenu,
-submenu {
+menu, .popup, .context-menu, menu > menu, menu submenu, submenu {
     background-color: var(--surface);
     border: 1px solid var(--primary);
     border-radius: 12px;
@@ -655,46 +392,26 @@ submenu {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-
-/* Элементы меню - БАЗОВЫЙ СТИЛЬ */
 menuitem {
     background-color: transparent;
     padding: 4px 8px;
     border-radius: 8px;
     transition: all 150ms ease-in-out;
-    color: var(--foreground); /* Основной цвет текста по умолчанию */
+    color: var(--foreground);
 }
 
-/* Дети (текст и стрелки) наследуют цвет родителя */
-menuitem label,
-menuitem arrow,
-menuitem accelerator {
-    color: inherit;
-}
+menuitem label, menuitem arrow, menuitem accelerator { color: inherit; }
 
-/* Элементы меню - ПРИ НАВЕДЕНИИ */
 menuitem:hover {
     background-color: var(--primary);
-    color: var(--on-primary); /* Меняем цвет текста на контрастный */
+    color: var(--on-primary);
 }
 
-/* Для надежности, при наведении заставляем детей наследовать (или красим явно) */
-menuitem:hover label,
-menuitem:hover arrow,
-menuitem:hover accelerator {
-    color: inherit;
-}
-
-/* Разделители */
 menu separator {
     background-color: var(--primary);
     margin: 4px 8px;
     min-height: 1px;
 }
-
-/* ============================================== */
-/* ПЕРЕИМЕНОВАНИЕ И ПРОЧЕЕ */
-/* ============================================== */
 
 #explorer-rename-container {
     background-color: var(--surface);
@@ -715,19 +432,8 @@ menu separator {
     caret-color: var(--primary);
 }
 
-#explorer-rename-entry:focus {
-    border-color: var(--primary);
-    outline: none;
-}
-
-#explorer-rename-entry selection {
-    background-color: var(--primary);
-    color: var(--on-primary);
-}
-
-#explorer-rename-buttons {
-    margin-top: 6px;
-}
+#explorer-rename-entry:focus { border-color: var(--primary); outline: none; }
+#explorer-rename-buttons { margin-top: 6px; }
 
 #explorer-rename-btn {
     background-color: var(--surface);
@@ -740,48 +446,14 @@ menu separator {
     min-height: 24px;
 }
 
-#explorer-rename-btn.cancel {
-    color: var(--error);
-    border-color: var(--error);
-}
+#explorer-rename-btn.cancel { color: var(--error); border-color: var(--error); }
+#explorer-rename-btn.cancel:hover { background-color: var(--surface-bright); }
+#explorer-rename-btn.cancel:active { background-color: var(--error); color: var(--on-primary); }
 
-#explorer-rename-btn.cancel:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--error);
-}
-
-#explorer-rename-btn.cancel:active {
-    background-color: var(--error);
-    border-color: var(--error);
-    color: var(--on-primary);
-}
-
-#explorer-rename-btn.confirm {
-    color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-rename-btn.confirm:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-}
-
-#explorer-rename-btn.confirm:active {
-    background-color: var(--primary);
-    border-color: var(--primary);
-    color: var(--on-primary);
-}
-
-#explorer-rename-btn.confirm:disabled {
-    background-color: transparent;
-    border-color: var(--surface-bright);
-    color: var(--outline);
-    opacity: 0.6;
-}
-
-#explorer-revealer {
-    background: transparent;
-}
+#explorer-rename-btn.confirm { color: var(--primary); border-color: var(--primary); }
+#explorer-rename-btn.confirm:hover { background-color: var(--surface-bright); }
+#explorer-rename-btn.confirm:active { background-color: var(--primary); color: var(--on-primary); }
+#explorer-rename-btn.confirm:disabled { border-color: var(--surface-bright); color: var(--outline); opacity: 0.6; }
 
 #explorer-app-chooser-header {
     padding: 8px 12px;
@@ -791,12 +463,7 @@ menu separator {
     border: 1px solid var(--primary);
 }
 
-#explorer-app-chooser-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--on-surface);
-    margin-left: 4px;
-}
+#explorer-app-chooser-title { font-size: 13px; font-weight: 600; color: var(--on-surface); margin-left: 4px; }
 
 #explorer-app-back {
     background-color: var(--surface);
@@ -805,31 +472,11 @@ menu separator {
     margin: 2px;
     border: 1px solid var(--surface-bright);
     transition: all 0.1s ease;
-    font-weight: bold;
 }
 
-#explorer-app-back:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-}
-
-#explorer-app-back:active {
-    background-color: var(--primary);
-    border-color: var(--primary);
-}
-
-#explorer-app-back:active * {
-    color: var(--on-primary);
-}
-
-#explorer-app-back-icon {
-    color: var(--primary);
-    font-size: 20px;
-}
-
-#explorer-app-back:active #explorer-app-back-icon {
-    color: var(--on-primary);
-}
+#explorer-app-back:hover { background-color: var(--surface-bright); border-color: var(--primary); }
+#explorer-app-back:active { background-color: var(--primary); border-color: var(--primary); }
+#explorer-app-back:active * { color: var(--on-primary); }
 
 #explorer-app-search {
     background-color: var(--surface);
@@ -844,37 +491,9 @@ menu separator {
     transition: all 150ms ease-in-out;
 }
 
-#explorer-app-search:focus {
-    border-color: var(--primary);
-    outline: none;
-    box-shadow: 0 0 0 1px alpha(var(--primary), 0.3);
-}
+#explorer-app-search:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 1px alpha(var(--primary), 0.3); }
+#explorer-app-search image { color: var(--on-surface-variant); opacity: 0.6; margin: 0 4px; }
+#explorer-app-search:focus image { color: var(--primary); opacity: 1; }
 
-#explorer-app-search selection {
-    background-color: var(--primary);
-    color: var(--on-primary);
-}
-
-#explorer-app-search image {
-    color: var(--on-surface-variant);
-    opacity: 0.6;
-    margin: 0 4px;
-}
-
-#explorer-app-search:focus image {
-    color: var(--primary);
-    opacity: 1;
-}
-
-#explorer-app-list {
-    padding: 0px;
-}
-
-#explorer-app-list #explorer-sidebar-header {
-    margin-top: 4px;
-    padding: 6px 8px 2px 8px;
-}
-
-#explorer-app-list #explorer-sidebar-header:first-child {
-    margin-top: 0px;
-}
+#explorer-app-list #explorer-sidebar-header { margin-top: 4px; padding: 6px 8px 2px 8px; }
+#explorer-app-list #explorer-sidebar-header:first-child { margin-top: 0px; }

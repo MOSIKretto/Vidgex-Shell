@@ -24,19 +24,8 @@ from modules.Explorer.devices import DevicesMixin
 from modules.Explorer.clipboard import ClipboardMixin
 from modules.Explorer.app_chooser import AppChooserMixin
 from modules.Explorer.actions import ActionsMixin
+from modules.Explorer.terminal import TerminalMixin
 
-
-_idle_add = GLib.idle_add
-_timeout_add = GLib.timeout_add
-_source_remove = GLib.source_remove
-_scandir = os.scandir
-
-_SCROLL_UP = Gdk.ScrollDirection.UP
-_SCROLL_DOWN = Gdk.ScrollDirection.DOWN
-_SCROLL_LEFT = Gdk.ScrollDirection.LEFT
-_SCROLL_RIGHT = Gdk.ScrollDirection.RIGHT
-_SCROLL_SMOOTH = Gdk.ScrollDirection.SMOOTH
-_NOTIFY_INFERIOR = Gdk.NotifyType.INFERIOR
 
 _FOLDER_ICONS = {
     "Documents": "folder-documents-symbolic",
@@ -47,23 +36,12 @@ _FOLDER_ICONS = {
     "Desktop": "user-desktop-symbolic",
 }
 
-_EXT_ICONS = {
-    ".png": "image-x-generic-symbolic", ".jpg": "image-x-generic-symbolic", ".jpeg": "image-x-generic-symbolic",
-    ".gif": "image-x-generic-symbolic", ".webp": "image-x-generic-symbolic", ".svg": "image-x-generic-symbolic",
-    ".mp4": "video-x-generic-symbolic", ".mkv": "video-x-generic-symbolic", ".mp3": "audio-x-generic-symbolic",
-    ".flac": "audio-x-generic-symbolic", ".pdf": "x-office-document-symbolic", ".txt": "text-x-generic-symbolic",
-    ".zip": "package-x-generic-symbolic", ".rar": "package-x-generic-symbolic", ".7z": "package-x-generic-symbolic",
-    ".tar": "package-x-generic-symbolic", ".gz": "package-x-generic-symbolic", ".xz": "package-x-generic-symbolic",
-    ".py": "text-x-script-symbolic", ".sh": "text-x-script-symbolic",
-}
-
-_COMPOUND_ARCHIVE_EXTS = ('.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst')
 _SIZE_UNITS = ('B', 'KB', 'MB', 'GB', 'TB')
 
 
 class Explorer(
-    NavigationMixin, DnDMixin, ActionsMixin,
-    DevicesMixin, ClipboardMixin, AppChooserMixin, Window,
+    NavigationMixin, DnDMixin, ActionsMixin, DevicesMixin,
+    ClipboardMixin, AppChooserMixin, TerminalMixin, Window,
 ):
     __gtype_name__ = "Explorer"
 
@@ -74,26 +52,30 @@ class Explorer(
     POST_DRAG_GRACE_PERIOD = 600
     ACTIVATOR_HOVER_DELAY = 1000
 
-    DRAG_SCROLL_MARGIN = 250
-    DRAG_SCROLL_SPEED_SLOW = 40
-    DRAG_SCROLL_SPEED_FAST = 120
-    DRAG_SCROLL_INTERVAL = 20
+    DRAG_SCROLL_MARGIN = 300 
+    DRAG_SCROLL_SPEED_SLOW = 20
+    DRAG_SCROLL_SPEED_FAST = 50
+    DRAG_SCROLL_INTERVAL = 16 
+
 
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
-        self._is_pinned = False
-        self._is_hidden = True
-        self._pending_hide: Optional[int] = None
         self._mon_w = 1920
         self._mon_h = 1080
         self._top_margin_closed = 50
+
+        self._is_pinned = False
+        self._is_hidden = True
+        self._cursor_inside = False
+        self._menu_open = False
+        self._is_loading = False
+        self._pending_hide: Optional[int] = None
 
         home = Path.home()
         self._current_path = home
         self._history: List[Path] = [home]
         self._history_index = 0
         self._show_hidden = False
-
         self._navigation_lock = False
         self._navigation_lock_timer: Optional[int] = None
 
@@ -105,44 +87,34 @@ class Explorer(
             Gtk.TargetEntry.new("text/uri-list", 0, self.TARGET_URI_LIST),
             Gtk.TargetEntry.new("text/plain", 0, self.TARGET_TEXT),
         ]
-
         self._drag_source_path: Optional[Path] = None
         self._drag_in_progress = False
         self._drag_over_explorer = False
-
         self._post_drag_grace = False
         self._post_drag_timer: Optional[int] = None
-
         self._drag_hover_timer: Optional[int] = None
         self._drag_hover_path: Optional[Path] = None
         self._drag_hover_widget: Optional[Gtk.Widget] = None
-
         self._pending_drop_source: Optional[Path] = None
         self._pending_drop_target: Optional[Path] = None
         self._pending_hover_timer: Optional[int] = None
         self._pending_hover_path: Optional[Path] = None
-
         self._folder_widgets: List[Tuple[Gtk.Widget, Path]] = []
+        
+        self._drag_scroll_timer: Optional[int] = None
+        self._drag_scroll_speed: float = 0.0
+
+        self._activator_hover_timer: Optional[int] = None
+        self._cursor_over_activator = False
 
         self._trash_path = home / ".local/share/Trash/files"
         self._trash_info_path = home / ".local/share/Trash/info"
 
         self._volume_monitor: Optional[Gio.VolumeMonitor] = None
         self._devices_container: Optional[Box] = None
-
         self._current_mount: Optional[Gio.Mount] = None
         self._current_mount_path: Optional[Path] = None
         self._current_mount_name: Optional[str] = None
-
-        self._is_loading = False
-        self._menu_open = False
-        self._cursor_inside = False
-
-        self._activator_hover_timer: Optional[int] = None
-        self._cursor_over_activator = False
-
-        self._drag_scroll_timer: Optional[int] = None
-        self._drag_scroll_speed: int = 0
 
         self._rename_widget: Optional[Gtk.Box] = None
         self._rename_path: Optional[Path] = None
@@ -168,14 +140,15 @@ class Explorer(
             '.tar.xz', '.txz', '.tar.zst', '.tzst',
             '.tar.lz4', '.tlz4', '.tar.lzma', '.tlzma', '.tar.sz',
         )
-
         self._compression_formats = [
             (".zip", "ZIP Archive"), (".7z", "7-Zip Archive"), (".tar", "Tar Archive"),
-            (".tar.gz", "Tar + Gzip"), (".tgz", "Tar + Gzip (.tgz)"), (".tar.bz2", "Tar + Bzip2"),
-            (".tbz2", "Tar + Bzip2 (.tbz2)"), (".tar.xz", "Tar + XZ"), (".txz", "Tar + XZ (.txz)"),
-            (".tar.zst", "Tar + Zstd"), (".tzst", "Tar + Zstd (.tzst)"), (".tar.lz4", "Tar + LZ4"),
-            (".tar.lzma", "Tar + LZMA"), (".tar.sz", "Tar + Snappy"), (".gz", "Gzip"),
-            (".bz2", "Bzip2"), (".xz", "XZ"), (".zst", "Zstd"), (".lz4", "LZ4"),
+            (".tar.gz", "Tar + Gzip"), (".tgz", "Tar + Gzip (.tgz)"),
+            (".tar.bz2", "Tar + Bzip2"), (".tbz2", "Tar + Bzip2 (.tbz2)"),
+            (".tar.xz", "Tar + XZ"), (".txz", "Tar + XZ (.txz)"),
+            (".tar.zst", "Tar + Zstd"), (".tzst", "Tar + Zstd (.tzst)"),
+            (".tar.lz4", "Tar + LZ4"), (".tar.lzma", "Tar + LZMA"),
+            (".tar.sz", "Tar + Snappy"), (".gz", "Gzip"), (".bz2", "Bzip2"),
+            (".xz", "XZ"), (".zst", "Zstd"), (".lz4", "LZ4"),
             (".lzma", "LZMA"), (".sz", "Snappy"),
         ]
 
@@ -199,12 +172,63 @@ class Explorer(
         self._icon_theme = Gtk.IconTheme.get_default()
         self._update_monitor()
         self._init_ui()
-        _timeout_add(100, self._delayed_show)
+        GLib.timeout_add(100, self._delayed_show)
 
-    def _update_window_margin(self, is_open):
+
+    def _should_stay_visible(self) -> bool:
+        return (self._is_pinned or self._menu_open or
+                self._drag_in_progress or self._drag_over_explorer or
+                self._pending_drop_source or self._post_drag_grace or
+                self._navigation_lock)
+
+    def _should_block_margin_restore(self) -> bool:
+        return (self._is_pinned or self._drag_in_progress or
+                self._drag_over_explorer or self._pending_drop_source or
+                self._post_drag_grace)
+
+    def _is_in_trash(self) -> bool:
         try:
-            m = 0 if is_open else self._top_margin_closed
-            GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, m)
+            return self._current_path.resolve() == self._trash_path.resolve()
+        except Exception:
+            return False
+
+    def _on_back_clicked(self, _):
+        if self._is_terminal_open():
+            self._terminal_prev_tab()
+        elif not self._pending_drop_source:
+            self._history_go(-1)
+
+    def _on_forward_clicked(self, _):
+        if self._is_terminal_open():
+            self._terminal_next_tab()
+        elif not self._pending_drop_source:
+            self._history_go(+1)
+
+    def _on_home_clicked(self, _):
+        if self._is_terminal_open():
+            self._terminal_home_tab()
+        elif not self._pending_drop_source:
+            self._navigate_to(Path.home())
+
+    def _clear_search_focus(self):
+        if self.search_entry.has_focus():
+            self.set_focus(None)
+            if not self._is_terminal_open():
+                self._set_keyboard_interactive(False)
+
+    def _clear_focus_on_click(self, widget, event):
+        self._clear_search_focus()
+        return False
+
+    def _dismiss_focus(self):
+        if self._is_terminal_open() or self.search_entry.has_focus():
+            self.set_focus(None)
+            self._set_keyboard_interactive(False)
+
+    def _update_window_margin(self, is_open: bool):
+        try:
+            margin = 0 if is_open else self._top_margin_closed
+            GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, margin)
         except Exception as e:
             print(f"Margin error: {e}")
 
@@ -213,13 +237,7 @@ class Explorer(
             mode = GtkLayerShell.KeyboardMode.EXCLUSIVE if enabled else GtkLayerShell.KeyboardMode.NONE
             GtkLayerShell.set_keyboard_mode(self, mode)
         except Exception as e:
-            print(f"keyboard mode error: {e}")
-
-    def _delayed_show(self):
-        self.show_all()
-        self._navigate_to(self._current_path)
-        self._setup_volume_monitor()
-        return False
+            print(f"Keyboard mode error: {e}")
 
     def _update_monitor(self):
         display = Gdk.Display.get_default()
@@ -229,18 +247,21 @@ class Explorer(
                 geom = monitor.get_geometry()
                 self._mon_w = geom.width
                 self._mon_h = geom.height
-        
         self._top_margin_closed = int(self._mon_h * 0.08)
+
+    def _delayed_show(self):
+        self.show_all()
+        self._navigate_to(self._current_path)
+        self._setup_volume_monitor()
+        return False
 
     def _init_ui(self):
         self.activator = EventBox(name="explorer-activator")
         self.activator.add(Box(style="background: transparent;"))
-        
         activator_height = max(1, self._mon_h - self._top_margin_closed)
         self.activator.set_size_request(15, activator_height)
         self.activator.set_valign(Gtk.Align.START)
         self.activator.set_margin_top(self._top_margin_closed)
-
         self.activator.connect("enter-notify-event", self._on_activator_enter)
         self.activator.connect("leave-notify-event", self._on_activator_leave)
         self._setup_activator_drop_target()
@@ -250,80 +271,72 @@ class Explorer(
         self.explorer_eb = EventBox(name="explorer-eventbox")
         self.explorer_eb.add(self.explorer_box)
         self.explorer_eb.add_events(
-            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK |
-            Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK |
-            Gdk.EventMask.BUTTON_RELEASE_MASK
-        )
+            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK)
+        
         self.explorer_eb.connect("enter-notify-event", self._on_explorer_enter)
         self.explorer_eb.connect("leave-notify-event", self._on_explorer_leave)
         self.explorer_eb.connect("motion-notify-event", self._on_explorer_motion)
         self.explorer_eb.connect("button-release-event", self._on_explorer_button_release)
+        self.explorer_eb.connect("button-press-event", self._on_explorer_button_press)
         self._setup_explorer_drop_tracking()
 
         self.revealer = Revealer(
-            name="explorer-revealer", transition_type="slide-right", transition_duration=350,
-            child_revealed=False, child=self.explorer_eb,
-        )
+            name="explorer-revealer", transition_type="slide-right",
+            transition_duration=350, child_revealed=False, child=self.explorer_eb)
 
-        main_box = Box(
+        self.add(Box(
             name="explorer-main", orientation="h", v_expand=True,
-            children=[self.activator, self.revealer],
-        )
-        self.add(main_box)
-        
+            children=[self.activator, self.revealer]))
         self._update_window_margin(False)
 
-    def _get_cursor_position(self):
+    def _get_cursor_position(self) -> Optional[Tuple[int, int]]:
         try:
-            display = Gdk.Display.get_default()
-            if display:
-                seat = display.get_default_seat()
-                if seat:
-                    pointer = seat.get_pointer()
-                    if pointer:
-                        _, x, y = pointer.get_position()
-                        return x, y
+            seat = Gdk.Display.get_default().get_default_seat()
+            if seat:
+                ptr = seat.get_pointer()
+                if ptr:
+                    _, x, y = ptr.get_position()
+                    return x, y
         except Exception:
             pass
         return None
 
-    def _is_cursor_over_explorer(self):
+    def _is_cursor_over_explorer(self) -> bool:
         pos = self._get_cursor_position()
         if not pos:
             return self._cursor_inside
+        
         x, y = pos
         try:
             window = self.get_window()
             if not window:
                 return self._cursor_inside
+                
             origin = window.get_origin()
             win_x, win_y = (origin[1], origin[2]) if len(origin) == 3 else origin
 
             if self.revealer.get_child_revealed():
-                try:
-                    alloc = self.explorer_box.get_allocation()
-                    ok, ex, ey = self.explorer_box.translate_coordinates(self, 0, 0)
-                    if ok:
-                        ax, ay = win_x + ex, win_y + ey
-                        if ax <= x <= ax + alloc.width and ay <= y <= ay + alloc.height:
-                            return True
-                except Exception:
-                    pass
-
-            try:
-                alloc = self.activator.get_allocation()
-                ok, ex, ey = self.activator.translate_coordinates(self, 0, 0)
+                alloc = self.explorer_box.get_allocation()
+                ok, ex, ey = self.explorer_box.translate_coordinates(self, 0, 0)
                 if ok:
                     ax, ay = win_x + ex, win_y + ey
                     if ax <= x <= ax + alloc.width and ay <= y <= ay + alloc.height:
                         return True
-            except Exception:
-                pass
+
+            alloc = self.activator.get_allocation()
+            ok, ex, ey = self.activator.translate_coordinates(self, 0, 0)
+            if ok:
+                ax, ay = win_x + ex, win_y + ey
+                if ax <= x <= ax + alloc.width and ay <= y <= ay + alloc.height:
+                    return True
+                    
         except Exception:
             pass
         return False
 
-    def _find_folder_at_position(self, root_x, root_y):
+    def _find_folder_at_position(self, root_x: int, root_y: int) -> Optional[Path]:
         try:
             window = self.get_window()
             if not window:
@@ -341,23 +354,16 @@ class Explorer(
                 ok, wx, wy = widget.translate_coordinates(self, 0, 0)
                 if not ok:
                     continue
-                ax, ay = win_x + wx, wy + win_y
+                ax, ay = win_x + wx, win_y + wy
                 if ax <= root_x <= ax + alloc.width and ay <= root_y <= ay + alloc.height:
                     return path
             except Exception:
                 continue
         return None
 
-    def _is_in_trash(self):
-        try:
-            return self._current_path.resolve() == self._trash_path.resolve()
-        except Exception:
-            return False
-
     def _cancel_activator_hover_timer(self):
-        t = self._activator_hover_timer
-        if t:
-            _source_remove(t)
+        if self._activator_hover_timer:
+            GLib.source_remove(self._activator_hover_timer)
             self._activator_hover_timer = None
 
     def _on_activator_enter(self, widget, event):
@@ -365,25 +371,33 @@ class Explorer(
         self._cursor_inside = True
         self._cursor_over_activator = True
         self._cancel_activator_hover_timer()
-        self._activator_hover_timer = _timeout_add(
-            self.ACTIVATOR_HOVER_DELAY, self._on_activator_hover_timeout
-        )
+        self._activator_hover_timer = GLib.timeout_add(
+            self.ACTIVATOR_HOVER_DELAY, self._on_activator_hover_timeout)
         return True
 
     def _on_activator_leave(self, widget, event):
         self._cursor_over_activator = False
         self._cancel_activator_hover_timer()
-        if event.detail == _NOTIFY_INFERIOR:
+        if event.detail == Gdk.NotifyType.INFERIOR:
             return True
+            
         if not self.revealer.get_child_revealed():
             self._cursor_inside = False
         return True
 
     def _on_activator_hover_timeout(self):
         self._activator_hover_timer = None
-        if self._cursor_over_activator:
-            self._update_window_margin(True)
-            self.revealer.set_reveal_child(True)
+        if not self._cursor_over_activator:
+            return False
+            
+        self._update_window_margin(True)
+        self.revealer.set_reveal_child(True)
+        
+        if self._is_terminal_open():
+            self._set_keyboard_interactive(True)
+            tid = self.active_terminal_id
+            if tid and tid in self.terminals:
+                GLib.idle_add(self.terminals[tid]['vte'].grab_focus)
         return False
 
     def _on_explorer_enter(self, widget, event):
@@ -393,164 +407,302 @@ class Explorer(
         return True
 
     def _on_explorer_leave(self, widget, event):
-        if event.detail == _NOTIFY_INFERIOR:
+        if event.detail == Gdk.NotifyType.INFERIOR:
             return True
+            
         self._cursor_inside = False
-        if (
-            self._is_pinned
-            or self._menu_open
-            or self._drag_in_progress
-            or self._drag_over_explorer
-            or self._pending_drop_source
-            or self._post_drag_grace
-            or self._navigation_lock
-        ):
-            return True
         self._schedule_hide()
         return True
 
     def _schedule_hide(self):
         self._cancel_pending_hide()
-        self._pending_hide = _timeout_add(300, self._do_hide)
+        self._pending_hide = GLib.timeout_add(300, self._do_hide)
 
     def _cancel_pending_hide(self):
-        t = self._pending_hide
-        if t:
-            _source_remove(t)
+        if self._pending_hide:
+            GLib.source_remove(self._pending_hide)
             self._pending_hide = None
 
-    def _force_restore_margin(self):
-        """Принудительно скрыть окно и восстановить отступ, игнорируя флаги (кроме pinned)."""
-        if (self._is_pinned or self._drag_in_progress or 
-            self._drag_over_explorer or self._pending_drop_source or 
-            self._post_drag_grace):
+    def _do_hide(self):
+        self._pending_hide = None
+        
+        if self._should_stay_visible() or self._is_cursor_over_explorer():
+            self._cursor_inside = True 
             return False
+            
+        self._dismiss_focus()
+        self.revealer.set_reveal_child(False)
+        GLib.timeout_add(350, self._check_and_restore_margin)
+        return False
 
+    def _force_restore_margin(self):
+        if self._should_block_margin_restore():
+            return False
         self._menu_open = False
         self._navigation_lock = False
-
+        self._dismiss_focus()
         if self.revealer.get_child_revealed():
             self.revealer.set_reveal_child(False)
         self._update_window_margin(False)
         return False
 
-    def _do_hide(self):
-        self._pending_hide = None
-        if (
-            self._is_pinned
-            or self._menu_open
-            or self._drag_in_progress
-            or self._drag_over_explorer
-            or self._pending_drop_source
-            or self._post_drag_grace
-            or self._navigation_lock
-        ):
-            if not hasattr(self, '_retry_hide_id') or not self._retry_hide_id:
-                self._retry_hide_id = _timeout_add(500, self._retry_hide)
-            return False
-
-        if self._is_cursor_over_explorer():
-            self._cursor_inside = True
-            return False
-            
-        self.revealer.set_reveal_child(False)
-        GLib.timeout_add(350, self._check_and_restore_margin)
-        return False
-
-    def _retry_hide(self):
-        """Повторная попытка скрыть окно, игнорируя временные флаги."""
-        self._retry_hide_id = None
-        
-        if (self._is_pinned or self._drag_in_progress or 
-            self._drag_over_explorer or self._pending_drop_source or 
-            self._post_drag_grace or self._navigation_lock):
-            return False
-
-        if not self._is_cursor_over_explorer():
-            self._force_restore_margin()
-        return False
-        
     def _check_and_restore_margin(self):
-        if (self._is_pinned or self._drag_in_progress or 
-            self._drag_over_explorer or self._pending_drop_source or 
-            self._post_drag_grace):
+        if self._should_block_margin_restore():
             return False
-
-        if not self.revealer.get_child_revealed() and not self._is_pinned and not self._cursor_inside:
+        if not self.revealer.get_child_revealed() and not self._cursor_inside:
             self._update_window_margin(False)
         else:
             self._force_restore_margin()
         return False
 
-    @staticmethod
-    def _count_folder_items(path):
-        try:
-            count = 0
-            with _scandir(path) as it:
-                for _ in it:
-                    count += 1
-            return count
-        except (PermissionError, OSError):
-            return -1
+    def _on_explorer_button_press(self, widget, event):
+        if event.button in (1, 3) and self.search_entry.has_focus():
+            try:
+                alloc = self.search_entry.get_allocation()
+                ok, ex, ey = self.explorer_eb.translate_coordinates(
+                    self.search_entry, int(event.x), int(event.y))
+                if ok and 0 <= ex <= alloc.width and 0 <= ey <= alloc.height:
+                    return False
+            except Exception:
+                pass
+            self._clear_search_focus()
+        return False
 
-    @staticmethod
-    def _format_item_count(count):
-        if count < 0:
-            return "—"
-        if count == 0:
-            return "empty"
-        if count == 1:
-            return "1 item"
-        return f"{count} items"
+
+    def _scroll_update(self, y: float):
+        """Проверяет Y координату курсора и запускает авто-скролл, если необходимо."""
+        alloc = self.files_scrolled.get_allocation()
+        height = alloc.height
+        
+        if y < self.DRAG_SCROLL_MARGIN:
+            speed = self.DRAG_SCROLL_SPEED_FAST if y < (self.DRAG_SCROLL_MARGIN / 2) else self.DRAG_SCROLL_SPEED_SLOW
+            self._start_drag_scroll(-speed)
+        elif y > (height - self.DRAG_SCROLL_MARGIN):
+            dist = height - y
+            speed = self.DRAG_SCROLL_SPEED_FAST if dist < (self.DRAG_SCROLL_MARGIN / 2) else self.DRAG_SCROLL_SPEED_SLOW
+            self._start_drag_scroll(speed)
+        else:
+            self._scroll_stop()
+
+    def _start_drag_scroll(self, speed: float):
+        self._drag_scroll_speed = speed
+        if self._drag_scroll_timer is None:
+            self._drag_scroll_timer = GLib.timeout_add(self.DRAG_SCROLL_INTERVAL, self._do_drag_scroll)
+
+    def _do_drag_scroll(self):
+        adj = self.files_scrolled.get_vadjustment()
+        if not adj:
+            return False
+            
+        current = adj.get_value()
+        new_val = current + self._drag_scroll_speed
+        
+        lower = adj.get_lower()
+        upper = adj.get_upper() - adj.get_page_size()
+        new_val = max(lower, min(new_val, upper))
+        
+        if new_val != current:
+            adj.set_value(new_val)
+            return True 
+            
+        return False
+
+    def _scroll_stop(self):
+        if self._drag_scroll_timer:
+            GLib.source_remove(self._drag_scroll_timer)
+            self._drag_scroll_timer = None
 
     def _build_explorer_content(self):
         self._explorer_width = int(self._mon_w * 0.40)
+
         self.header = self._build_header()
         self.path_bar = self._build_path_bar()
         self.sidebar = self._build_sidebar()
-        self.file_view = self._build_file_view()
-        self.status_bar = self._build_status_bar()
+        file_panel = self._build_file_view()
+
+        self.file_view = self.files_scrolled
 
         content_box = Box(
-            name="explorer-content", orientation="h", h_expand=True, v_expand=True,
-            children=[self.sidebar, self.file_view],
-        )
+            name="explorer-content", orientation="h",
+            h_expand=True, v_expand=True,
+            children=[self.sidebar, file_panel])
+
+        terminal_view = self._build_terminal_view()
+
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.stack.set_hexpand(True)
+        self.stack.set_vexpand(True)
+        self.stack.add_named(content_box, "files")
+        self.stack.add_named(terminal_view, "terminal")
+
+        self.files_status_bar = self._build_status_bar()
+        self.terminal_tab_bar = self._build_terminal_tab_bar()
+
+        self.bottom_bar_stack = Gtk.Stack()
+        self.bottom_bar_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.bottom_bar_stack.add_named(self.files_status_bar, "files")
+        self.bottom_bar_stack.add_named(self.terminal_tab_bar, "terminal")
 
         self.explorer_box = Box(
             name="explorer-container", orientation="v", v_expand=True,
-            children=[self.header, self.path_bar, content_box, self.status_bar],
-        )
+            children=[self.header, self.path_bar, self.stack, self.bottom_bar_stack])
         self.explorer_box.set_size_request(self._explorer_width, -1)
 
+    def _build_status_bar(self):
+        self.status_label = Label(name="explorer-status-label", label="", h_align="start", h_expand=True)
+        self.dnd_indicator = Label(name="explorer-dnd-indicator", label="", h_align="center")
+        self.size_label = Label(name="explorer-size-label", label="", h_align="end")
+        
+        return Box(
+            name="explorer-status-bar", orientation="h",
+            children=[self.status_label, self.dnd_indicator, self.size_label])
+
     def _build_header(self):
-        self.btn_back = Button(name="explorer-nav-btn", child=Image(icon_name="go-previous-symbolic", icon_size=16), tooltip_text="Back", on_clicked=self._on_back_clicked)
-        self.btn_forward = Button(name="explorer-nav-btn", child=Image(icon_name="go-next-symbolic", icon_size=16), tooltip_text="Forward", on_clicked=self._on_forward_clicked)
-        self.btn_up = Button(name="explorer-nav-btn", child=Image(icon_name="go-up-symbolic", icon_size=16), tooltip_text="Parent folder", on_clicked=self._on_up_clicked)
-        self.btn_home = Button(name="explorer-nav-btn", child=Image(icon_name="go-home-symbolic", icon_size=16), tooltip_text="Home", on_clicked=self._on_home_clicked)
+        self.btn_back = Button(
+            name="explorer-nav-btn", child=Image(icon_name="go-previous-symbolic", icon_size=16),
+            tooltip_text="Back", on_clicked=self._on_back_clicked)
+        self.btn_forward = Button(
+            name="explorer-nav-btn", child=Image(icon_name="go-next-symbolic", icon_size=16),
+            tooltip_text="Forward", on_clicked=self._on_forward_clicked)
+        self.btn_up = Button(
+            name="explorer-nav-btn", child=Image(icon_name="go-up-symbolic", icon_size=16),
+            tooltip_text="Parent folder", on_clicked=self._on_up_clicked)
+        self.btn_home = Button(
+            name="explorer-nav-btn", child=Image(icon_name="go-home-symbolic", icon_size=16),
+            tooltip_text="Home", on_clicked=self._on_home_clicked)
+
+        for btn in (self.btn_back, self.btn_forward, self.btn_up, self.btn_home):
+            btn.connect("button-press-event", self._clear_focus_on_click)
 
         nav_box = Box(
             name="explorer-nav-box", orientation="h", spacing=4,
-            children=[self.btn_back, self.btn_forward, self.btn_up, self.btn_home],
-        )
+            children=[self.btn_back, self.btn_forward, self.btn_up, self.btn_home])
 
-        self.title_label = Label(name="explorer-title", label="Files", h_expand=True, h_align="start")
+        self.search_entry = Gtk.SearchEntry(name="explorer-search-entry")
+        self.search_entry.set_hexpand(True)
+        self.search_entry.set_halign(Gtk.Align.FILL)
+        self.search_entry.set_alignment(0.0)
 
-        self.btn_eject = Button(name="explorer-eject-header-btn", child=Image(icon_name="media-eject-symbolic", icon_size=16), tooltip_text="Eject device", on_clicked=self._on_header_eject_clicked)
+        self.folder_label = Gtk.Label(name="explorer-search-placeholder")
+        self.folder_label.set_halign(Gtk.Align.END)
+        self.folder_label.set_valign(Gtk.Align.CENTER)
+
+        self.search_overlay = Gtk.Overlay()
+        self.search_overlay.add(self.search_entry)
+        self.search_overlay.add_overlay(self.folder_label)
+        self.search_overlay.set_overlay_pass_through(self.folder_label, True)
+
+        self.search_entry.connect("button-press-event", self._on_search_clicked)
+        self.search_entry.connect("focus-out-event", self._on_search_focus_out)
+        self.search_entry.connect("key-press-event", self._on_search_key_press)
+        self.search_entry.connect("search-changed", self._on_search_changed)
+
+        self.btn_eject = Button(
+            name="explorer-eject-header-btn", child=Image(icon_name="media-eject-symbolic", icon_size=16),
+            tooltip_text="Eject device", on_clicked=self._on_header_eject_clicked)
         self.btn_eject.set_no_show_all(True)
         self.btn_eject.hide()
 
-        self.btn_hidden = Button(name="explorer-nav-btn", child=Image(icon_name="view-more-symbolic", icon_size=16), tooltip_text="Show hidden files", on_clicked=self._on_toggle_hidden)
-        self.btn_pin = Button(name="explorer-nav-btn", child=Image(icon_name="view-pin-symbolic", icon_size=16), tooltip_text="Pin explorer", on_clicked=self._on_pin_clicked)
+        self.btn_terminal = Button(
+            name="explorer-nav-btn", child=Image(icon_name="utilities-terminal-symbolic", icon_size=16),
+            tooltip_text="Open Terminal", on_clicked=self._on_terminal_clicked)
+        self.btn_hidden = Button(
+            name="explorer-nav-btn", child=Image(icon_name="view-more-symbolic", icon_size=16),
+            tooltip_text="Show hidden files", on_clicked=self._on_toggle_hidden)
+        self.btn_pin = Button(
+            name="explorer-nav-btn", child=Image(icon_name="view-pin-symbolic", icon_size=16),
+            tooltip_text="Pin explorer", on_clicked=self._on_pin_clicked)
+
+        for btn in (self.btn_eject, self.btn_terminal, self.btn_hidden, self.btn_pin):
+            btn.connect("button-press-event", self._clear_focus_on_click)
 
         action_box = Box(
             name="explorer-nav-box", orientation="h", spacing=4,
-            children=[self.btn_eject, self.btn_hidden, self.btn_pin],
-        )
+            children=[self.btn_eject, self.btn_terminal, self.btn_hidden, self.btn_pin])
 
         return Box(
             name="explorer-header", orientation="h", spacing=8,
-            children=[nav_box, self.title_label, action_box],
-        )
+            children=[nav_box, self.search_overlay, action_box])
+
+    def _on_search_clicked(self, widget, event):
+        if event.button != 1:
+            return False
+            
+        self._set_keyboard_interactive(True)
+        self._cancel_pending_hide()
+
+        def force_focus():
+            self.present()
+            self.set_focus(self.search_entry)
+            self.search_entry.grab_focus()
+            return False
+
+        GLib.idle_add(force_focus)
+        return False
+
+    def _on_search_focus_out(self, widget, event):
+        if not self._is_terminal_open():
+            self._set_keyboard_interactive(False)
+        return False
+
+    def _on_search_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.search_entry.set_text("")
+            self._clear_search_focus()
+            return True
+            
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and self._is_terminal_open():
+            self._terminal_search_next()
+            return True
+            
+        return False
+
+    def _on_search_changed(self, entry):
+        text = entry.get_text()
+
+        if self._is_terminal_open():
+            self.folder_label.set_visible(not text)
+            self._do_terminal_search(text)
+            return
+
+        text_lower = text.lower()
+        self.folder_label.set_visible(not text_lower)
+
+        has_files = False
+        visible = 0
+        for child in self.files_container.get_children():
+            if hasattr(child, '_path'):
+                has_files = True
+                match = text_lower in child._path.name.lower()
+                child.set_visible(match)
+                visible += match
+
+        self._show_search_empty_state(has_files and text_lower and visible == 0)
+
+    def _show_search_empty_state(self, show: bool):
+        search_empty = next((c for c in self.files_container.get_children() 
+                             if c.get_name() == "explorer-search-empty-state"), None)
+
+        if show:
+            if not search_empty:
+                inner = Box(
+                    orientation="v", h_align="center", v_align="center", spacing=12,
+                    children=[
+                        Image(icon_name="edit-find-symbolic", icon_size=48, name="explorer-empty-icon"),
+                        Label(name="explorer-empty-label", label="No results found"),
+                    ])
+                search_empty = Box(
+                    name="explorer-search-empty-state", orientation="v",
+                    h_expand=True, v_expand=True, h_align="fill", v_align="fill")
+                search_empty.set_size_request(-1, 350)
+                search_empty.pack_start(Box(v_expand=True), True, True, 0)
+                search_empty.pack_start(inner, False, False, 0)
+                search_empty.pack_start(Box(v_expand=True), True, True, 0)
+                self.files_container.pack_start(search_empty, True, True, 0)
+            search_empty.show_all()
+        elif search_empty:
+            search_empty.hide()
 
     def _build_path_bar(self):
         self.path_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -571,39 +723,39 @@ class Explorer(
 
         scroll_eb = Gtk.EventBox()
         scroll_eb.add(self.path_scroll)
-        scroll_eb.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        scroll_eb.add_events(
+            Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
+            | Gdk.EventMask.BUTTON_PRESS_MASK)
         scroll_eb.connect("scroll-event", self._on_path_scroll)
+        scroll_eb.connect("button-press-event", self._clear_focus_on_click)
 
         path_wrapper = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         path_wrapper.set_hexpand(True)
         path_wrapper.pack_start(scroll_eb, True, True, 0)
 
-        path_bar = Box(name="explorer-path-bar", orientation="h", spacing=4)
-        path_bar.pack_start(path_icon, False, False, 0)
-        path_bar.pack_start(path_wrapper, True, True, 0)
-        return path_bar
+        bar = Box(name="explorer-path-bar", orientation="h", spacing=4)
+        bar.pack_start(path_icon, False, False, 0)
+        bar.pack_start(path_wrapper, True, True, 0)
+        return bar
 
     def _on_path_scroll(self, widget, event):
         adj = self.path_scroll.get_hadjustment()
         if not adj:
             return False
 
-        direction = event.direction
-        if direction == _SCROLL_UP or direction == _SCROLL_LEFT:
-            delta = -30
-        elif direction == _SCROLL_DOWN or direction == _SCROLL_RIGHT:
-            delta = 30
-        elif direction == _SCROLL_SMOOTH:
+        delta = 0
+        if event.direction == Gdk.ScrollDirection.UP: delta = -30
+        elif event.direction == Gdk.ScrollDirection.DOWN: delta = 30
+        elif event.direction == Gdk.ScrollDirection.LEFT: delta = -30
+        elif event.direction == Gdk.ScrollDirection.RIGHT: delta = 30
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
             _, dx, dy = event.get_scroll_deltas()
-            delta = (dx if dx != 0 else dy) * 30
-        else:
-            return False
+            delta = int((dx if dx else dy) * 30)
 
-        if delta != 0:
-            val = adj.get_value() + delta
-            lo = adj.get_lower()
-            hi = adj.get_upper() - adj.get_page_size()
-            adj.set_value(max(lo, min(val, hi)))
+        if delta:
+            adj.set_value(max(adj.get_lower(),
+                              min(adj.get_value() + delta,
+                                  adj.get_upper() - adj.get_page_size())))
             return True
         return False
 
@@ -613,9 +765,10 @@ class Explorer(
             child.destroy()
 
         cur = self._current_path
-        self.title_label.set_label(
-            "Trash" if self._is_in_trash() else (cur.name or "Root")
-        )
+        folder_name = "Trash" if self._is_in_trash() else (cur.name or "Root")
+        self.folder_label.set_label(folder_name)
+        self.search_entry.set_text("")
+        self.folder_label.show()
 
         parts = []
         p = cur
@@ -639,12 +792,13 @@ class Explorer(
             btn.set_name("explorer-path-part")
             btn.add(lbl)
             btn._path = part
-            btn.connect("clicked", self._on_path_part_clicked)
+            btn.connect("clicked", lambda b: (self._switch_to_files(), self._on_path_part_clicked(b)))
+            btn.connect("button-press-event", self._clear_focus_on_click)
             self._setup_path_part_as_drop_target(btn, part)
             pack(btn, False, False, 0)
 
         container.show_all()
-        _idle_add(self._scroll_path_to_end)
+        GLib.idle_add(self._scroll_path_to_end)
 
     def _scroll_path_to_end(self):
         try:
@@ -658,7 +812,7 @@ class Explorer(
     def _build_sidebar(self):
         self.sidebar_content = Box(name="explorer-sidebar-content", orientation="v", spacing=2)
         self.sidebar_content.add(Label(name="explorer-sidebar-header", label="Places", h_align="start"))
-        
+
         for icon_name, label, path in self._bookmarks:
             self.sidebar_content.add(self._create_bookmark_button(icon_name, label, path))
 
@@ -674,10 +828,15 @@ class Explorer(
         self._devices_container = Box(name="explorer-devices-container", orientation="v", spacing=2)
         self.sidebar_content.add(self._devices_container)
 
+        self.sidebar_eb = Gtk.EventBox()
+        self.sidebar_eb.add(self.sidebar_content)
+        self.sidebar_eb.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.sidebar_eb.connect("button-press-event", self._clear_focus_on_click)
+
         return ScrolledWindow(
-            name="explorer-sidebar", h_scrollbar_policy="never", v_scrollbar_policy="automatic",
-            min_content_width=160, child=self.sidebar_content,
-        )
+            name="explorer-sidebar", h_scrollbar_policy="never",
+            v_scrollbar_policy="automatic", min_content_width=160,
+            child=self.sidebar_eb)
 
     def _create_bookmark_button(self, icon_name, label_text, path):
         icon = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.LARGE_TOOLBAR)
@@ -698,7 +857,8 @@ class Explorer(
         btn.set_name("explorer-file-row")
         btn.add(content)
         btn._path = path
-        btn.connect("clicked", self._on_bookmark_clicked)
+        btn.connect("clicked", lambda b: (self._switch_to_files(), self._on_bookmark_clicked(b)))
+        btn.connect("button-press-event", self._clear_focus_on_click)
         btn.get_style_context().add_class("directory")
         btn.show_all()
         self._setup_drop_target(btn, target_path=path)
@@ -725,6 +885,7 @@ class Explorer(
         btn.set_name("explorer-clear-trash-btn")
         btn.add(content)
         btn.connect("clicked", self._on_clear_trash_clicked)
+        btn.connect("button-press-event", self._clear_focus_on_click)
         btn.show_all()
         return btn
 
@@ -732,33 +893,51 @@ class Explorer(
         container = self.trash_button_container
         for child in container.get_children():
             child.destroy()
+            
         btn = self._create_clear_trash_button() if self._is_in_trash() else self._create_trash_button()
         container.add(btn)
         container.show_all()
 
     def _build_file_view(self):
         self.files_container = Box(name="explorer-files-container", orientation="v", spacing=2)
+        self.files_container.set_hexpand(True)
+        self.files_container.set_vexpand(True)
 
         self.files_eventbox = Gtk.EventBox()
         self.files_eventbox.add(self.files_container)
         self.files_eventbox.connect("button-press-event", self._on_files_area_button_press)
+        self.files_eventbox.set_hexpand(True)
+        self.files_eventbox.set_vexpand(True)
 
-        scrolled = ScrolledWindow(
-            name="explorer-file-view", h_scrollbar_policy="never", v_scrollbar_policy="always",
-            min_content_size=(-1, -1), child=self.files_eventbox, v_expand=True, h_expand=True,
-            propagate_width=False, propagate_height=False,
-        )
-        scrolled.drag_dest_set(
+        self.files_scrolled = ScrolledWindow(
+            name="explorer-file-view", h_scrollbar_policy="never",
+            v_scrollbar_policy="automatic", min_content_size=(400, 350),
+            child=self.files_eventbox, v_expand=True, h_expand=True)
+
+        self.files_scrolled.drag_dest_set(
             Gtk.DestDefaults.MOTION | Gtk.DestDefaults.HIGHLIGHT | Gtk.DestDefaults.DROP,
-            self._dnd_targets, Gdk.DragAction.COPY | Gdk.DragAction.MOVE,
-        )
-        scrolled.connect("drag-motion", self._on_file_view_drag_motion)
-        scrolled.connect("drag-leave", self._on_file_view_drag_leave)
-        scrolled.connect("drag-drop", self._on_drag_drop, None)
-        scrolled.connect("drag-data-received", self._on_drag_data_received, None)
-        return scrolled
+            self._dnd_targets,
+            Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+            
+        self.files_scrolled.connect("drag-motion", self._on_file_view_drag_motion)
+        self.files_scrolled.connect("drag-leave", self._on_file_view_drag_leave)
+        self.files_scrolled.connect("drag-drop", self._h_dst_drop, None)
+        self.files_scrolled.connect("drag-data-received", self._h_dst_recv, None)
+
+        self.app_chooser_box = Box(name="explorer-file-view", orientation="v", spacing=4)
+        self.app_chooser_box.set_hexpand(True)
+        self.app_chooser_box.set_vexpand(True)
+
+        self.file_view_stack = Gtk.Stack()
+        self.file_view_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.file_view_stack.set_transition_duration(150)
+        self.file_view_stack.add_named(self.files_scrolled, "files")
+        self.file_view_stack.add_named(self.app_chooser_box, "app_chooser")
+
+        return self.file_view_stack
 
     def _on_files_area_button_press(self, widget, event):
+        self._clear_search_focus()
         if event.button == 3:
             self._show_background_context_menu(event)
             return True
@@ -767,34 +946,29 @@ class Explorer(
     def _on_file_view_drag_motion(self, widget, context, x, y, time):
         self._cancel_pending_hide()
         self._drag_over_explorer = True
-        self._update_drag_scroll(y)
+        
+        self._scroll_update(y)
 
         state = Gdk.Keymap.get_default().get_modifier_state()
-        action = Gdk.DragAction.COPY if state & Gdk.ModifierType.CONTROL_MASK else Gdk.DragAction.MOVE
-        Gdk.drag_status(context, action, time)
-        self._update_dnd_indicator(action, self._current_path.name or "here")
+        is_copy = self._algo_is_copy(state)
+        Gdk.drag_status(
+            context,
+            Gdk.DragAction.COPY if is_copy else Gdk.DragAction.MOVE,
+            time)
+
+        name = self._current_path.name or "here"
+        self._vis_indicator(f"{self._algo_action(is_copy)} to {name}", is_copy)
         return True
 
     def _on_file_view_drag_leave(self, widget, context, time):
-        self._stop_drag_scroll()
-
-    def _build_status_bar(self):
-        self.status_label = Label(name="explorer-status-label", label="", h_align="start", h_expand=True)
-        self.dnd_indicator = Label(name="explorer-dnd-indicator", label="", h_align="center")
-        self.size_label = Label(name="explorer-size-label", label="", h_align="end")
-        return Box(
-            name="explorer-status-bar", orientation="h",
-            children=[self.status_label, self.dnd_indicator, self.size_label],
-        )
+        self._scroll_stop()
 
     def _load_directory(self):
         if self._is_loading:
             return
         self._is_loading = True
 
-        folder_widgets = self._folder_widgets
-        folder_widgets.clear()
-
+        self._folder_widgets.clear()
         container = self.files_container
         for child in container.get_children():
             child.destroy()
@@ -814,85 +988,93 @@ class Explorer(
             self._show_empty_state()
         else:
             add = container.add
-            fw_append = folder_widgets.append
+            fw = self._folder_widgets.append
             for item in items:
                 row = self._create_file_row(item)
                 add(row)
                 if row._is_dir:
-                    fw_append((row, item))
+                    fw((row, item))
             container.show_all()
+            self._on_search_changed(self.search_entry)
 
         dirs = sum(1 for i in items if i.is_dir())
-        files = len(items) - dirs
-        self.status_label.set_label(f"{dirs} folders, {files} files")
+        self.status_label.set_label(f"{dirs} folders, {len(items) - dirs} files")
         self._is_loading = False
 
     def _show_empty_state(self):
         in_trash = self._is_in_trash()
-        empty_box = Box(
-            name="explorer-empty-state", orientation="v", h_expand=True, v_expand=True,
-            h_align="center", v_align="center", spacing=12,
+        inner = Box(
+            orientation="v", h_align="center", v_align="center", spacing=12,
             children=[
-                Image(
-                    icon_name="user-trash-symbolic" if in_trash else "folder-open-symbolic",
-                    icon_size=48, name="explorer-empty-icon",
-                ),
-                Label(
-                    name="explorer-empty-label",
-                    label="Trash is empty" if in_trash else "Folder is empty",
-                ),
-            ],
-        )
-        self.files_container.pack_start(empty_box, True, True, 0)
+                Image(icon_name="user-trash-symbolic" if in_trash else "folder-open-symbolic",
+                      icon_size=48, name="explorer-empty-icon"),
+                Label(name="explorer-empty-label",
+                      label="Trash is empty" if in_trash else "Folder is empty"),
+            ])
+            
+        wrapper = Box(
+            name="explorer-empty-state", orientation="v",
+            h_expand=True, v_expand=True, h_align="fill", v_align="fill")
+            
+        wrapper.set_size_request(-1, 350)
+        wrapper.pack_start(Box(v_expand=True), True, True, 0)
+        wrapper.pack_start(inner, False, False, 0)
+        wrapper.pack_start(Box(v_expand=True), True, True, 0)
+        
+        self.files_container.pack_start(wrapper, True, True, 0)
         self.files_container.show_all()
 
     def _create_file_row(self, path):
         is_dir = path.is_dir()
+
         icon = Image(
             icon_name=self._get_icon_for_path(path, is_dir),
-            icon_size=24, name="explorer-file-icon",
-        )
+            icon_size=24, name="explorer-file-icon")
+            
         name_label = Label(
-            name="explorer-file-name", label=path.name, h_align="start",
-            h_expand=True, ellipsize="end",
-        )
+            name="explorer-file-name", label=path.name,
+            h_align="start", h_expand=True, ellipsize="end")
 
         size_label = Label(name="explorer-file-size", label="", h_align="end")
         size_label.set_size_request(75, -1)
 
         try:
             st = path.stat()
+            date_text = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
             st_size = st.st_size
-            st_mtime = st.st_mtime
-            date_text = datetime.fromtimestamp(st_mtime).strftime("%Y-%m-%d %H:%M")
         except OSError:
-            st_size = -1
             date_text = ""
+            st_size = -1
 
         if is_dir:
-            count = self._count_folder_items(path)
-            size_label.set_label(self._format_item_count(count))
+            size_label.set_label(self._format_item_count(self._count_folder_items(path)))
         else:
-            if st_size >= 0:
-                size_label.set_label(self._format_size(st_size))
-            else:
-                size_label.set_label("—")
-        
+            size_label.set_label(self._format_size(st_size) if st_size >= 0 else "—")
+
         date_label = Label(name="explorer-file-date", label=date_text, h_align="end")
-        
+
         content = Box(
             orientation="h", spacing=8,
-            children=[icon, name_label, size_label, date_label],
-        )
+            children=[icon, name_label, size_label, date_label])
+
         btn = Button(name="explorer-file-row", child=content)
         btn._path = path
         btn._is_dir = is_dir
-        btn.connect("clicked", self._on_file_clicked)
+
+        def on_click(button):
+            if button._is_dir:
+                self._switch_to_files()
+            self._on_file_clicked(button)
+
+        btn.connect("clicked", on_click)
+        btn.connect("button-press-event", self._clear_focus_on_click)
         btn.connect("button-press-event", self._on_file_button_press)
+        
         self._setup_drag_source(btn, path)
         if is_dir:
             self._setup_drop_target(btn, target_path=path)
             btn.get_style_context().add_class("directory")
+            
         return btn
 
     @staticmethod
@@ -901,15 +1083,37 @@ class Explorer(
             is_dir = path.is_dir()
         if is_dir:
             return _FOLDER_ICONS.get(path.name, "folder-symbolic")
-
-        name_lower = path.name.lower()
-        if name_lower.endswith(_COMPOUND_ARCHIVE_EXTS):
-            return "package-x-generic-symbolic"
-
-        suffix = path.suffix
-        if suffix:
-            return _EXT_ICONS.get(suffix.lower(), "text-x-generic-symbolic")
+            
+        try:
+            content_type, _ = Gio.content_type_guess(str(path), None)
+            if content_type:
+                gi_icon = Gio.content_type_get_symbolic_icon(content_type)
+                if isinstance(gi_icon, Gio.ThemedIcon):
+                    theme = Gtk.IconTheme.get_default()
+                    for name in gi_icon.get_names():
+                        if theme.has_icon(name):
+                            return name
+        except Exception:
+            pass
+            
         return "text-x-generic-symbolic"
+
+    @staticmethod
+    def _count_folder_items(path):
+        try:
+            count = 0
+            with os.scandir(path) as it:
+                for _ in it:
+                    count += 1
+            return count
+        except (PermissionError, OSError):
+            return -1
+
+    @staticmethod
+    def _format_item_count(count):
+        if count < 0: return "—"
+        if count == 0: return "empty"
+        return "1 item" if count == 1 else f"{count} items"
 
     @staticmethod
     def _format_size(size):
@@ -917,23 +1121,17 @@ class Explorer(
             return "—"
         if size == 0:
             return "0 B"
-
         s = float(size)
         idx = 0
         while s >= 1024.0 and idx < 4:
             s /= 1024.0
             idx += 1
-
-        if idx == 0:
-            return f"{int(s)} B"
-        return f"{s:.1f} {_SIZE_UNITS[idx]}"
+        return f"{int(s)} B" if idx == 0 else f"{s:.1f} {_SIZE_UNITS[idx]}"
 
     def _get_unique_path(self, path):
         if not path.exists():
             return path
-        parent = path.parent
-        stem = path.stem
-        suffix = path.suffix
+        stem, suffix, parent = path.stem, path.suffix, path.parent
         i = 1
         while True:
             candidate = parent / f"{stem} ({i}){suffix}"
@@ -944,17 +1142,16 @@ class Explorer(
     def destroy(self):
         self._close_rename_widget()
         self._close_app_chooser()
-        self._cleanup_file_monitor()
+        self._monitor_cleanup()
         self._cancel_pending_hide()
-        self._cancel_drag_hover_timer()
-        self._cancel_post_drag_grace()
-        self._cleanup_pending_drop()
+        self._hover_cancel()
+        self._grace_cancel()
+        self._pending_cleanup()
         self._cancel_activator_hover_timer()
-        self._stop_drag_scroll()
-        t = self._navigation_lock_timer
-        if t:
-            _source_remove(t)
-        if hasattr(self, '_retry_hide_id') and self._retry_hide_id:
-            _source_remove(self._retry_hide_id)
+        self._scroll_stop()
+        
+        if getattr(self, '_navigation_lock_timer', None):
+            GLib.source_remove(self._navigation_lock_timer)
+            
         self._volume_monitor = None
         super().destroy()

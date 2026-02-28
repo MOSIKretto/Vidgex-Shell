@@ -16,7 +16,7 @@
 @import url("./styles/notifications.css");
 @import url("./styles/overview.css");
 @import url("./styles/explorer.css");
-
+@import url("./styles/terminal.css");
 
 * {
   all: unset;

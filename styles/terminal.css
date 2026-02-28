@@ -1,0 +1,116 @@
+#explorer-terminal-box {
+    background-color: var(--shadow); 
+    border-radius: 12px;
+    padding: 4px;
+    border: 1px solid var(--primary);
+}
+
+#explorer-terminal {
+    color: var(--primary);
+}
+
+#explorer-terminal-tab-bar {
+    padding: 6px 8px;
+    background-color: var(--shadow);
+    border-radius: 12px;
+    margin-top: 8px;
+    border: 1px solid var(--primary);
+}
+
+.terminal-tab-btn {
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--on-surface-variant);
+    opacity: 0.6; 
+    transition: all 200ms ease-in-out;
+    margin-right: 4px;
+}
+
+.terminal-tab-btn box {
+    padding: 6px 14px; 
+}
+
+.terminal-tab-btn:hover {
+    background-color: alpha(var(--surface-bright), 0.5);
+    opacity: 1;
+}
+
+.terminal-tab-btn.active {
+    background-color: var(--surface);
+    color: var(--primary);
+    opacity: 1;
+    box-shadow: inset 0 -2px 0 0 var(--primary); 
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.terminal-tab-btn label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 8px; 
+}
+
+.terminal-tab-btn box > label:only-child {
+    margin-right: 0px;
+}
+
+.terminal-close-btn {
+    padding: 0px;
+    min-width: 22px;
+    min-height: 22px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.5;
+    transition: all 150ms ease;
+}
+
+.terminal-close-btn:hover {
+    opacity: 1;
+    background-color: alpha(var(--on-surface), 0.15);
+    color: var(--on-surface);
+}
+
+.terminal-add-btn {
+    padding: 4px;
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 8px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--on-surface-variant);
+    transition: all 150ms ease-in-out;
+    margin-left: 4px;
+}
+
+.terminal-add-btn:hover {
+    background-color: var(--surface-bright);
+    color: var(--primary);
+}
+
+.terminal-tab-entry {
+    background-color: var(--shadow); 
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    padding: 0px 6px;
+    margin: 0px;
+    min-height: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-surface); 
+    caret-color: var(--primary);
+    transition: all 150ms ease-in-out;
+}
+
+.terminal-tab-entry:focus {
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px alpha(var(--primary), 0.4);
+    outline: none;
+}
+
+.terminal-tab-entry selection {
+    background-color: var(--primary);
+    color: var(--on-primary);
+}
