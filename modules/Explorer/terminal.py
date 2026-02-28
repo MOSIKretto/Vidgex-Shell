@@ -394,7 +394,9 @@ class TerminalMixin:
             except Exception: pass
             return False
 
+        # Пытаемся захватить фокус сразу (работает для обычных кликов)
         GLib.idle_add(force_focus)
+        GLib.timeout_add(100, force_focus)
 
     def _update_terminal_placeholder(self):
         if not self.active_terminal_id or self.active_terminal_id not in self.terminals: return
