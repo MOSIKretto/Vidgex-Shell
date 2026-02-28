@@ -18,7 +18,7 @@ from fabric.widgets.image import Image
 
 
 class TerminalMixin:
-    
+
     @staticmethod
     def _algo_wrap_index(index: int, length: int, delta: int) -> Optional[int]:
         return (index + delta) % length if length > 0 else None
@@ -61,15 +61,10 @@ class TerminalMixin:
 
     @staticmethod
     def _algo_resolve_shell() -> str:
-        env_shell = os.environ.get("SHELL")
-        if env_shell and os.access(env_shell, os.X_OK):
-            return env_shell
+        fish_path = shutil.which("fish")
+        if fish_path:
+            return fish_path
             
-        for shell in ("zsh", "fish", "bash", "sh"):
-            path = shutil.which(shell)
-            if path:
-                return path
-                
         return "/bin/bash"
 
     @staticmethod
