@@ -17,30 +17,8 @@ from fabric.widgets.label import Label
 from fabric.widgets.image import Image
 
 
-ASCII_BACKGROUND = r"""        #########################################################################################        
-  #####################################################################################################  
- ####################################################################################################### 
-###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
-###---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---###
-###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
-###    @№@        @@/    \@@##    /@@@@@@@@\         /@@@@@@*@@@@/   /@@@№№@@@@@/    @@@      /@|     ###
-###     @@\      @№|      @@@     @@@@###@@@\      /@!58@@@@@@@/     @@@@#=@@@/      |@@\     @@|     ###
-###     @@#      #@/      @@@     @@@     \@@\    /@<@          /    @!?               \@\  *@/       ###
-###      @#@    @#|       |@|     @&@      @@@    @&@          /@    @@@@#@@@@@/        |&#@@/        ###
-###      @№\    |@/       |#@     @@?      #@@    *!?         /@@    @@##@@@/           |#@@/         ###
-###       @\@  /#|        |#@     @@@    /#@@/    @>@@       /@*@    @&&               /@№  @@\       ###
-###        @@##@/         #@@     @@@@@@/@@@/      @@@@&@?@@@@@/     @@@&?"@@@/      /@#     @!@\     ###
-###         @@@/         #@@@\    \@@@>-@@@/         \@,,@@@@@/      \@@@@@@@@@@/    /@@      @@|     ###
-###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
-###---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---###
-###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
- ####################################################################################################### 
-  #####################################################################################################  
-        #########################################################################################    """
-
-
 class TerminalMixin:
-
+    
     @staticmethod
     def _algo_wrap_index(index: int, length: int, delta: int) -> Optional[int]:
         return (index + delta) % length if length > 0 else None
@@ -96,6 +74,7 @@ class TerminalMixin:
         self._tab_counter = 0
 
         self.terminals_stack = Gtk.Stack()
+        self.terminals_stack.set_homogeneous(False)
         self.terminals_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.terminals_stack.set_transition_duration(200)
         self.terminals_stack.set_hexpand(True)
@@ -139,7 +118,7 @@ class TerminalMixin:
     def _vte_create(self) -> Vte.Terminal:
         term = Vte.Terminal()
         term.set_name("explorer-terminal")
-        term.set_size_request(-1, -1)
+        term.set_size_request(10, 10) 
         term.set_mouse_autohide(True)
         term.set_scrollback_lines(10000)
         term.set_hexpand(True)
@@ -150,6 +129,7 @@ class TerminalMixin:
 
         bg = Gdk.RGBA()
         bg.parse("#000000")
+        bg.alpha = 1.0  
         
         fg = Gdk.RGBA()
         fg.parse("#cdd6f4")
@@ -202,21 +182,10 @@ class TerminalMixin:
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.add(term)
 
-        bg_label = Gtk.Label(label=ASCII_BACKGROUND)
-        bg_label.set_name("explorer-terminal-bg-ascii")
-        bg_label.set_justify(Gtk.Justification.CENTER)
-        bg_label.set_halign(Gtk.Align.CENTER)
-        bg_label.set_valign(Gtk.Align.CENTER)
-
-        overlay = Gtk.Overlay()
-        overlay.add(scroll) 
-        overlay.add_overlay(bg_label) 
-        overlay.set_overlay_pass_through(bg_label, True) 
-
         term_box = Box(
             name="explorer-terminal-box",
             orientation="v", h_expand=True, v_expand=True,
-            children=[overlay]
+            children=[scroll]
         )
         term_box.show_all()
 
@@ -239,8 +208,9 @@ class TerminalMixin:
         tab_eb.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         tab_eb.connect("button-press-event", self._h_tab_click, term_id)
 
+        # --- Register & Spawn ---
         self.terminals[term_id] = {
-            'vte': term, 'box': term_box, 'tab': tab_eb,
+            'vte': term, 'box': term_box, 'tab': tab_eb, 
             'name_stack': name_stack, 'lbl': lbl, 'entry': entry,
         }
 
@@ -445,7 +415,7 @@ class TerminalMixin:
             if adj: adj.set_value(adj.get_upper() - adj.get_page_size())
         except Exception: pass
         return False
-
+    
     def _is_terminal_open(self) -> bool:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
