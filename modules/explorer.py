@@ -38,7 +38,6 @@ _FOLDER_ICONS = {
 
 _SIZE_UNITS = ('B', 'KB', 'MB', 'GB', 'TB')
 
-
 class Explorer(
     NavigationMixin, DnDMixin, ActionsMixin, DevicesMixin,
     ClipboardMixin, AppChooserMixin, TerminalMixin, Window,
@@ -55,8 +54,7 @@ class Explorer(
     DRAG_SCROLL_MARGIN = 300
     DRAG_SCROLL_SPEED_SLOW = 20
     DRAG_SCROLL_SPEED_FAST = 50
-    DRAG_SCROLL_INTERVAL = 16  # ~60 FPS
-
+    DRAG_SCROLL_INTERVAL = 16
 
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
@@ -64,7 +62,6 @@ class Explorer(
         self._mon_h = 1080
         self._top_margin_closed = 50
 
-        # Visibility / panel state
         self._is_pinned = False
         self._is_hidden = True
         self._cursor_inside = False
@@ -72,7 +69,6 @@ class Explorer(
         self._is_loading = False
         self._pending_hide: Optional[int] = None
 
-        # Navigation
         home = Path.home()
         self._current_path = home
         self._history: List[Path] = [home]
@@ -81,12 +77,10 @@ class Explorer(
         self._navigation_lock = False
         self._navigation_lock_timer: Optional[int] = None
 
-        # File monitor
         self._file_monitor: Optional[Gio.FileMonitor] = None
         self._pending_refresh: Optional[int] = None
         self._refresh_debounce_ms = 250
 
-        # DnD state
         self._dnd_targets = [
             Gtk.TargetEntry.new("text/uri-list", 0, self.TARGET_URI_LIST),
             Gtk.TargetEntry.new("text/plain", 0, self.TARGET_TEXT),
@@ -105,34 +99,27 @@ class Explorer(
         self._pending_hover_path: Optional[Path] = None
         self._folder_widgets: List[Tuple[Gtk.Widget, Path]] = []
         
-        # DnD Auto-Scroll State
         self._drag_scroll_timer: Optional[int] = None
         self._drag_scroll_speed: float = 0.0
 
-        # Activator
         self._activator_hover_timer: Optional[int] = None
         self._cursor_over_activator = False
 
-        # Trash
         self._trash_path = home / ".local/share/Trash/files"
         self._trash_info_path = home / ".local/share/Trash/info"
 
-        # Devices
         self._volume_monitor: Optional[Gio.VolumeMonitor] = None
         self._devices_container: Optional[Box] = None
         self._current_mount: Optional[Gio.Mount] = None
         self._current_mount_path: Optional[Path] = None
         self._current_mount_name: Optional[str] = None
 
-        # Rename
         self._rename_widget: Optional[Gtk.Box] = None
         self._rename_path: Optional[Path] = None
 
-        # Clipboard
         self._clipboard_paths: List[Path] = []
         self._clipboard_is_cut: bool = False
 
-        # App chooser
         self._app_chooser_active: bool = False
         self._app_chooser_path: Optional[Path] = None
         self._app_chooser_content_type: Optional[str] = None
@@ -142,7 +129,6 @@ class Explorer(
         self._app_list_container: Optional[Gtk.Box] = None
         self._app_search_entry: Optional[Gtk.SearchEntry] = None
 
-        # Archives
         self._archive_extensions_simple = frozenset({
             '.zip', '.tar', '.rar', '.7z', '.gz', '.bz2', '.xz',
             '.zst', '.lz4', '.lzma', '.sz',
@@ -164,17 +150,33 @@ class Explorer(
             (".lzma", "LZMA"), (".sz", "Snappy"),
         ]
 
-        # Bookmarks
+        self._xdg_icon_map = {}
         self._bookmarks: List[Tuple[str, str, Path]] = [
             ("user-home-symbolic", "Home", home),
-            ("user-desktop-symbolic", "Desktop", home / "Desktop"),
-            ("folder-documents-symbolic", "Documents", home / "Documents"),
-            ("folder-download-symbolic", "Downloads", home / "Downloads"),
-            ("folder-pictures-symbolic", "Pictures", home / "Pictures"),
-            ("folder-music-symbolic", "Music", home / "Music"),
-            ("folder-videos-symbolic", "Videos", home / "Videos"),
-            ("drive-harddisk-symbolic", "Root", Path("/")),
         ]
+
+        xdg_folders = [
+            (GLib.UserDirectory.DIRECTORY_DESKTOP, "user-desktop-symbolic", "Desktop"),
+            (GLib.UserDirectory.DIRECTORY_DOCUMENTS, "folder-documents-symbolic", "Documents"),
+            (GLib.UserDirectory.DIRECTORY_DOWNLOAD, "folder-download-symbolic", "Downloads"),
+            (GLib.UserDirectory.DIRECTORY_MUSIC, "folder-music-symbolic", "Music"),
+            (GLib.UserDirectory.DIRECTORY_PICTURES, "folder-pictures-symbolic", "Pictures"),
+            (GLib.UserDirectory.DIRECTORY_VIDEOS, "folder-videos-symbolic", "Videos"),
+        ]
+
+        for glib_dir, icon, fallback_name in xdg_folders:
+            dir_path_str = GLib.get_user_special_dir(glib_dir)
+            if dir_path_str:
+                path = Path(dir_path_str)
+                self._bookmarks.append((icon, path.name.capitalize(), path))
+                self._xdg_icon_map[path] = icon
+            else:
+                fallback_path = home / fallback_name
+                if fallback_path.exists():
+                    self._bookmarks.append((icon, fallback_name, fallback_path))
+                    self._xdg_icon_map[fallback_path] = icon
+
+        self._bookmarks.append(("drive-harddisk-symbolic", "Root", Path("/")))
 
         super().__init__(
             name="explorer-window", layer="overlay", anchor="left top bottom",
@@ -270,7 +272,6 @@ class Explorer(
     def _init_ui(self):
         self.activator = EventBox(name="explorer-activator")
         self.activator.add(Box(style="background: transparent;"))
-        
         self.activator.set_size_request(15, -1)
         self.activator.set_valign(Gtk.Align.FILL)
         self.activator.set_margin_top(self._top_margin_closed)
@@ -303,7 +304,6 @@ class Explorer(
             name="explorer-main", orientation="h", v_expand=True,
             children=[self.activator, self.revealer]))
         self._update_window_margin(False)
-
 
     def _get_cursor_position(self) -> Optional[Tuple[int, int]]:
         try:
@@ -500,7 +500,7 @@ class Explorer(
         terminal_view = self._build_terminal_view()
 
         self.stack = Gtk.Stack()
-        self.stack.set_homogeneous(False)
+        self.stack.set_homogeneous(False) 
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
@@ -511,7 +511,7 @@ class Explorer(
         self.terminal_tab_bar = self._build_terminal_tab_bar()
 
         self.bottom_bar_stack = Gtk.Stack()
-        self.bottom_bar_stack.set_homogeneous(False)
+        self.bottom_bar_stack.set_homogeneous(False) 
         self.bottom_bar_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.bottom_bar_stack.add_named(self.files_status_bar, "files")
         self.bottom_bar_stack.add_named(self.terminal_tab_bar, "terminal")
@@ -808,7 +808,7 @@ class Explorer(
         return ScrolledWindow(
             name="explorer-sidebar", h_scrollbar_policy="never",
             v_scrollbar_policy="automatic", min_content_width=130,
-            v_expand=True, min_content_height=100,
+            v_expand=True, min_content_height=100, 
             child=self.sidebar_eb)
 
     def _create_bookmark_button(self, icon_name, label_text, path):
@@ -903,7 +903,7 @@ class Explorer(
         self.app_chooser_box.set_vexpand(True)
 
         self.file_view_stack = Gtk.Stack()
-        self.file_view_stack.set_homogeneous(False) # ИСПРАВЛЕНИЕ: Отключаем блокировку высоты
+        self.file_view_stack.set_homogeneous(False) 
         self.file_view_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.file_view_stack.set_transition_duration(150)
         self.file_view_stack.add_named(self.files_scrolled, "files")
@@ -991,7 +991,6 @@ class Explorer(
             name="explorer-empty-state", orientation="v",
             h_expand=True, v_expand=True, h_align="fill", v_align="fill")
             
-        # ИСПРАВЛЕНИЕ: Убрали жесткие 350px
         wrapper.set_size_request(-1, -1)
         wrapper.pack_start(Box(v_expand=True), True, True, 0)
         wrapper.pack_start(inner, False, False, 0)
@@ -1052,11 +1051,12 @@ class Explorer(
             
         return btn
 
-    @staticmethod
-    def _get_icon_for_path(path, is_dir=None):
+    def _get_icon_for_path(self, path, is_dir=None):
         if is_dir is None:
             is_dir = path.is_dir()
         if is_dir:
+            if path in self._xdg_icon_map:
+                return self._xdg_icon_map[path]
             return _FOLDER_ICONS.get(path.name, "folder-symbolic")
             
         try:
