@@ -349,7 +349,6 @@ window.popup decoration {
     border: 1px solid var(--primary);
 }
 
-#explorer-content { min-height: 400px; }
 #explorer-status-label { font-size: 11px; color: var(--on-surface-variant); opacity: 0.8; }
 #explorer-size-label { font-size: 11px; color: var(--on-surface-variant); font-family: monospace; opacity: 0.8; }
 

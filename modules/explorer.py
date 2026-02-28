@@ -695,7 +695,6 @@ class Explorer(
                 search_empty = Box(
                     name="explorer-search-empty-state", orientation="v",
                     h_expand=True, v_expand=True, h_align="fill", v_align="fill")
-                search_empty.set_size_request(-1, 350)
                 search_empty.pack_start(Box(v_expand=True), True, True, 0)
                 search_empty.pack_start(inner, False, False, 0)
                 search_empty.pack_start(Box(v_expand=True), True, True, 0)
@@ -1016,7 +1015,7 @@ class Explorer(
             name="explorer-empty-state", orientation="v",
             h_expand=True, v_expand=True, h_align="fill", v_align="fill")
             
-        wrapper.set_size_request(-1, 350)
+        wrapper.set_size_request(-1, -1)
         wrapper.pack_start(Box(v_expand=True), True, True, 0)
         wrapper.pack_start(inner, False, False, 0)
         wrapper.pack_start(Box(v_expand=True), True, True, 0)
