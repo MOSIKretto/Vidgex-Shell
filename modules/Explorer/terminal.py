@@ -56,9 +56,8 @@ class TerminalMixin:
 
     @staticmethod
     def _algo_tab_name(counter: int, is_home: bool, force_name: str = None) -> str:
-        if force_name: return force_name
         if is_home: return "Home"
-        return f"Terminal {counter}"
+        return force_name or f"Terminal {counter}"
 
     @staticmethod
     def _algo_resolve_shell() -> str:
@@ -222,13 +221,12 @@ class TerminalMixin:
         self.tabs_box.pack_start(tab_eb, False, False, 0)
         self.tabs_box.show_all()
 
-        # ИСПРАВЛЕНИЕ: гарантируем, что work_dir - это строка (str)
-        if cwd is not None:
-            work_dir = str(cwd)
-        elif is_home:
+        # ИСПРАВЛЕНИЕ ЗДЕСЬ: "Home" всегда смотрит в ~
+        # А остальные пути жестко приводятся к строке (str), чтобы не ломать фокус и VTE
+        if is_home:
             work_dir = str(Path.home())
         else:
-            work_dir = str(self._current_path)
+            work_dir = str(cwd) if cwd is not None else str(self._current_path)
 
         self._spawn_shell(term, work_dir)
         
@@ -452,12 +450,17 @@ class TerminalMixin:
         
         if hasattr(self, '_cancel_pending_hide'): self._cancel_pending_hide()
 
+        # 1. Если нет терминалов, ВСЕГДА создаем бессмертную базовую вкладку "Home"
+        if not self.terminals:
+            self._add_terminal_tab()
+
+        # 2. Если нас попросили открыть конкретную папку, открываем её КАК ВТОРУЮ ВКЛАДКУ
         if cwd is not None:
             cwd_str = str(cwd)
             folder_name = Path(cwd_str).name or "Terminal"
             self._add_terminal_tab(cwd=cwd_str, force_name=folder_name)
-        elif not self.terminals:
-            self._add_terminal_tab()
+            
+        # 3. Иначе просто фокусируемся на открытой вкладке
         elif self.active_terminal_id:
             self._update_terminal_placeholder()
             self._scroll_to_active_tab(self.active_terminal_id)
