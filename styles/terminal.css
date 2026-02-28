@@ -111,13 +111,6 @@
     border: 1px solid var(--primary);
 }
 
-#explorer-terminal-bg-ascii {
-    color: var(--surface-bright); 
-    font-family: monospace;
-    font-size: 11px;
-    opacity: 0.6; 
-}
-
 #explorer-terminal {
     background-color: #000000;
     color: #cdd6f4;
