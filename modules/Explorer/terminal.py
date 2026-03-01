@@ -1,4 +1,3 @@
-import os
 import shutil
 import uuid
 import urllib.parse

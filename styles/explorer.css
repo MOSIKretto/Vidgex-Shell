@@ -55,9 +55,9 @@ window.popup decoration {
     border: 1px solid transparent;
     border-radius: 12px;
     color: var(--on-surface);
-    padding: 4px 12px; 
-    font-size: 14px; 
-    font-family: monospace; 
+    padding: 4px 12px;
+    font-size: 14px;
+    font-family: monospace;
     font-weight: 600;
     min-height: 28px;
     caret-color: var(--primary);
@@ -66,11 +66,11 @@ window.popup decoration {
 
 #explorer-search-placeholder {
     color: var(--on-surface-variant);
-    opacity: 0.6; 
-    font-size: 14px; 
-    font-family: monospace; 
+    opacity: 0.6;
+    font-size: 14px;
+    font-family: monospace;
     font-weight: 600;
-    margin-right: 32px; 
+    margin-right: 32px;
 }
 
 #explorer-search-entry:focus {
@@ -94,7 +94,7 @@ window.popup decoration {
 }
 
 #explorer-search-entry image.left {
-    margin-right: 14px; 
+    margin-right: 14px;
 }
 
 #explorer-search-entry:focus image {
@@ -191,6 +191,7 @@ window.popup decoration {
     margin: 0 2px;
     font-size: 12px;
 }
+
 #explorer-sidebar {
     min-width: 160px;
     background-color: var(--shadow);
@@ -287,9 +288,24 @@ window.popup decoration {
 #explorer-file-row:hover #explorer-file-icon { color: var(--on-surface); }
 #explorer-file-row.directory #explorer-file-icon { color: var(--primary); }
 
+#explorer-file-row:active #explorer-file-icon,
+#explorer-file-row:checked #explorer-file-icon,
+#explorer-file-row.selected #explorer-file-icon,
+#explorer-file-row.directory:active #explorer-file-icon,
+#explorer-file-row.directory:checked #explorer-file-icon,
+#explorer-file-row.directory.selected #explorer-file-icon {
+    color: var(--on-primary);
+}
+
 #explorer-bookmark-icon {
     color: var(--primary);
     min-width: 24px;
+}
+
+#explorer-file-row:active #explorer-bookmark-icon,
+#explorer-file-row:checked #explorer-bookmark-icon,
+#explorer-file-row.selected #explorer-bookmark-icon {
+    color: var(--on-primary);
 }
 
 #explorer-file-row.default-app { border-color: alpha(var(--primary), 0.3); }
@@ -300,8 +316,44 @@ window.popup decoration {
     border: 1px dashed var(--on-surface-variant);
     background-color: transparent;
 }
-#explorer-file-row.unmounted:hover,
-#explorer-file-row.unmounted:active { border-style: solid; opacity: 1; }
+
+#explorer-file-row.unmounted:hover {
+    border-style: solid;
+    opacity: 1;
+    background-color: var(--surface-bright);
+    border-color: var(--primary);
+}
+
+#explorer-file-row.unmounted:active,
+#explorer-file-row.unmounted:checked,
+#explorer-file-row.unmounted.selected {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    border-style: solid;
+    opacity: 1;
+}
+
+#explorer-file-row.unmounted:active *,
+#explorer-file-row.unmounted:checked *,
+#explorer-file-row.unmounted.selected *,
+#explorer-file-row.unmounted:active #explorer-file-icon,
+#explorer-file-row.unmounted:checked #explorer-file-icon,
+#explorer-file-row.unmounted.selected #explorer-file-icon,
+#explorer-file-row.unmounted:active #explorer-bookmark-icon,
+#explorer-file-row.unmounted:checked #explorer-bookmark-icon,
+#explorer-file-row.unmounted.selected #explorer-bookmark-icon,
+#explorer-file-row.unmounted:active #explorer-file-name,
+#explorer-file-row.unmounted:checked #explorer-file-name,
+#explorer-file-row.unmounted.selected #explorer-file-name,
+#explorer-file-row.unmounted:active #explorer-file-size,
+#explorer-file-row.unmounted:checked #explorer-file-size,
+#explorer-file-row.unmounted.selected #explorer-file-size,
+#explorer-file-row.unmounted:active #explorer-file-date,
+#explorer-file-row.unmounted:checked #explorer-file-date,
+#explorer-file-row.unmounted.selected #explorer-file-date {
+    color: var(--on-primary);
+    opacity: 1;
+}
 
 #explorer-file-row.dragging {
     opacity: 0.4;
@@ -455,10 +507,12 @@ menu separator {
 #explorer-rename-btn.cancel { color: var(--error); border-color: var(--error); }
 #explorer-rename-btn.cancel:hover { background-color: var(--surface-bright); }
 #explorer-rename-btn.cancel:active { background-color: var(--error); color: var(--on-primary); }
+#explorer-rename-btn.cancel:active * { color: var(--on-primary); }
 
 #explorer-rename-btn.confirm { color: var(--primary); border-color: var(--primary); }
 #explorer-rename-btn.confirm:hover { background-color: var(--surface-bright); }
 #explorer-rename-btn.confirm:active { background-color: var(--primary); color: var(--on-primary); }
+#explorer-rename-btn.confirm:active * { color: var(--on-primary); }
 #explorer-rename-btn.confirm:disabled { border-color: var(--surface-bright); color: var(--outline); opacity: 0.6; }
 
 #explorer-app-chooser-header {
@@ -503,3 +557,18 @@ menu separator {
 
 #explorer-app-list #explorer-sidebar-header { margin-top: 4px; padding: 6px 8px 2px 8px; }
 #explorer-app-list #explorer-sidebar-header:first-child { margin-top: 0px; }
+
+/* ── Universal: any button press → all children become --on-primary ── */
+#explorer-window button:active,
+#explorer-window button:checked {
+    color: var(--on-primary);
+}
+
+#explorer-window button:active *,
+#explorer-window button:active label,
+#explorer-window button:active image,
+#explorer-window button:checked *,
+#explorer-window button:checked label,
+#explorer-window button:checked image {
+    color: var(--on-primary);
+}
