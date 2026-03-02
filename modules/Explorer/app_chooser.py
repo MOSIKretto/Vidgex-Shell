@@ -50,7 +50,6 @@ class AppChooserMixin:
         self._set_keyboard_interactive(True)
         self._current_app_query = ""
 
-        # АЛГОРИТМ: Динамически расширяем родительское окно, чтобы меню физически стало шире
         if hasattr(self, 'explorer_box'):
             self.explorer_box.set_size_request(850, -1)
 
@@ -76,7 +75,6 @@ class AppChooserMixin:
         self._current_app_query = ""
         self._set_keyboard_interactive(False)
 
-        # АЛГОРИТМ: Возвращаем главному окну его изначальную ширину
         if hasattr(self, 'explorer_box') and hasattr(self, '_explorer_width'):
             self.explorer_box.set_size_request(self._explorer_width, -1)
         

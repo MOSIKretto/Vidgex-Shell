@@ -188,7 +188,6 @@ class TerminalMixin:
         term.connect("current-directory-uri-changed", self._h_dir_changed, term_id)
         term.connect("window-title-changed", self._h_title_changed, term_id)
 
-        # Scrollbar overlay so it never pushes terminal text
         scroll = Gtk.ScrolledWindow()
         scroll.set_name("explorer-terminal-scroll")
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)

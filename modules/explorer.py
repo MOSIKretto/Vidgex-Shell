@@ -72,10 +72,8 @@ _COMPRESSION_FORMATS = [
 
 _DRAG_ACTIONS = Gdk.DragAction.COPY | Gdk.DragAction.MOVE
 
-# Minimal event mask for activator - only what's needed
 _ACTIVATOR_EVENTS = Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
 
-# Full mask only for explorer area
 _EXPLORER_EVENTS = (
     Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
     | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.BUTTON_PRESS_MASK
@@ -101,7 +99,6 @@ class Explorer(
     DRAG_SCROLL_SPEED_FAST = 50
     DRAG_SCROLL_INTERVAL = 16
 
-    # All timer attribute names for bulk management
     _TIMER_ATTRS = (
         '_pending_hide', '_navigation_lock_timer', '_pending_refresh',
         '_post_drag_timer', '_drag_hover_timer', '_pending_hover_timer',
@@ -114,7 +111,6 @@ class Explorer(
         self._mon_h = 1080
         self._top_margin_closed = 50
 
-        # Packed boolean flags - use slots-like approach
         self._is_pinned = False
         self._is_hidden = True
         self._cursor_inside = False
@@ -131,19 +127,16 @@ class Explorer(
         self._force_path_scroll = False
         self._ui_built = False
 
-        # All timers initialized to None
         for attr in self._TIMER_ATTRS:
             setattr(self, attr, None)
 
         self._refresh_debounce_ms = 250
 
-        # Paths
         home = Path.home()
         self._current_path = home
         self._history: List[Path] = [home]
         self._history_index = 0
 
-        # DnD - lazy init targets
         self._dnd_targets = None
         self._drag_source_path = None
         self._drag_hover_path = None
@@ -154,7 +147,6 @@ class Explorer(
         self._drag_scroll_speed = 0.0
         self._folder_widgets: List[Tuple[Gtk.Widget, Path]] = []
 
-        # Monitors & Devices
         self._file_monitor = None
         self._volume_monitor = None
         self._devices_container = None
@@ -166,7 +158,6 @@ class Explorer(
         self._rename_path = None
         self._clipboard_paths: List[Path] = []
 
-        # App chooser - all lazy
         self._app_chooser_path = None
         self._app_chooser_content_type = None
         self._app_chooser_recommended: List = []
@@ -175,7 +166,6 @@ class Explorer(
         self._app_list_container = None
         self._app_search_entry = None
 
-        # System Paths
         self._trash_path = home / ".local/share/Trash/files"
         self._trash_info_path = home / ".local/share/Trash/info"
 
@@ -183,7 +173,6 @@ class Explorer(
         self._archive_extensions_compound = _ARCHIVE_EXT_COMPOUND
         self._compression_formats = _COMPRESSION_FORMATS
 
-        # Bookmarks
         self._xdg_icon_map = {}
         self._bookmarks: List[Tuple[str, str, Path]] = [
             ("user-home-symbolic", "Home", home),
@@ -191,7 +180,6 @@ class Explorer(
         self._init_xdg_bookmarks(home)
         self._bookmarks.append(("drive-harddisk-symbolic", "Root", Path("/")))
 
-        # Icon cache to avoid repeated lookups
         self._icon_cache = {}
 
         super().__init__(
@@ -447,7 +435,6 @@ class Explorer(
 
         self._dismiss_focus()
         self.revealer.set_reveal_child(False)
-        # Clear icon cache when hiding to free memory
         self._icon_cache.clear()
         GLib.timeout_add(350, self._check_and_restore_margin)
         return False
@@ -802,7 +789,6 @@ class Explorer(
         self.search_entry.set_text("")
         self.folder_label.show()
 
-        # Build path parts iteratively
         parts = []
         p = cur
         while p != p.parent:
@@ -1108,7 +1094,6 @@ class Explorer(
         if is_dir:
             return self._xdg_icon_map.get(path, _FOLDER_ICONS.get(path.name, "folder-symbolic"))
 
-        # Check cache first
         suffix = path.suffix.lower()
         cached = self._icon_cache.get(suffix)
         if cached is not None:
