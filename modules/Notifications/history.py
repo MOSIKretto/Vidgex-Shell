@@ -116,9 +116,11 @@ class NotificationHistory(Box):
         self._update_empty_state()
 
     def _on_hist_close_clicked(self, button, uuid, cont_ref):
-        if not self._is_destroyed:
-            cont = cont_ref()
-            if cont: self.delete_historical_notification(uuid, cont)
+        if self._is_destroyed:
+            return
+        cont = cont_ref()
+        if cont:
+            self.delete_historical_notification(uuid, cont)
 
     def _create_history_container(self, notification_box, arrival_time):
         container = Box(name="notification-container", orientation="v", h_align="fill", h_expand=True)
@@ -137,7 +139,6 @@ class NotificationHistory(Box):
                 img.set_valign(Gtk.Align.START)
                 image_box.add(img)
             except GLib.Error:
-                # Фоллбэк: если картинка битая, игнорируем ее загрузку, UI покажет просто текст
                 pass
 
         summary_box = Box(name="notification-summary-box", orientation="h", children=[
@@ -161,11 +162,16 @@ class NotificationHistory(Box):
 
     def clear_history(self, *_):
         if self._is_destroyed: return
+        
+        for g in self.groups.values():
+            g.clear_containers()
+        
         for child in self.notifications_list.get_children():
             self.notifications_list.remove(child)
             child.destroy()
             
         self.groups.clear()
+        
         for c in self.containers:
             nb = getattr(c, "notification_box", None)
             if nb: 
@@ -181,12 +187,21 @@ class NotificationHistory(Box):
         self._update_empty_state()
 
     def clear_history_for_app(self, app_name):
-        if self._is_destroyed or app_name not in self.groups: return
+        if self._is_destroyed or app_name not in self.groups:
+            return
+            
         group = self.groups.pop(app_name)
-        nids = set(group.notification_ids)
+        nids = list(group.notification_ids)
+        
+        nids_str = {str(nid) for nid in nids}
 
-        self.persistent_notifications = [n for n in self.persistent_notifications if n.get("id") not in nids]
+        self.persistent_notifications = [
+            n for n in self.persistent_notifications 
+            if str(n.get("id")) not in nids_str
+        ]
         self._schedule_save()
+
+        group.clear_containers()
 
         for nid in nids:
             delete_notification_image(nid)
@@ -194,20 +209,32 @@ class NotificationHistory(Box):
             if container:
                 if container in self.containers:
                     self.containers.remove(container)
+                    
+                parent = container.get_parent()
+                if parent:
+                    parent.remove(container)
+                    
                 nb = getattr(container, "notification_box", None)
                 if nb:
                     nb.destroy(from_history_delete=True)
                     container.notification_box = None
                 container.destroy()
 
-        self.notifications_list.remove(group)
+        parent = group.get_parent()
+        if parent:
+            parent.remove(group)
         group.destroy()
+        
         self._update_empty_state()
 
     def delete_historical_notification(self, note_id, container):
-        if self._is_destroyed: return
+        if self._is_destroyed:
+            return
+            
         nb = getattr(container, "notification_box", None)
-        app_name = getattr(nb.notification, 'app_name', None) if nb and nb.notification else None
+        app_name = None
+        if nb and nb.notification:
+            app_name = getattr(nb.notification, 'app_name', None)
         
         if nb: 
             nb.destroy(from_history_delete=True)
@@ -227,17 +254,24 @@ class NotificationHistory(Box):
         if container in self.containers: 
             self.containers.remove(container)
 
-        if app_name in self.groups:
+        parent = container.get_parent()
+        if parent:
+            parent.remove(container)
+
+        if app_name and app_name in self.groups:
             g = self.groups[app_name]
             g.remove_notification_id(note_id)
+            
             if g.get_notification_count() == 0:
-                self.notifications_list.remove(g)
+                group_parent = g.get_parent()
+                if group_parent:
+                    group_parent.remove(g)
                 g.destroy()
                 del self.groups[app_name]
             else: 
                 g.update_display(self.containers_by_id)
 
-        if container: container.destroy()
+        container.destroy()
         self._update_empty_state()
 
     def _start_loading(self):
@@ -253,7 +287,6 @@ class NotificationHistory(Box):
                 with open(PERSISTENT_HISTORY_FILE, "r", encoding="utf-8") as f: 
                     data = json.load(f)
             except (json.JSONDecodeError, OSError):
-                # Фоллбэк: если файл сломан или нет доступа, начинаем с пустой истории
                 data = []
         GLib.idle_add(self._on_loaded, data, priority=GLib.PRIORITY_LOW)
 
@@ -354,23 +387,29 @@ class NotificationHistory(Box):
 
         while len(self.containers) >= MAX_NOTIFICATION_HISTORY:
             oldest = self.containers.pop()
-            nb = getattr(oldest, "notification_box", None)
-            if nb:
-                app_n = getattr(nb.notification, 'app_name', None)
+            nb_old = getattr(oldest, "notification_box", None)
+            if nb_old:
+                app_n = getattr(nb_old.notification, 'app_name', None)
                 if app_n and app_n in self.groups:
                     g = self.groups[app_n]
-                    g.remove_notification_id(nb.uuid)
+                    g.remove_notification_id(nb_old.uuid)
                     if g.get_notification_count() == 0:
-                        self.notifications_list.remove(g)
+                        group_parent = g.get_parent()
+                        if group_parent:
+                            group_parent.remove(g)
                         g.destroy()
                         del self.groups[app_n]
                     else:
                         g.update_display(self.containers_by_id)
-                if nb.uuid in self.containers_by_id:
-                    del self.containers_by_id[nb.uuid]
-                delete_notification_image(nb.uuid)
-                nb.destroy(from_history_delete=True)
-                oldest.notification_box = None 
+                if nb_old.uuid in self.containers_by_id:
+                    del self.containers_by_id[nb_old.uuid]
+                delete_notification_image(nb_old.uuid)
+                nb_old.destroy(from_history_delete=True)
+                oldest.notification_box = None
+                
+            parent = oldest.get_parent()
+            if parent:
+                parent.remove(oldest)
             oldest.destroy()
             
             old_data = self.persistent_notifications.pop() if len(self.persistent_notifications) > MAX_NOTIFICATION_HISTORY else None
@@ -411,7 +450,6 @@ class NotificationHistory(Box):
                 os.fsync(f.fileno()) 
             os.replace(tmp_file, PERSISTENT_HISTORY_FILE)
         except (OSError, TypeError, ValueError):
-            # Если сломалось во время записи, удаляем битый .tmp файл
             if os.path.isfile(tmp_file):
                 try:
                     os.remove(tmp_file)
@@ -432,6 +470,7 @@ class NotificationHistory(Box):
             
         self.clear_history()
         super().destroy()
+
 
 class NotificationContainer(Box):
     __slots__ = (
@@ -556,8 +595,11 @@ class NotificationContainer(Box):
         if idx == -1: return
         
         nb = self.notifications.pop(idx)
-        if "dismissed" in str(reason).lower(): nb.destroy()
-        else: self.notification_history.add_notification(nb)
+        if "dismissed" in str(reason).lower():
+            delete_notification_image(nb.uuid)
+            nb.destroy()
+        else: 
+            self.notification_history.add_notification(nb)
         
         self.stack.remove(nb)
         if not self.notifications:

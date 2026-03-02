@@ -60,7 +60,10 @@ class _IOWorker:
         while True:
             task = self._queue.get(block=True)
             if task is None: break
-            task()
+            try:
+                task()
+            except Exception:
+                pass
             self._queue.task_done()
     
     def submit(self, task): 
@@ -93,35 +96,52 @@ def cleanup_orphan_images(active_ids):
 def create_micro_thumbnail(notification, uuid, on_success_callback=None):
     image_path = get_safe_image_path(uuid)
     
-    pb_to_save = None
+    png_bytes = None
+    
     if getattr(notification, 'image_pixbuf', None):
-        pb_to_save = notification.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
-        
+        try:
+            scaled = notification.image_pixbuf.scale_simple(48, 48, GdkPixbuf.InterpType.BILINEAR)
+            if scaled:
+                success, data = scaled.save_to_bufferv("png", [], [])
+                if success and data:
+                    png_bytes = bytes(data)
+        except Exception:
+            pass
+    
     icon_path = getattr(notification, 'app_icon', None)
+    if icon_path and icon_path.startswith("file://"):
+        icon_path = icon_path[7:]
+
+    if not png_bytes and (not icon_path or not is_safe_image_file(icon_path)):
+        return image_path
 
     def process_and_save():
         try:
             os.makedirs(PERSISTENT_IMAGES_DIR, exist_ok=True)
         except OSError:
-            pass
+            return
 
-        local_pb = pb_to_save
-        if not local_pb and icon_path:
-            path = icon_path[7:] if icon_path.startswith("file://") else icon_path
-            if is_safe_image_file(path):
-                try: 
-                    local_pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
-                except GLib.Error: 
-                    pass
+        saved = False
         
-        if local_pb:
-            try: 
-                local_pb.savev(image_path, "png", [], [])
-            except GLib.Error: 
+        if png_bytes:
+            try:
+                with open(image_path, "wb") as f:
+                    f.write(png_bytes)
+                saved = True
+            except OSError:
                 pass
-            
-            if on_success_callback and os.path.exists(image_path):
-                GLib.idle_add(on_success_callback, image_path, priority=GLib.PRIORITY_LOW)
+        
+        if not saved and icon_path:
+            try: 
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_path, 48, 48, False)
+                if pb:
+                    pb.savev(image_path, "png", [], [])
+                    saved = True
+            except (GLib.Error, Exception):
+                pass
+        
+        if saved and on_success_callback and os.path.exists(image_path):
+            GLib.idle_add(on_success_callback, image_path, priority=GLib.PRIORITY_LOW)
 
     _io_worker.submit(process_and_save)
     return image_path
@@ -141,6 +161,7 @@ def clear_all_notification_images():
         if os.path.isdir(PERSISTENT_IMAGES_DIR): 
             shutil.rmtree(PERSISTENT_IMAGES_DIR, ignore_errors=True)
     _io_worker.submit(do_clear)
+
 
 class ActionButton(Button):
     __slots__ = ('action', '_nb_ref', '_handlers')
@@ -177,6 +198,7 @@ class ActionButton(Button):
         self.action = None
         self._nb_ref = None
         super().destroy()
+
 
 class NotificationBox(Box):
     __slots__ = (
@@ -334,6 +356,7 @@ class NotificationBox(Box):
                 child.destroy()
         super().destroy()
 
+
 class HistoricalNotification:
     __slots__ = ('id', 'app_icon', 'summary', 'body', 'app_name', 'timestamp', 'actions')
     def __init__(self, id, app_icon, summary, body, app_name, timestamp):
@@ -344,6 +367,7 @@ class HistoricalNotification:
         self.app_name = app_name
         self.timestamp = timestamp
         self.actions = []
+
 
 class NotificationGroup(Box):
     __slots__ = (
@@ -431,12 +455,8 @@ class NotificationGroup(Box):
         if self._is_destroyed: return
         self.clear_btn.set_sensitive(False)
         history = self._history_ref()
-        if history: GLib.idle_add(self._trigger_history_clear, history)
-
-    def _trigger_history_clear(self, history):
-        if not getattr(history, '_is_destroyed', True) and hasattr(history, 'clear_history_for_app'): 
+        if history and not getattr(history, '_is_destroyed', True):
             history.clear_history_for_app(self.app_name)
-        return GLib.SOURCE_REMOVE
 
     def _update_stack_indicators(self, count):
         self.stack_indicator_1.set_visible(count > 1)
@@ -447,17 +467,29 @@ class NotificationGroup(Box):
         if self._is_destroyed: return
         if not self.notification_ids: return
 
-        valid_containers = [c for nid in self.notification_ids if (c := containers_by_id.get(nid)) is not None]
+        for box in (self.first_container_box, self.stacked_container):
+            for child in list(box.get_children()):
+                box.remove(child)
+
+        valid_containers = []
+        for nid in self.notification_ids:
+            container = containers_by_id.get(nid)
+            if container is not None:
+                valid_containers.append(container)
+                
         valid_containers.sort(key=lambda c: c.arrival_time, reverse=True)
-        if not valid_containers: return
+        
+        if not valid_containers:
+            return
 
         for i, container in enumerate(valid_containers):
             target_box = self.first_container_box if i == 0 else self.stacked_container
-            parent = container.get_parent()
             
-            if parent != target_box:
-                if parent:
-                    parent.remove(container)
+            parent = container.get_parent()
+            if parent and parent != target_box:
+                parent.remove(container)
+            
+            if container.get_parent() is None:
                 target_box.add(container)
 
         count = len(valid_containers)
@@ -476,24 +508,32 @@ class NotificationGroup(Box):
         self.stacked_revealer.set_reveal_child(self.is_expanded if is_multi else False)
         self._update_stack_indicators(count)
         self.latest_arrival_time = valid_containers[0].arrival_time
+        
+        self.first_container_box.show_all()
+        self.stacked_container.show_all()
 
     def add_notification_id(self, nid, arrival_time):
-        if nid not in self.notification_ids: self.notification_ids.insert(0, nid)
-        if self.latest_arrival_time is None or arrival_time > self.latest_arrival_time: self.latest_arrival_time = arrival_time
+        if nid not in self.notification_ids: 
+            self.notification_ids.insert(0, nid)
+        if self.latest_arrival_time is None or arrival_time > self.latest_arrival_time: 
+            self.latest_arrival_time = arrival_time
         
     def remove_notification_id(self, nid):
-        if nid in self.notification_ids: self.notification_ids.remove(nid)
+        if nid in self.notification_ids: 
+            self.notification_ids.remove(nid)
         return len(self.notification_ids) == 0
 
-    def get_notification_count(self): return len(self.notification_ids)
+    def get_notification_count(self): 
+        return len(self.notification_ids)
+        
     def collapse(self):
-        if self.is_expanded: self._toggle_expand()
+        if self.is_expanded: 
+            self._toggle_expand()
 
     def clear_containers(self):
         for box in (self.first_container_box, self.stacked_container):
-            for child in box.get_children():
-                if child.get_parent() == box:
-                    box.remove(child)
+            for child in list(box.get_children()):
+                box.remove(child)
 
     def destroy(self):
         if self._is_destroyed: return
