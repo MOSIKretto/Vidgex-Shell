@@ -49,16 +49,15 @@ class ClipboardMixin:
         return f"{action}: {count} item(s)" if count != 1 else f"{action}: 1 item"
 
     def _get_clipboard_state(self) -> Tuple[bool, bool]:
-        has = bool(self._clipboard_paths and any(p.exists() for p in self._clipboard_paths))
-        return has, self._clipboard_is_cut
+        has_items = bool(getattr(self, '_clipboard_paths', None))
+        is_cut = getattr(self, '_clipboard_is_cut', False)
+        return has_items, is_cut
 
     def _can_paste(self) -> bool:
-        if not self._clipboard_paths:
-            return False
-        return any(p.exists() for p in self._clipboard_paths)
+        return bool(getattr(self, '_clipboard_paths', None))
 
     def _copy_to_clipboard(self, paths: List[Path], is_cut: bool = False):
-        self._clipboard_paths = [p for p in paths if p.exists()]
+        self._clipboard_paths = list(paths)
         self._clipboard_is_cut = is_cut
 
         if not self._clipboard_paths:
@@ -71,7 +70,7 @@ class ClipboardMixin:
         self.status_label.set_label(f"{action}: {name}")
 
     def _paste_from_clipboard(self, dest_folder: Path):
-        if not self._clipboard_paths:
+        if not getattr(self, '_clipboard_paths', None):
             self.status_label.set_label("Clipboard is empty")
             return
 
@@ -118,8 +117,7 @@ class ClipboardMixin:
                     pasted += 1
                 except PermissionError:
                     errors += 1
-                except Exception as e:
-                    print(f"Paste error for {src}: {e}")
+                except Exception:
                     errors += 1
 
             def update_ui():
