@@ -34,7 +34,6 @@ class Notch(Window):
     def __init__(self, **kwargs):
         self._bar = kwargs.get('bar')
 
-        # anchor="top" прикрепляет окно к верху и центрирует его в Wayland
         super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
 
         self._wc = {}
@@ -136,17 +135,14 @@ class Notch(Window):
 
         self.nc = Box(name="notch-complete", children=[self.nr])
         
-        # ДОБАВЛЕНО: h_align="center" для обертки самого Notch
         self.nw = Box(name="notch-wrap", h_align="center", children=[self.nc])
 
         self.heb = Gtk.EventBox(name="notch-hover-eventbox")
-        # ДОБАВЛЕНО: Принудительное центрирование GTK EventBox
         self.heb.set_halign(Gtk.Align.CENTER)
         self.heb.add(self.nw)
         self.heb.set_visible(True)
         self.heb.set_size_request(260, 4)
 
-        # ДОБАВЛЕНО: Обернули EventBox в дополнительный центрирующий Box для 100% гарантии позиции
         self.add(Box(name="notch-root-container", h_align="center", children=[self.heb]))
 
     def _signals(self):

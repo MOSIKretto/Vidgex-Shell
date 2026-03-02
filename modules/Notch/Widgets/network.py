@@ -15,7 +15,7 @@ class WifiSlot(Gtk.Box):
     __slots__ = ('nc', 'parent_list', 'rcb', 'ssid', 'saved', 'conn',
                  'icon', 'name_lbl', 'str_lbl', 'act_box',
                  'lbl_conn', 'btn_conn', 'btn_del', 'btn_unavail',
-                 'pw_rev', 'pw_entry', 'btn_pw_ok')
+                 'pw_rev', 'pw_entry', 'btn_pw_ok', '_anim_id', '_target_height')
     
     _active_pw_slot = None
 
@@ -27,6 +27,8 @@ class WifiSlot(Gtk.Box):
         self.rcb = rcb
         self.ssid = None
         self.saved = self.conn = False
+        self._anim_id = None
+        self._target_height = 0
 
         self.icon = Image(size=16)
         self.name_lbl = Label(h_expand=True, h_align="start", ellipsization="end")
@@ -55,6 +57,8 @@ class WifiSlot(Gtk.Box):
         self.pack_start(main_row, True, True, 0)
 
         self.pw_rev = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN)
+        self.pw_rev.set_transition_duration(300)
+        
         pw_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, name="password-entry-container")
         pw_box.set_margin_top(4); pw_box.set_margin_bottom(12)
         pw_box.set_margin_start(10); pw_box.set_margin_end(10)
@@ -120,11 +124,64 @@ class WifiSlot(Gtk.Box):
             self._close_pw()
         else:
             WifiSlot._active_pw_slot = self
+            
+            base_h = self.get_allocated_height()
+            _, child_h = self.pw_rev.get_child().get_preferred_height()
+            self._target_height = base_h + child_h
+
             self.pw_rev.set_reveal_child(True)
             self.pw_entry.set_text("")
+            
+            self._start_scroll_anim()
+
+    def _start_scroll_anim(self):
+        if self._anim_id:
+            GLib.source_remove(self._anim_id)
+            
+        scroll = self.get_ancestor(Gtk.ScrolledWindow)
+        if not scroll:
+            return
+            
+        self._anim_id = GLib.timeout_add(16, self._scroll_tick, scroll)
+
+    def _scroll_tick(self, scroll):
+        coords = self.translate_coordinates(scroll, 0, 0)
+        if not coords:
+            self._anim_id = None
+            return False
+
+        vadj = scroll.get_vadjustment()
+        current_scroll = vadj.get_value()
+        absolute_y = current_scroll + coords[1]
+        scroll_h = scroll.get_allocated_height()
+
+        if self.pw_rev.get_child_revealed():
+            target_h = self.get_allocated_height()
+        else:
+            target_h = self._target_height
+        
+        target_y = absolute_y - (scroll_h / 2) + (target_h / 2)
+        
+        lower_limit = vadj.get_lower()
+        upper_limit = max(lower_limit, vadj.get_upper() - vadj.get_page_size())
+        target_y = max(lower_limit, min(target_y, upper_limit))
+        
+        new_scroll = current_scroll + (target_y - current_scroll) * 0.15
+        
+        if self.pw_rev.get_child_revealed() and abs(target_y - current_scroll) < 1.0:
+            vadj.set_value(target_y)
+            self._anim_id = None
             GLib.idle_add(self.pw_entry.grab_focus)
+            return False
+
+        vadj.set_value(new_scroll)
+        return True
 
     def _close_pw(self):
+        if self._anim_id:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
+            
         self.pw_rev.set_reveal_child(False)
         if WifiSlot._active_pw_slot is self:
             WifiSlot._active_pw_slot = None
@@ -152,6 +209,11 @@ class WifiSlot(Gtk.Box):
         if self.ssid:
             self.nc.delete_saved_network(self.ssid)
             if self.rcb: GLib.timeout_add(300, self.rcb)
+
+    def destroy(self):
+        if self._anim_id:
+            GLib.source_remove(self._anim_id)
+        super().destroy()
 
 
 class NetworkConnections(Box):

@@ -1,3 +1,5 @@
+import os
+import subprocess
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
@@ -11,11 +13,18 @@ from services.list_navigation import ListNavigationMixin
 
 
 class ClipHistory(ListNavigationMixin, Box):
-    __slots__ = ('notch', 'sel', 'vp', 'ent', 'sw', '_it')
+    __slots__ = ('notch', 'sel', 'vp', 'ent', 'sw', 'cache_file')
 
     def __init__(self, notch, **kw):
         super().__init__(name="clip-history", visible=False, all_visible=False, **kw)
-        self.notch, self.sel, self._it = notch, -1, None
+        self.notch, self.sel = notch, -1
+        
+        cache_dir = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell")
+        
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        self.cache_file = os.path.join(cache_dir, "cliphist_cache.txt")
+        
         self.vp = Box(name="viewport", spacing=4, orientation="v")
         self.ent = Entry(
             name="search-entry", 
@@ -74,14 +83,34 @@ class ClipHistory(ListNavigationMixin, Box):
 
     def _flt(self, s=""):
         self._nav_clear()
-        if not self._it: return self._empty()
+        
+        if not os.path.exists(self.cache_file) or os.path.getsize(self.cache_file) == 0:
+            return self._empty()
+
         n = 0
-        for idx, cnt in self._it:
-            if s and s not in cnt.lower(): continue
-            self.vp.add(self._mk(idx, cnt)); n += 1
-            if n >= 100: break
-        if n: self.show_all(); GLib.idle_add(lambda: self._nav_usel(0) or False)
-        else: self._empty()
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    if s and s not in line.lower(): 
+                        continue
+                    
+                    parts = line.strip('\n').split('\t', 1)
+                    if len(parts) == 2:
+                        idx, cnt = parts
+                        self.vp.add(self._mk(idx, cnt))
+                        n += 1
+                        
+                        if n >= 100: 
+                            break
+        except Exception as e:
+            print(f"Ошибка чтения кэша истории: {e}")
+            return self._empty()
+
+        if n: 
+            self.show_all()
+            GLib.idle_add(lambda: self._nav_usel(0) or False)
+        else: 
+            self._empty()
 
     def _mk(self, idx, cnt):
         img = cnt.startswith("[[ binary data")
@@ -123,7 +152,10 @@ class ClipHistory(ListNavigationMixin, Box):
         self.close()
 
     def _wipe(self):
-        self._run(["cliphist", "wipe"]); self._it = None; self._flt()
+        self._run(["cliphist", "wipe"])
+        if os.path.exists(self.cache_file):
+            open(self.cache_file, 'w').close()
+        self._flt()
 
     def _empty(self):
         self._nav_clear()
@@ -147,9 +179,14 @@ class ClipHistory(ListNavigationMixin, Box):
 
     def open(self):
         self.ent.set_text("")
-        raw = self._run(["cliphist", "list"])
-        self._it = [(p[0], p[1]) for ln in raw.decode(errors='ignore').splitlines() if len(p := ln.split('\t', 1)) == 2] if raw else None
-        self._flt(); self.ent.grab_focus(); self.show_all()
+        
+        with open(self.cache_file, "w", encoding="utf-8") as f:
+            subprocess.run(["cliphist", "list"], stdout=f)
+            
+        self._flt()
+        self.ent.grab_focus()
+        self.show_all()
 
     def close(self):
-        self._nav_clear(); self._it = None; self.notch.close_notch()
+        self._nav_clear()
+        self.notch.close_notch()
