@@ -1,5 +1,7 @@
 from fabric.widgets.box import Box
+
 from modules.Notifications.history import NotificationHistory, NotificationContainer
+
 from services.wayland import WaylandWindow as Window
 
 
@@ -52,17 +54,15 @@ class NotificationPopup(Window):
             return
         self._destroyed = True
 
-        try:
-            if self._owns_history and self.notification_history:
-                pass
-
-        except Exception:
-            pass
-        finally:
-            super().destroy()
-
+        if self.notification_container is not None:
+            self.notification_container.destroy()
             self.notification_container = None
-            self._spacer = None
-            self._popup_box = None
-            if self._owns_history:
-                self.notification_history = None
+
+        if self._owns_history and self.notification_history is not None:
+            self.notification_history.destroy()
+
+        self.notification_history = None
+        self._spacer = None
+        self._popup_box = None
+
+        super().destroy()
