@@ -12,7 +12,7 @@ from modules.bar import Bar
 from modules.corners import Corners
 from modules.dock import Dock
 from modules.explorer import Explorer
-from modules.extra_life import SessionManager
+from modules.Notch.extra_life import SessionManager
 
 
 session_manager: SessionManager = None
@@ -61,6 +61,7 @@ def run():
     def on_shutdown(sig, frame):
         if session_manager:
             session_manager.stop_autosave()
+            session_manager.save()
         app.quit()
 
     signal.signal(signal.SIGINT, on_shutdown)

@@ -17,6 +17,8 @@
 @import url("./styles/overview.css");
 @import url("./styles/explorer.css");
 @import url("./styles/terminal.css");
+@import url("./styles/extra_life.css");
+
 
 * {
   all: unset;
