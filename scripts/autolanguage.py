@@ -8,7 +8,10 @@ import json
 import time
 import os
 import grp
+import setproctitle
 
+
+setproctitle.setproctitle("vidgex-autolanguage")
 
 def check_permissions():
     try:
