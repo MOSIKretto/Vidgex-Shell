@@ -197,3 +197,36 @@ button:active,
 #next-month-button:active {
   background-color: var(--primary);
 }
+
+
+
+/* ==================== AUTO LANGUAGE BUTTON (ICON) ==================== */
+
+#autolanguage-button {
+  border-radius: 12px;
+  background-color: var(--shadow);
+  border: none;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 4px 4px;
+  transition: all 0.1s ease;
+}
+
+#autolanguage-icon {
+  color: var(--outline);
+  font-size: 16px;
+  transition: all 0.1s ease;
+}
+
+#autolanguage-button:hover { background-color: var(--surface-bright); }
+#autolanguage-button:hover #autolanguage-icon { color: var(--primary); }
+
+#autolanguage-button.active,
+#autolanguage-button.active:hover { background-color: var(--primary); }
+#autolanguage-button.active #autolanguage-icon,
+#autolanguage-button.active:hover #autolanguage-icon { color: var(--shadow); }
+
+
+
+

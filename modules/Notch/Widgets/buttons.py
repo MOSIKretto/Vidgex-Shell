@@ -393,6 +393,39 @@ class EyesHandsButton(_ScriptToggleBtn):
     NAME, ICON, TEXT = "eyes-hands", icons.spy, "Eyes-Hands"
 
 
+class AutolayoutButton(_ScriptToggleBtn):
+    PAT = "vidgex-autolanguage" 
+    START = 'python ~/.config/Vidgex-Shell/scripts/autolanguage.py'
+    STOP = "pkill -f vidgex-autolanguage"
+    NAME = "autolanguage"
+
+    def __init__(self):
+        super().__init__()
+
+        self.set_tooltip_text("Auto Language")
+        self.set_hexpand(False)
+        
+        if self.get_child():
+            self.remove(self.get_child())
+            
+        self._ic = Label(name=f"{self.NAME}-icon", markup=icons.keyboard)
+        
+        custom_content = Box(
+            h_align="center", v_align="center",
+            children=[self._ic] 
+        )
+        
+        self.add(custom_content)
+        self.show_all()
+
+    def _upd(self, en):
+        if en:
+            self.add_style_class("active")
+        else:
+            self.remove_style_class("active")
+        return False
+
+
 class Buttons(Gtk.Grid):
     def __init__(self, widgets=None, notch=None):
         super().__init__(name="buttons-grid")

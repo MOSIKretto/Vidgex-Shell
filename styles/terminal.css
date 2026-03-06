@@ -105,13 +105,13 @@
 }
 
 #explorer-terminal-box {
-    background-color: #000000;
+    background-color: var(--shadow);
     border-radius: 12px;
     padding: 4px;
     border: 1px solid var(--primary);
 }
 
 #explorer-terminal {
-    background-color: #000000;
-    color: #cdd6f4;
+    background-color: var(--shadow);
+    color: var(--foreground);
 }

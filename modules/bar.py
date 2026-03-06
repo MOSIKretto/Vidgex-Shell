@@ -17,11 +17,11 @@ from fabric.widgets.eventbox import EventBox
 
 from gi.repository import Gdk, GLib, Gtk
 
+from modules.Notch.Widgets.buttons import AutolayoutButton
 from modules.Bar.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
-
 
 _CD = 0.2
 _TH = 0.5
@@ -443,7 +443,6 @@ class Bar(Window):
             child=Box(name="bar-revealer-box", spacing=4, children=[self.met]),
         )
 
-        self.ll = Label(name="lang-label")
         self.dt = DateTime(name="date-time", formatters=["%H:%M"])
         self.bat = Battery()
 
@@ -452,6 +451,42 @@ class Bar(Window):
             on_clicked=self._pwr, child=Label(name="button-bar-label", markup=icons.shutdown),
         )
         _hov(self.bp)
+
+        # === НОВЫЙ КОД ДЛЯ ИНДИКАТОРА ЯЗЫКА ===
+        self.ll = Label(name="lang-label")
+        
+        # Создаем кнопку Autolayout
+        self.autolayout_btn = AutolayoutButton()
+        
+        # Создаем Revealer, который будет выезжать слева от языка
+        self.lang_revealer = Revealer(
+            name="lang-revealer", 
+            transition_type="slide-right", 
+            child_revealed=False,
+            child=self.autolayout_btn
+        )
+
+        # Контейнер языка, содержащий выезжающую кнопку и сам текст "EN" / "RU"
+        self.lang_box = Box(
+            name="language-indicator", 
+            spacing=4, 
+            children=[self.lang_revealer, self.ll]
+        )
+        
+        # Оборачиваем в EventBox, чтобы отслеживать наведение мыши
+        self.lang_eb = EventBox(child=self.lang_box)
+        
+        # Привязываем события наведения (показать / скрыть)
+        self.lang_eb.connect("enter-notify-event", lambda *_: self.lang_revealer.set_reveal_child(True))
+        
+        # Скрываем только если курсор действительно ушел с виджета, а не перешел на дочернюю кнопку (INFERIOR)
+        def _on_lang_leave(widget, event):
+            if event.detail != Gdk.NotifyType.INFERIOR:
+                self.lang_revealer.set_reveal_child(False)
+            return False
+            
+        self.lang_eb.connect("leave-notify-event", _on_lang_leave)
+        # =======================================
 
         self.add(CenterBox(
             name="bar-inner",
@@ -463,7 +498,8 @@ class Bar(Window):
                 name="end-container", spacing=4, 
                 children=[
                     Box(name="boxed-revealer", children=[self.rr]),
-                    Box(name="power-battery-container", children=[self.dt, Box(name="language-indicator", children=[self.ll]), self.bat, self.bp])
+                    # Заменяем старый Box языка на новый EventBox (self.lang_eb)
+                    Box(name="power-battery-container", children=[self.dt, self.lang_eb, self.bat, self.bp])
                 ]
             ),
         ))

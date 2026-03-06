@@ -136,6 +136,9 @@ class TerminalMixin:
         term.set_vexpand(True)
         term.set_can_focus(True)
         term.set_font(Pango.FontDescription.from_string("Monospace 11"))
+        
+        # Включаем возможность выделения текста
+        term.set_allow_hyperlink(True)
 
         bg = Gdk.RGBA()
         bg.parse("#000000")
@@ -170,6 +173,74 @@ class TerminalMixin:
         except Exception as e:
             print(f"Error spawning terminal: {e}")
 
+    def _build_terminal_context_menu(self, term: Vte.Terminal) -> Gtk.Menu:
+        """Build context menu for terminal with copy/paste options"""
+        menu = Gtk.Menu()
+        menu.set_name("terminal-context-menu")
+        
+        # Copy
+        copy_item = Gtk.MenuItem(label="Copy  (Ctrl+Shift+C)")
+        copy_item.connect("activate", lambda _: term.copy_clipboard_format(Vte.Format.TEXT))
+        copy_item.set_sensitive(term.get_has_selection())
+        menu.append(copy_item)
+        
+        # Paste
+        paste_item = Gtk.MenuItem(label="Paste  (Ctrl+Shift+V)")
+        paste_item.connect("activate", lambda _: term.paste_clipboard())
+        menu.append(paste_item)
+        
+        menu.append(Gtk.SeparatorMenuItem())
+        
+        # Select All
+        select_all_item = Gtk.MenuItem(label="Select All")
+        select_all_item.connect("activate", lambda _: term.select_all())
+        menu.append(select_all_item)
+        
+        menu.append(Gtk.SeparatorMenuItem())
+        
+        # Clear Terminal
+        clear_item = Gtk.MenuItem(label="Clear Terminal")
+        clear_item.connect("activate", lambda _: term.reset(True, True))
+        menu.append(clear_item)
+        
+        menu.show_all()
+        return menu
+
+    def _h_terminal_key_press(self, term: Vte.Terminal, event) -> bool:
+        """Handle keyboard shortcuts for terminal (copy/paste)"""
+        ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
+        shift = event.state & Gdk.ModifierType.SHIFT_MASK
+        
+        if ctrl and shift:
+            # Ctrl+Shift+C - Copy
+            if event.keyval in (Gdk.KEY_C, Gdk.KEY_c):
+                if term.get_has_selection():
+                    term.copy_clipboard_format(Vte.Format.TEXT)
+                return True
+            
+            # Ctrl+Shift+V - Paste
+            elif event.keyval in (Gdk.KEY_V, Gdk.KEY_v):
+                term.paste_clipboard()
+                return True
+        
+        return False
+
+    def _h_terminal_button_press(self, term: Vte.Terminal, event) -> bool:
+        """Handle mouse clicks on terminal (context menu, focus)"""
+        # Right click - context menu
+        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 3:
+            menu = self._build_terminal_context_menu(term)
+            menu.popup_at_pointer(event)
+            return True
+        
+        # Left click - grab focus
+        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 1:
+            if hasattr(self, '_cancel_pending_hide'):
+                self._cancel_pending_hide()
+            self._grab_terminal_focus()
+        
+        return False
+
     def _add_terminal_tab(self, cwd=None, force_name: str = None):
         term_id = str(uuid.uuid4())
         is_home = len(self.terminals) == 0
@@ -184,7 +255,8 @@ class TerminalMixin:
 
         term = self._vte_create()
         term.connect("child-exited", lambda t, s: self._h_child_exited(term_id))
-        term.connect("button-press-event", self._h_terminal_click)
+        term.connect("button-press-event", self._h_terminal_button_press)
+        term.connect("key-press-event", self._h_terminal_key_press)  # Copy/Paste handler
         term.connect("current-directory-uri-changed", self._h_dir_changed, term_id)
         term.connect("window-title-changed", self._h_title_changed, term_id)
 
@@ -567,13 +639,6 @@ class TerminalMixin:
             self._switch_to_files()
         else:
             self._close_terminal_tab(term_id)
-
-    def _h_terminal_click(self, widget, event) -> bool:
-        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 1:
-            if hasattr(self, '_cancel_pending_hide'):
-                self._cancel_pending_hide()
-            self._grab_terminal_focus()
-        return False
 
     def _h_dir_changed(self, term: Vte.Terminal, term_id: str):
         if self.active_terminal_id == term_id:
