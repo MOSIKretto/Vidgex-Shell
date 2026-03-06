@@ -5,20 +5,12 @@ import subprocess
 import signal
 import sys
 import json
-import logging
 import time
 import os
 import grp
 
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
-log = logging.getLogger('autolayout')
-
-# ================= ПРОВЕРКА ОКРУЖЕНИЯ =================
 
 def check_permissions():
-    """Проверяет доступ к /dev/uinput, группу input и hyprctl — без sudo"""
-
-    # 1. Проверка hyprctl (Hyprland-сессия)
     try:
         subprocess.run(
             ["hyprctl", "devices"],
@@ -27,29 +19,14 @@ def check_permissions():
             check=True,
         )
     except Exception:
-        log.error("❌ hyprctl недоступен!")
-        log.error("   Запустите скрипт из Hyprland-сессии.")
         sys.exit(1)
 
-    # 2. Проверка /dev/uinput
     if not os.path.exists("/dev/uinput"):
-        log.error("❌ /dev/uinput не существует!")
-        log.error("   Выполните:")
-        log.error("     sudo modprobe uinput")
-        log.error("     echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf")
         sys.exit(1)
 
     if not os.access("/dev/uinput", os.R_OK | os.W_OK):
-        log.error("❌ Нет доступа к /dev/uinput!")
-        log.error("   Выполните:")
-        log.error("     sudo usermod -aG input $USER")
-        log.error("     sudo tee /etc/udev/rules.d/99-uinput.rules <<< "
-                   "'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"'")
-        log.error("     sudo udevadm control --reload-rules && sudo udevadm trigger")
-        log.error("     # Затем перелогиньтесь")
         sys.exit(1)
 
-    # 3. Проверка группы input
     try:
         username = os.getlogin()
     except OSError:
@@ -59,17 +36,12 @@ def check_permissions():
         try:
             input_group = grp.getgrnam("input")
             if username not in input_group.gr_mem and os.geteuid() != 0:
-                # Пользователь мог получить группу через основную — проверяем gid
                 user_gids = os.getgroups()
                 if input_group.gr_gid not in user_gids:
-                    log.warning("⚠️  Пользователь '%s' не в группе 'input'.", username)
-                    log.warning("   Выполните: sudo usermod -aG input %s", username)
-                    log.warning("   Затем перелогиньтесь.")
                     sys.exit(1)
         except KeyError:
-            log.warning("⚠️  Группа 'input' не найдена в системе.")
+            pass
 
-    # 4. Проверка доступа к input-устройствам
     accessible = False
     for path in evdev.list_devices():
         if os.access(path, os.R_OK):
@@ -77,15 +49,8 @@ def check_permissions():
             break
 
     if not accessible:
-        log.error("❌ Нет доступа ни к одному устройству в /dev/input/!")
-        log.error("   Выполните: sudo usermod -aG input $USER")
-        log.error("   Затем перелогиньтесь.")
         sys.exit(1)
 
-    log.info("✅ Все права настроены, sudo не требуется")
-
-
-# ================= МАППИНГ =================
 
 KEY_MAP = {
     16: 'q', 17: 'w', 18: 'e', 19: 'r', 20: 't', 21: 'y', 22: 'u', 23: 'i',
@@ -114,11 +79,8 @@ SHIFT_SCANCODES = {42, 54}
 BOUNDARY_SCANCODES = {57, 28}
 BACKSPACE_SC = 14
 
-# ================= АНАЛИЗАТОР =================
 
 class SmartAnalyzer:
-    """Улучшенный математический анализатор с правилами орфографии"""
-
     @classmethod
     def analyze(cls, word: str) -> str | None:
         word = word.lower().rstrip("?/:!*()-,.;")
@@ -131,8 +93,6 @@ class SmartAnalyzer:
         diff = ru_score - en_score
 
         threshold = 15.0 if len(word) <= 2 else (10.0 if len(word) <= 4 else 5.0)
-
-        log.debug(f"Слово: '{word}' | EN: {en_score}, RU: {ru_score} | Diff: {diff}")
 
         if diff > threshold:
             return 'ru'
@@ -257,7 +217,6 @@ class SmartAnalyzer:
                 cur = 0
         return mx
 
-# ================= HYPRLAND =================
 
 class HyprlandManager:
     def __init__(self):
@@ -298,10 +257,9 @@ class HyprlandManager:
         idx = self.ru_index if lang == 'ru' else self.en_index
         try:
             subprocess.run(["hyprctl", "switchxkblayout", "all", idx], capture_output=True)
-        except Exception as ex:
-            log.error(f"Ошибка переключения: {ex}")
+        except Exception:
+            pass
 
-# ================= KEYSTROKE =================
 
 class KeyStroke:
     __slots__ = ('scancode', 'shifted')
@@ -314,7 +272,6 @@ class KeyStroke:
     def char(self) -> str:
         return KEY_MAP.get(self.scancode, '')
 
-# ================= AUTOLAYOUT =================
 
 class Autolayout:
     def __init__(self):
@@ -349,19 +306,16 @@ class Autolayout:
         if not candidates:
             raise RuntimeError("Клавиатура не найдена! Проверьте группу input.")
         best = max(candidates, key=lambda d: len(d.capabilities().get(e.EV_KEY, [])))
-        log.info(f"✅ Устройство перехвачено: {best.name}")
         return best
 
     def run(self):
         self.device.grab()
-        log.info("🚀 Пишите текст (Space / Enter триггерят проверку)")
         try:
             for event in self.device.read_loop():
                 if self.is_correcting:
                     continue
                 self._handle(event)
-        except KeyboardInterrupt:
-            pass
+        
         finally:
             try:
                 self.device.ungrab()
@@ -454,7 +408,6 @@ class Autolayout:
         current = self.hypr.get_layout()
 
         if target and target != current:
-            log.info(f"🔄 ИСПРАВЛЕНИЕ: '{raw_word}' → Раскладка {target.upper()}")
             self._execute_correction(target, boundary_sc)
         else:
             self.buffer.clear()
@@ -508,12 +461,9 @@ def main():
     try:
         app = Autolayout()
         app.run()
-    except PermissionError as ex:
-        log.error(f"❌ Ошибка доступа: {ex}")
-        log.error("   Проверьте: sudo usermod -aG input $USER && перелогиньтесь")
+    except PermissionError:
         sys.exit(1)
-    except Exception as ex:
-        log.error(f"❌ Критическая ошибка: {ex}")
+    except Exception:
         sys.exit(1)
 
 

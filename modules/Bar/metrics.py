@@ -12,7 +12,7 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
-from gi.repository import GLib
+from gi.repository import Gdk, GLib
 
 from services.network import NetworkClient
 from services.upower import UPowerManager
@@ -21,6 +21,19 @@ import services.icons as icons
 
 _prov = None
 _subs = weakref.WeakSet()
+_cursor_hand = None
+
+
+def _hov(w):
+    """Меняет курсор на hand2 при наведении на виджет"""
+    def sc(widget, _, is_hovered):
+        global _cursor_hand
+        if not _cursor_hand:
+            _cursor_hand = Gdk.Cursor.new_from_name(widget.get_display(), "hand2")
+        if win := widget.get_window():
+            win.set_cursor(_cursor_hand if is_hovered else None)
+    w.connect("enter-notify-event", sc, True)
+    w.connect("leave-notify-event", sc, False)
 
 
 def _sub(widget):
@@ -424,6 +437,7 @@ class Battery(Box):
             btn.connect('clicked', self._on_mode_btn_clicked, mode)
             btn.connect('enter-notify-event', self._ent)
             btn.connect('leave-notify-event', self._lv)
+            _hov(btn)
             self.pmb.add(btn)
             setattr(self, 'bs' if mode == 'power-saver' else 'bb' if mode == 'balanced' else 'bp', btn)
         

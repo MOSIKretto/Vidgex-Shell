@@ -23,6 +23,7 @@ from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
 
+
 _CD = 0.2
 _TH = 0.5
 _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
@@ -117,7 +118,6 @@ class TopWorkspaces(Box):
         for col in range(3):
             btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
             btn.connect("clicked", lambda _, c=col: self._on_dot_clicked(c))
-            # Скролл на кнопках
             btn.add_events(_SM)
             btn.connect("scroll-event", self._on_scroll)
             _hov(btn)
@@ -126,7 +126,6 @@ class TopWorkspaces(Box):
         
         self.inner_box.add(self.dots_box)
         
-        # Оборачиваем все в EventBox
         self.event_box = EventBox(child=self.inner_box)
         self.event_box.add_events(_SM)
         self.event_box.connect("scroll-event", self._on_scroll)
@@ -203,7 +202,6 @@ class LeftWorkspaces(Box):
         self._update_ui()
 
     def _on_scroll(self, _, event):
-        # Ограничиваем только осью Y
         direction = _check_scroll_cooldown(event, axis='y')
         if direction == 0: return False
 
@@ -452,13 +450,10 @@ class Bar(Window):
         )
         _hov(self.bp)
 
-        # === НОВЫЙ КОД ДЛЯ ИНДИКАТОРА ЯЗЫКА ===
         self.ll = Label(name="lang-label")
         
-        # Создаем кнопку Autolayout
         self.autolayout_btn = AutolayoutButton()
         
-        # Создаем Revealer, который будет выезжать слева от языка
         self.lang_revealer = Revealer(
             name="lang-revealer", 
             transition_type="slide-right", 
@@ -466,27 +461,22 @@ class Bar(Window):
             child=self.autolayout_btn
         )
 
-        # Контейнер языка, содержащий выезжающую кнопку и сам текст "EN" / "RU"
         self.lang_box = Box(
             name="language-indicator", 
             spacing=4, 
             children=[self.lang_revealer, self.ll]
         )
         
-        # Оборачиваем в EventBox, чтобы отслеживать наведение мыши
         self.lang_eb = EventBox(child=self.lang_box)
         
-        # Привязываем события наведения (показать / скрыть)
         self.lang_eb.connect("enter-notify-event", lambda *_: self.lang_revealer.set_reveal_child(True))
         
-        # Скрываем только если курсор действительно ушел с виджета, а не перешел на дочернюю кнопку (INFERIOR)
         def _on_lang_leave(widget, event):
             if event.detail != Gdk.NotifyType.INFERIOR:
                 self.lang_revealer.set_reveal_child(False)
             return False
             
         self.lang_eb.connect("leave-notify-event", _on_lang_leave)
-        # =======================================
 
         self.add(CenterBox(
             name="bar-inner",
@@ -498,7 +488,6 @@ class Bar(Window):
                 name="end-container", spacing=4, 
                 children=[
                     Box(name="boxed-revealer", children=[self.rr]),
-                    # Заменяем старый Box языка на новый EventBox (self.lang_eb)
                     Box(name="power-battery-container", children=[self.dt, self.lang_eb, self.bat, self.bp])
                 ]
             ),
