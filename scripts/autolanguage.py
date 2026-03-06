@@ -8,21 +8,82 @@ import json
 import logging
 import time
 import os
+import grp
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger('autolayout')
 
 # ================= ПРОВЕРКА ОКРУЖЕНИЯ =================
 
-def check_hyprctl():
-    """Проверяет, доступен ли Hyprland (защита от запуска через обычный sudo)"""
+def check_permissions():
+    """Проверяет доступ к /dev/uinput, группу input и hyprctl — без sudo"""
+
+    # 1. Проверка hyprctl (Hyprland-сессия)
     try:
-        subprocess.run(["hyprctl", "devices"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        subprocess.run(
+            ["hyprctl", "devices"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
     except Exception:
-        log.error("❌ ОШИБКА: hyprctl недоступен!")
-        log.error("Если вы запускаете скрипт через sudo, переменные окружения Wayland теряются.")
-        log.error("👉 ЗАПУСКАЙТЕ ТАК:  sudo -E python3 script.py")
+        log.error("❌ hyprctl недоступен!")
+        log.error("   Запустите скрипт из Hyprland-сессии.")
         sys.exit(1)
+
+    # 2. Проверка /dev/uinput
+    if not os.path.exists("/dev/uinput"):
+        log.error("❌ /dev/uinput не существует!")
+        log.error("   Выполните:")
+        log.error("     sudo modprobe uinput")
+        log.error("     echo 'uinput' | sudo tee /etc/modules-load.d/uinput.conf")
+        sys.exit(1)
+
+    if not os.access("/dev/uinput", os.R_OK | os.W_OK):
+        log.error("❌ Нет доступа к /dev/uinput!")
+        log.error("   Выполните:")
+        log.error("     sudo usermod -aG input $USER")
+        log.error("     sudo tee /etc/udev/rules.d/99-uinput.rules <<< "
+                   "'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"'")
+        log.error("     sudo udevadm control --reload-rules && sudo udevadm trigger")
+        log.error("     # Затем перелогиньтесь")
+        sys.exit(1)
+
+    # 3. Проверка группы input
+    try:
+        username = os.getlogin()
+    except OSError:
+        username = os.environ.get("USER", "")
+
+    if username:
+        try:
+            input_group = grp.getgrnam("input")
+            if username not in input_group.gr_mem and os.geteuid() != 0:
+                # Пользователь мог получить группу через основную — проверяем gid
+                user_gids = os.getgroups()
+                if input_group.gr_gid not in user_gids:
+                    log.warning("⚠️  Пользователь '%s' не в группе 'input'.", username)
+                    log.warning("   Выполните: sudo usermod -aG input %s", username)
+                    log.warning("   Затем перелогиньтесь.")
+                    sys.exit(1)
+        except KeyError:
+            log.warning("⚠️  Группа 'input' не найдена в системе.")
+
+    # 4. Проверка доступа к input-устройствам
+    accessible = False
+    for path in evdev.list_devices():
+        if os.access(path, os.R_OK):
+            accessible = True
+            break
+
+    if not accessible:
+        log.error("❌ Нет доступа ни к одному устройству в /dev/input/!")
+        log.error("   Выполните: sudo usermod -aG input $USER")
+        log.error("   Затем перелогиньтесь.")
+        sys.exit(1)
+
+    log.info("✅ Все права настроены, sudo не требуется")
+
 
 # ================= МАППИНГ =================
 
@@ -68,9 +129,7 @@ class SmartAnalyzer:
         ru_score = cls._score_russian(word)
 
         diff = ru_score - en_score
-        
-        # Пороги: для коротких слов мы теперь допускаем чуть меньший отрыв, 
-        # потому что добавили сильные штрафы за орфографию
+
         threshold = 15.0 if len(word) <= 2 else (10.0 if len(word) <= 4 else 5.0)
 
         log.debug(f"Слово: '{word}' | EN: {en_score}, RU: {ru_score} | Diff: {diff}")
@@ -86,39 +145,38 @@ class SmartAnalyzer:
         score = 0.0
         n = len(word)
 
-        # 1. Гласные
         vowels = sum(1 for c in word if c in EN_VOWELS)
         ratio = vowels / n if n > 0 else 0
-        if vowels == 0 and n >= 2: score -= 30
-        elif 0.2 <= ratio <= 0.5: score += 10
+        if vowels == 0 and n >= 2:
+            score -= 30
+        elif 0.2 <= ratio <= 0.5:
+            score += 10
 
-        # 2. Пунктуация внутри слова = точно не EN
         for i, c in enumerate(word):
             if c in EN_PUNCT_AS_RU_LETTER:
                 score -= 50 if i < n - 1 else 20
 
-        # 3. Длинные цепочки согласных
         max_cons = cls._max_consecutive(word, lambda c: c.isalpha() and c not in EN_VOWELS)
-        if max_cons >= 5: score -= 30
-        elif max_cons == 4: score -= 10
+        if max_cons >= 5:
+            score -= 30
+        elif max_cons == 4:
+            score -= 10
 
-        # 4. Бонус за типичные английские связки (this, false)
-        common_en_pairs = ['th', 'he', 'in', 'er', 're', 'nd', 'ed', 'ng', 'al', 'se', 'is', 'to', 'of', 'it']
+        common_en_pairs = [
+            'th', 'he', 'in', 'er', 're', 'nd', 'ed', 'ng',
+            'al', 'se', 'is', 'to', 'of', 'it',
+        ]
         for pair in common_en_pairs:
             if pair in word:
                 score += 10
 
-        # 5. Двойные буквы (cool, hello)
         for double in ('ll', 'ee', 'oo', 'ss', 'tt', 'ff', 'rr', 'nn', 'mm', 'pp', 'cc'):
             if double in word:
                 score += 15
 
-        # 6. АНГЛИЙСКАЯ ФОНОТАКТИКА (спасает 'yj' -> 'но')
-        # Английские слова почти никогда не заканчиваются на j, v, q
         if word[-1] in 'jvq':
             score -= 25
-            
-        # Немая 'e' на конце
+
         if n >= 3 and word[-1] == 'e' and word[-2] not in EN_VOWELS:
             score += 10
 
@@ -130,40 +188,41 @@ class SmartAnalyzer:
         n = len(word)
 
         ru = ''.join(EN_TO_RU.get(c, '\x00') for c in word)
-        
+
         if '\x00' in ru:
             score -= 25 * ru.count('\x00')
 
         ru_clean = ru.replace('\x00', '')
         nc = len(ru_clean)
-        if nc == 0: return score
+        if nc == 0:
+            return score
 
-        # 1. Гласные
         vowels = sum(1 for c in ru_clean if c in RU_VOWELS)
         ratio = vowels / nc if nc > 0 else 0
-        
-        if vowels == 0 and nc >= 2: score -= 30
-        elif ratio > 0.6 and nc >= 4: score -= 15
-        elif 0.2 <= ratio <= 0.55: score += 10
 
-        # 2. Спецсимволы EN раскладки (; ' , .) = Точно русский
+        if vowels == 0 and nc >= 2:
+            score -= 30
+        elif ratio > 0.6 and nc >= 4:
+            score -= 15
+        elif 0.2 <= ratio <= 0.55:
+            score += 10
+
         punct_count = sum(1 for c in word if c in EN_PUNCT_AS_RU_LETTER)
-        if punct_count > 0: score += 40 * punct_count
+        if punct_count > 0:
+            score += 40 * punct_count
 
-        # 3. РУССКАЯ ОРФОГРАФИЯ (Штрафы за невозможные связки)
-        # Спасает 'ершы' (this) и 'шы' (is)
         for bad_pair in ('жы', 'шы', 'чя', 'щя', 'чю', 'щю'):
             if bad_pair in ru_clean:
-                score -= 40  # Жесточайший штраф за нарушение правил 1 класса
+                score -= 40
 
         allowed_ru_vowel_pairs = {
-            'ия', 'ие', 'ее', 'ая', 'ое', 'ую', 'юю', 'яя', 'ау', 'уа', 
-            'ии', 'ои', 'аи', 'еи', 'уи', 'ае', 'оа', 'ио', 'ею', 'аю', 'ою', 'уе'
+            'ия', 'ие', 'ее', 'ая', 'ое', 'ую', 'юю', 'яя', 'ау', 'уа',
+            'ии', 'ои', 'аи', 'еи', 'уи', 'ае', 'оа', 'ио', 'ею', 'аю', 'ою', 'уе',
         }
 
         for i in range(nc - 1):
             a, b = ru_clean[i], ru_clean[i + 1]
-            
+
             if a in RU_VOWELS and b in RU_VOWELS:
                 if (a + b) not in allowed_ru_vowel_pairs:
                     score -= 25
@@ -178,8 +237,11 @@ class SmartAnalyzer:
         if ru_clean[0] in 'ыьъ':
             score -= 30
 
-        alternations = sum(1 for i in range(nc - 1) if (ru_clean[i] in RU_VOWELS) != (ru_clean[i + 1] in RU_VOWELS))
-        if nc >= 3 and alternations / (nc - 1) > 0.4: 
+        alternations = sum(
+            1 for i in range(nc - 1)
+            if (ru_clean[i] in RU_VOWELS) != (ru_clean[i + 1] in RU_VOWELS)
+        )
+        if nc >= 3 and alternations / (nc - 1) > 0.4:
             score += 5
 
         return score
@@ -205,24 +267,28 @@ class HyprlandManager:
 
     def _setup(self):
         try:
-            out = subprocess.check_output(["hyprctl", "getoption", "input:kb_layout", "-j"], text=True)
+            out = subprocess.check_output(
+                ["hyprctl", "getoption", "input:kb_layout", "-j"], text=True,
+            )
             layouts = json.loads(out)["str"].split(",")
             for i, layout in enumerate(layouts):
                 name = layout.strip().lower()
-                if "ru" in name: self.ru_index = str(i)
-                elif "us" in name or "en" in name: self.en_index = str(i)
+                if "ru" in name:
+                    self.ru_index = str(i)
+                elif "us" in name or "en" in name:
+                    self.en_index = str(i)
         except Exception:
             pass
 
     def get_layout(self) -> str:
-        """Находит текущую раскладку основной (main) клавиатуры"""
         try:
             out = subprocess.check_output(["hyprctl", "devices", "-j"], text=True)
             devices = json.loads(out)
             for kbd in devices.get("keyboards", []):
-                if kbd.get("main"): # Берем только основную клавиатуру
+                if kbd.get("main"):
                     keymap = kbd.get("active_keymap", "").lower()
-                    if "ru" in keymap or "рус" in keymap: return 'ru'
+                    if "ru" in keymap or "рус" in keymap:
+                        return 'ru'
                     return 'en'
             return 'en'
         except Exception:
@@ -231,7 +297,6 @@ class HyprlandManager:
     def switch_layout(self, lang: str):
         idx = self.ru_index if lang == 'ru' else self.en_index
         try:
-            # all переключает разом и физическую, и нашу виртуальную клавиатуру
             subprocess.run(["hyprctl", "switchxkblayout", "all", idx], capture_output=True)
         except Exception as ex:
             log.error(f"Ошибка переключения: {ex}")
@@ -240,9 +305,11 @@ class HyprlandManager:
 
 class KeyStroke:
     __slots__ = ('scancode', 'shifted')
+
     def __init__(self, scancode: int, shifted: bool):
         self.scancode = scancode
         self.shifted = shifted
+
     @property
     def char(self) -> str:
         return KEY_MAP.get(self.scancode, '')
@@ -268,14 +335,19 @@ class Autolayout:
             try:
                 dev = evdev.InputDevice(path)
                 caps = dev.capabilities()
-                if e.EV_KEY not in caps: continue
+                if e.EV_KEY not in caps:
+                    continue
                 keys = caps[e.EV_KEY]
-                if not all(sc in keys for sc in [30, 31, 32, 33, 28]): continue
-                if "autolayout" in dev.name.lower(): continue
+                if not all(sc in keys for sc in [30, 31, 32, 33, 28]):
+                    continue
+                if "autolayout" in dev.name.lower():
+                    continue
                 candidates.append(dev)
-            except: pass
+            except Exception:
+                pass
 
-        if not candidates: raise RuntimeError("Клавиатура не найдена!")
+        if not candidates:
+            raise RuntimeError("Клавиатура не найдена! Проверьте группу input.")
         best = max(candidates, key=lambda d: len(d.capabilities().get(e.EV_KEY, [])))
         log.info(f"✅ Устройство перехвачено: {best.name}")
         return best
@@ -285,12 +357,16 @@ class Autolayout:
         log.info("🚀 Пишите текст (Space / Enter триггерят проверку)")
         try:
             for event in self.device.read_loop():
-                if self.is_correcting: continue
+                if self.is_correcting:
+                    continue
                 self._handle(event)
-        except KeyboardInterrupt: pass
+        except KeyboardInterrupt:
+            pass
         finally:
-            try: self.device.ungrab()
-            except: pass
+            try:
+                self.device.ungrab()
+            except Exception:
+                pass
             self.ui.close()
             self.device.close()
 
@@ -316,15 +392,17 @@ class Autolayout:
             return
 
         if sc in {29, 97, 56, 100} or sc in MODIFIER_SCANCODES:
-            if sc in {29, 97}: self.ctrl_pressed = (state != 0)
-            if sc in {56, 100}: self.alt_pressed = (state != 0)
+            if sc in {29, 97}:
+                self.ctrl_pressed = (state != 0)
+            if sc in {56, 100}:
+                self.alt_pressed = (state != 0)
             if state == 1:
                 self.modifier_used = True
                 self.buffer.clear()
             self._pass_event(event)
             return
 
-        if state != 1: 
+        if state != 1:
             self._pass_event(event)
             return
 
@@ -335,7 +413,8 @@ class Autolayout:
             return
 
         if sc == BACKSPACE_SC:
-            if self.buffer: self.buffer.pop()
+            if self.buffer:
+                self.buffer.pop()
             self._pass_event(event)
             return
 
@@ -364,8 +443,7 @@ class Autolayout:
         raw_word = ''.join(ks.char for ks in self.buffer)
         has_mixed = any(ks.shifted for ks in self.buffer[1:])
         all_shifted = all(ks.shifted for ks in self.buffer)
-        
-        # Если слово вида camelCase - пропускаем
+
         if has_mixed and not all_shifted:
             self.buffer.clear()
             self._emit(e.EV_KEY, boundary_sc, 1)
@@ -392,33 +470,29 @@ class Autolayout:
             if self.shift_pressed:
                 self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 0)
 
-            # 1. Стираем неверный текст
             for _ in range(len(strokes)):
                 self._emit(e.EV_KEY, e.KEY_BACKSPACE, 1)
                 self._emit(e.EV_KEY, e.KEY_BACKSPACE, 0)
                 time.sleep(0.01)
 
-            # 2. Переключаем язык
             self.hypr.switch_layout(lang)
-            
-            # ВАЖНО: Wayland нужно время, чтобы переключить layout для виртуальной клавиатуры
-            time.sleep(0.15) 
+            time.sleep(0.15)
 
-            # 3. Печатаем заново
             for ks in strokes:
-                if ks.shifted: self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 1)
+                if ks.shifted:
+                    self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 1)
                 self._emit(e.EV_KEY, ks.scancode, 1)
                 time.sleep(0.005)
                 self._emit(e.EV_KEY, ks.scancode, 0)
                 time.sleep(0.005)
-                if ks.shifted: self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 0)
+                if ks.shifted:
+                    self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 0)
 
             if self.shift_pressed:
                 self._emit(e.EV_KEY, e.KEY_LEFTSHIFT, 1)
 
             time.sleep(0.02)
-            
-            # 4. Нажимаем пробел (или Enter)
+
             self._emit(e.EV_KEY, boundary_sc, 1)
             self._emit(e.EV_KEY, boundary_sc, 0)
 
@@ -427,16 +501,21 @@ class Autolayout:
 
 
 def main():
-    check_hyprctl()
+    check_permissions()
     signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
     signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
 
     try:
         app = Autolayout()
         app.run()
+    except PermissionError as ex:
+        log.error(f"❌ Ошибка доступа: {ex}")
+        log.error("   Проверьте: sudo usermod -aG input $USER && перелогиньтесь")
+        sys.exit(1)
     except Exception as ex:
         log.error(f"❌ Критическая ошибка: {ex}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

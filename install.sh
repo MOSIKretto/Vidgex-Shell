@@ -33,6 +33,9 @@ MATUGEN_SRC="$INSTALL_DIR/helper-folder/matugen"
 MATUGEN_DST="$HOME/.config/matugen"
 LANG_CHOICE="EN"
 
+AUTOLAYOUT_SCRIPT="$INSTALL_DIR/autolayout.py"
+AUTOLAYOUT_SERVICE="$HOME/.config/systemd/user/autolayout.service"
+
 PACKAGES=(
   # Hyprland и основные компоненты
   hyprland
@@ -66,7 +69,7 @@ PACKAGES=(
   playerctl
   power-profiles-daemon
   upower
-  gray-git 
+  gray-git
 
   # Python зависимости
   python-setproctitle
@@ -78,6 +81,7 @@ PACKAGES=(
   python-pywayland
   python-onnxruntime-cpu
   python-dbus
+  python-evdev
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -150,6 +154,24 @@ declare -A MSG_RU=(
   ["gpu_amd_sysfs"]="Используется встроенная поддержка через sysfs"
   ["gpu_amd_sysfs_ok"]="Интерфейс sysfs доступен"
   ["gpu_amd_sysfs_not_found"]="Интерфейс gpu_busy_percent не найден"
+  # ── Autolayout ──
+  ["autolayout_title"]="Настройка Autolayout (переключатель раскладки)..."
+  ["autolayout_adding_group"]="Добавление пользователя в группу input..."
+  ["autolayout_group_exists"]="Пользователь уже в группе input."
+  ["autolayout_group_added"]="Пользователь добавлен в группу input!"
+  ["autolayout_udev_rule"]="Создание udev-правила для /dev/uinput..."
+  ["autolayout_udev_exists"]="udev-правило уже существует."
+  ["autolayout_udev_created"]="udev-правило создано!"
+  ["autolayout_module_load"]="Загрузка модуля ядра uinput..."
+  ["autolayout_module_exists"]="Модуль uinput уже загружен."
+  ["autolayout_module_loaded"]="Модуль uinput загружен и добавлен в автозагрузку!"
+  ["autolayout_udev_reload"]="Применение udev-правил..."
+  ["autolayout_udev_reloaded"]="udev-правила применены!"
+  ["autolayout_service"]="Создание systemd user-сервиса autolayout..."
+  ["autolayout_service_exists"]="Сервис autolayout уже создан."
+  ["autolayout_service_created"]="Сервис autolayout создан и включён!"
+  ["autolayout_done"]="Autolayout настроен! (права применятся после перелогина)"
+  ["autolayout_note"]="Примечание: группа input применится после перезагрузки/перелогина"
 )
 
 declare -A MSG_EN=(
@@ -218,6 +240,24 @@ declare -A MSG_EN=(
   ["gpu_amd_sysfs"]="Using built-in sysfs support"
   ["gpu_amd_sysfs_ok"]="sysfs interface available"
   ["gpu_amd_sysfs_not_found"]="gpu_busy_percent interface not found"
+  # ── Autolayout ──
+  ["autolayout_title"]="Configuring Autolayout (keyboard layout switcher)..."
+  ["autolayout_adding_group"]="Adding user to input group..."
+  ["autolayout_group_exists"]="User is already in input group."
+  ["autolayout_group_added"]="User added to input group!"
+  ["autolayout_udev_rule"]="Creating udev rule for /dev/uinput..."
+  ["autolayout_udev_exists"]="udev rule already exists."
+  ["autolayout_udev_created"]="udev rule created!"
+  ["autolayout_module_load"]="Loading uinput kernel module..."
+  ["autolayout_module_exists"]="uinput module already loaded."
+  ["autolayout_module_loaded"]="uinput module loaded and added to autostart!"
+  ["autolayout_udev_reload"]="Reloading udev rules..."
+  ["autolayout_udev_reloaded"]="udev rules reloaded!"
+  ["autolayout_service"]="Creating systemd user service for autolayout..."
+  ["autolayout_service_exists"]="Autolayout service already created."
+  ["autolayout_service_created"]="Autolayout service created and enabled!"
+  ["autolayout_done"]="Autolayout configured! (permissions apply after re-login)"
+  ["autolayout_note"]="Note: input group takes effect after reboot/re-login"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -263,7 +303,7 @@ print_separator() {
 
 show_animated_banner() {
   clear
-  
+
   local banner_lines=(
     "        #########################################################################################        "
     "  #####################################################################################################  "
@@ -286,18 +326,18 @@ show_animated_banner() {
     "  #####################################################################################################  "
     "        #########################################################################################        "
   )
-  
-  local colors=("$GRAY" "$GRAY" "$CYAN" "$CYAN" "$LIGHT_CYAN" "$CYAN" 
-                "$PURPLE" "$LIGHT_PURPLE" "$PURPLE" "$LIGHT_PURPLE" 
+
+  local colors=("$GRAY" "$GRAY" "$CYAN" "$CYAN" "$LIGHT_CYAN" "$CYAN"
+                "$PURPLE" "$LIGHT_PURPLE" "$PURPLE" "$LIGHT_PURPLE"
                 "$PURPLE" "$LIGHT_PURPLE" "$PURPLE" "$LIGHT_PURPLE"
                 "$CYAN" "$LIGHT_CYAN" "$CYAN" "$CYAN" "$GRAY" "$GRAY")
-  
+
   echo ""
-  
+
   for i in "${!banner_lines[@]}"; do
     local line="${banner_lines[$i]}"
     local color="${colors[$i]}"
-    
+
     local glitch_chars='░▒▓█#@'
     local glitched=""
     for ((j=0; j<${#line}; j++)); do
@@ -309,14 +349,14 @@ show_animated_banner() {
     done
     echo -ne "${GRAY}${glitched}${NC}\r"
     sleep 0.02
-    
+
     echo -e "${color}${line}${NC}"
     sleep 0.03
   done
-  
+
   echo ""
   sleep 0.2
-  
+
   echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
   echo -e "${WHITE}${BOLD}                  ║                ${PURPLE}V I D G E X  -  S H E L L${WHITE}                      ║${NC}"
@@ -330,9 +370,9 @@ show_banner() {
   clear
   echo -e "${CYAN}"
   cat << 'EOF'
-        #########################################################################################        
-  #####################################################################################################  
- ####################################################################################################### 
+        #########################################################################################
+  #####################################################################################################
+ #######################################################################################################
 ###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
 ###---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---###
 ###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
@@ -347,9 +387,9 @@ show_banner() {
 ###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
 ###---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---###
 ###   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ---   ###
- ####################################################################################################### 
-  #####################################################################################################  
-        #########################################################################################        
+ #######################################################################################################
+  #####################################################################################################
+        #########################################################################################
 EOF
   echo -e "${NC}"
   echo ""
@@ -376,9 +416,9 @@ select_language() {
   echo -e "${WHITE}${BOLD}└───────────────────────────────────────────┘${NC}"
   echo ""
   echo -ne "${YELLOW}►${NC} Введите номер / Enter number ${GRAY}[1/2]:${NC} "
-  
+
   read -r choice
-  
+
   case $choice in
     1)
       LANG_CHOICE="RU"
@@ -396,7 +436,7 @@ select_language() {
       print_warning "Invalid choice. Using English."
       ;;
   esac
-  
+
   echo ""
   echo -ne "${GRAY}$(msg "press_continue")${NC}"
   read -r
@@ -407,7 +447,7 @@ select_language() {
 # ═══════════════════════════════════════════════════════════════════════════════
 copy_matugen_config() {
   print_step "$(msg "copying_matugen")"
-  
+
   if [ -d "$MATUGEN_DST" ]; then
     print_success "$(msg "matugen_exists")"
     echo -e "         ${GRAY}→ $MATUGEN_DST${NC}"
@@ -427,14 +467,12 @@ copy_matugen_config() {
 # ═══════════════════════════════════════════════════════════════════════════════
 configure_hyprland() {
   print_step "$(msg "config_hyprland")"
-  
-  # Создаём директорию если не существует
+
   if [ ! -d "$HOME/.config/hypr" ]; then
     mkdir -p "$HOME/.config/hypr"
     print_info "Created ~/.config/hypr directory"
   fi
-  
-  # Проверяем, есть ли уже строка source в конфиге (точное совпадение)
+
   if [ -f "$HYPRLAND_CONF" ]; then
     if grep -qF "source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf" "$HYPRLAND_CONF" 2>/dev/null; then
       print_success "$(msg "hyprland_already_configured")"
@@ -443,8 +481,7 @@ configure_hyprland() {
       return 0
     fi
   fi
-  
-  # Создаём бэкап если старый конфиг существует
+
   if [ -f "$HYPRLAND_CONF" ]; then
     BACKUP_FILE="${HYPRLAND_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
     print_info "$(msg "hyprland_backup")"
@@ -454,10 +491,9 @@ configure_hyprland() {
   else
     print_info "$(msg "hyprland_no_backup")"
   fi
-  
-  # Создаём новый конфиг Vidgex-Shell
+
   print_info "$(msg "hyprland_creating")"
-  
+
   cat > "$HYPRLAND_CONF" <<'EOF'
 monitor = ,preferred,auto,1
 
@@ -566,15 +602,14 @@ EOF
 # ═══════════════════════════════════════════════════════════════════════════════
 detect_and_configure_gpu() {
   print_step "$(msg "detecting_gpu")"
-  
+
   local gpu_vendor=""
   local gpu_name=""
-  
-  # через lspci (наиболее надёжный)
+
   if command -v lspci &>/dev/null; then
     local lspci_output
     lspci_output=$(lspci 2>/dev/null | grep -E "VGA|3D|Display" || true)
-    
+
     if echo "$lspci_output" | grep -iq "nvidia"; then
       gpu_vendor="nvidia"
       gpu_name=$(echo "$lspci_output" | grep -i nvidia | head -1 | sed 's/.*: //')
@@ -586,13 +621,12 @@ detect_and_configure_gpu() {
       gpu_name=$(echo "$lspci_output" | grep -iE "amd|radeon" | head -1 | sed 's/.*: //')
     fi
   fi
-  
-  # через /sys/class/drm (запасной вариант)
+
   if [ -z "$gpu_vendor" ]; then
     shopt -s nullglob
     local vendor_files=(/sys/class/drm/card*/device/vendor)
     shopt -u nullglob
-    
+
     for card_vendor in "${vendor_files[@]}"; do
       if [ -f "$card_vendor" ]; then
         local vendor_id
@@ -606,18 +640,16 @@ detect_and_configure_gpu() {
       fi
     done
   fi
-  
-  # Если GPU не определён
+
   if [ -z "$gpu_vendor" ]; then
     print_warning "$(msg "gpu_not_detected")"
     print_info "$(msg "gpu_skip")"
     return 0
   fi
-  
+
   print_success "$(msg "gpu_detected"): ${CYAN}${gpu_vendor^^}${NC}"
   [ -n "$gpu_name" ] && echo -e "         ${GRAY}→ $gpu_name${NC}"
-  
-  # Настройка в зависимости от производителя
+
   case "$gpu_vendor" in
     nvidia)
       print_info "$(msg "gpu_installing_nvidia")"
@@ -631,11 +663,10 @@ detect_and_configure_gpu() {
         print_warning "$(msg "gpu_nvidia_failed")"
       fi
       ;;
-      
+
     intel)
       print_info "$(msg "gpu_installing_intel")"
-      
-      # Устанавливаем intel-gpu-tools
+
       local intel_installed=false
       if pacman -Qq intel-gpu-tools &>/dev/null; then
         intel_installed=true
@@ -647,12 +678,10 @@ detect_and_configure_gpu() {
           return 0
         fi
       fi
-      
-      # Настраиваем права доступа для intel_gpu_top
+
       if [ "$intel_installed" = true ] && [ -f /usr/bin/intel_gpu_top ]; then
         print_info "$(msg "gpu_intel_configuring")"
-        
-        # Проверяем текущие capabilities
+
         if command -v getcap &>/dev/null; then
           local current_cap
           current_cap=$(getcap /usr/bin/intel_gpu_top 2>/dev/null || true)
@@ -677,12 +706,11 @@ detect_and_configure_gpu() {
         print_warning "intel_gpu_top не найден после установки"
       fi
       ;;
-      
+
     amd)
       print_success "$(msg "gpu_amd_ok")"
       print_info "$(msg "gpu_amd_sysfs")"
-      
-      # Проверяем доступность sysfs интерфейса
+
       local amd_sysfs_found=false
       for i in {0..8}; do
         if [ -f "/sys/class/drm/card${i}/device/gpu_busy_percent" ]; then
@@ -692,15 +720,113 @@ detect_and_configure_gpu() {
           break
         fi
       done
-      
+
       if [ "$amd_sysfs_found" = false ]; then
         print_warning "$(msg "gpu_amd_sysfs_not_found")"
         print_info "Опционально: можно установить radeontop или amdgpu_top"
       fi
       ;;
   esac
-  
+
   echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# НАСТРОЙКА AUTOLAYOUT (права /dev/input + /dev/uinput без sudo)
+# ═══════════════════════════════════════════════════════════════════════════════
+configure_autolayout_permissions() {
+  print_step "$(msg "autolayout_title")"
+
+  local current_user
+  current_user=$(whoami)
+  local needs_relogin=false
+
+  # ── 1. Добавление пользователя в группу input ──
+  print_info "$(msg "autolayout_adding_group")"
+
+  if id -nG "$current_user" | grep -qw "input"; then
+    print_success "$(msg "autolayout_group_exists")"
+  else
+    sudo usermod -aG input "$current_user"
+    print_success "$(msg "autolayout_group_added")"
+    needs_relogin=true
+  fi
+
+  # ── 2. udev-правило для /dev/uinput ──
+  local udev_rule_file="/etc/udev/rules.d/99-uinput.rules"
+  local udev_rule_content='KERNEL=="uinput", GROUP="input", MODE="0660"'
+
+  print_info "$(msg "autolayout_udev_rule")"
+
+  if [ -f "$udev_rule_file" ] && grep -qF "$udev_rule_content" "$udev_rule_file" 2>/dev/null; then
+    print_success "$(msg "autolayout_udev_exists")"
+  else
+    echo "$udev_rule_content" | sudo tee "$udev_rule_file" > /dev/null
+    print_success "$(msg "autolayout_udev_created")"
+    echo -e "         ${GRAY}→ $udev_rule_file${NC}"
+  fi
+
+  # ── 3. Загрузка модуля ядра uinput ──
+  local modules_file="/etc/modules-load.d/uinput.conf"
+
+  print_info "$(msg "autolayout_module_load")"
+
+  if lsmod | grep -q "^uinput"; then
+    print_success "$(msg "autolayout_module_exists")"
+  else
+    sudo modprobe uinput
+    print_success "modprobe uinput ✓"
+  fi
+
+  if [ -f "$modules_file" ] && grep -qF "uinput" "$modules_file" 2>/dev/null; then
+    print_success "autoload uinput ✓"
+  else
+    echo "uinput" | sudo tee "$modules_file" > /dev/null
+    print_success "$(msg "autolayout_module_loaded")"
+    echo -e "         ${GRAY}→ $modules_file${NC}"
+  fi
+
+  # ── 4. Перезагрузка udev-правил ──
+  print_info "$(msg "autolayout_udev_reload")"
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger
+  print_success "$(msg "autolayout_udev_reloaded")"
+
+  # ── 5. Systemd user-сервис для autolayout ──
+  print_info "$(msg "autolayout_service")"
+
+  mkdir -p "$HOME/.config/systemd/user"
+
+  if [ -f "$AUTOLAYOUT_SERVICE" ]; then
+    print_success "$(msg "autolayout_service_exists")"
+  else
+    cat > "$AUTOLAYOUT_SERVICE" <<SVCEOF
+[Unit]
+Description=Autolayout - smart keyboard layout switcher
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${AUTOLAYOUT_SCRIPT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
+SVCEOF
+
+    systemctl --user daemon-reload
+    systemctl --user enable autolayout.service
+    print_success "$(msg "autolayout_service_created")"
+    echo -e "         ${GRAY}→ $AUTOLAYOUT_SERVICE${NC}"
+  fi
+
+  # ── Итог ──
+  echo ""
+  print_success "$(msg "autolayout_done")"
+  if [ "$needs_relogin" = true ]; then
+    print_warning "$(msg "autolayout_note")"
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -750,7 +876,7 @@ if [ -d "$INSTALL_DIR" ]; then
   echo ""
   echo -ne "${YELLOW}►${NC} $(msg "update_repo") "
   read -r update_choice
-  
+
   case $update_choice in
     [Yy]|[Yy][Ee][Ss]|[Дд]|[Дд][Аа])
       print_info "$(msg "updating_repo")"
@@ -773,7 +899,7 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# УСТАНОВКА AUR-ХЕЛПЕРА (yay по умолчанию, paru если есть)
+# УСТАНОВКА AUR-ХЕЛПЕРА
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "checking_aur")"
 
@@ -786,26 +912,25 @@ elif command -v yay &>/dev/null; then
   print_success "$(msg "using_helper") ${CYAN}yay${NC}"
 else
   print_info "$(msg "installing_yay")"
-  
-  # Проверяем base-devel
+
   if ! pacman -Qq base-devel &>/dev/null; then
     print_info "Installing base-devel..."
     sudo pacman -S --needed --noconfirm base-devel
   fi
-  
+
   tmpdir=$(mktemp -d)
   git clone --depth=1 https://aur.archlinux.org/yay-bin.git "$tmpdir/yay-bin"
   (cd "$tmpdir/yay-bin" && makepkg -si --noconfirm)
   rm -rf "$tmpdir"
-  
+
   print_success "$(msg "using_helper") ${CYAN}yay${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# УСТАНОВКА ПАКЕТОВ (включая Hyprland)
+# УСТАНОВКА ПАКЕТОВ (включая python-evdev)
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "installing_packages")"
-echo -e "         ${GRAY}hyprland, fabric, matugen, tesseract...${NC}"
+echo -e "         ${GRAY}hyprland, fabric, matugen, tesseract, python-evdev...${NC}"
 $aur_helper -Syy --needed --noconfirm "${PACKAGES[@]}" || true
 print_success "$(msg "installing_packages")"
 
@@ -819,13 +944,11 @@ detect_and_configure_gpu
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "installing_fonts")"
 
-# Проверяем наличие ouch и устанавливаем если нужно
 if ! command -v ouch &>/dev/null; then
   print_info "Installing ouch for archive extraction..."
   $aur_helper -S --needed --noconfirm ouch
-  # Обновляем PATH для текущей сессии
   export PATH="$HOME/.local/bin:$PATH"
-  hash -r  # Обновляем кэш команд bash
+  hash -r
 fi
 
 FONT_URL="https://github.com/zed-industries/zed-fonts/releases/download/1.2.0/zed-sans-1.2.0.zip"
@@ -835,11 +958,10 @@ TEMP_ZIP="/tmp/zed-sans-1.2.0.zip"
 if [ ! -d "$FONT_DIR" ]; then
   print_info "$(msg "downloading_fonts")"
   curl -L -o "$TEMP_ZIP" "$FONT_URL"
-  
+
   print_info "$(msg "extracting_fonts")"
   mkdir -p "$FONT_DIR"
-  
-  # Используем ouch для распаковки
+
   ouch decompress "$TEMP_ZIP" --dir "$FONT_DIR"
 
   print_info "$(msg "cleanup")"
@@ -897,6 +1019,11 @@ fi
 configure_hyprland
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# НАСТРОЙКА AUTOLAYOUT (ПРАВА ДЛЯ РАБОТЫ БЕЗ SUDO)
+# ═══════════════════════════════════════════════════════════════════════════════
+configure_autolayout_permissions
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ЗАПУСК VIDGEX-SHELL
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "starting_shell")"
@@ -922,6 +1049,7 @@ echo -e "${GRAY}║                                                             
 echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                               ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Autolayout:${NC}   ${CYAN}systemctl --user status autolayout${NC}              ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                         ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
