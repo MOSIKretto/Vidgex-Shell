@@ -202,9 +202,6 @@ class Overview(Box):
         self.cli = {}
         self.wsb = {}
 
-        # РАСШИРЕННЫЙ СПИСОК СОБЫТИЙ:
-        # activewindow отслеживает переключение окон (и как следствие - скроллинг)
-        # workspace отслеживает смену рабочих столов
         events = (
             "openwindow", 
             "closewindow", 
@@ -235,7 +232,6 @@ class Overview(Box):
         md = _get_monitors()
         cd = _get_clients()
 
-        # Собираем данные монитора (включая ширину и высоту для проверки видимости)
         mons = {m["id"]: (m["x"], m["y"], m["width"], m["height"]) for m in md}
         rows = [Box(spacing=8) for _ in range(3)]
         self.children = rows
@@ -247,18 +243,14 @@ class Overview(Box):
             if not ws_s <= wid <= ws_e:
                 continue
 
-            # Координаты и размеры монитора
             mx, my, mw, mh = mons.get(c["monitor"], (0, 0, 1920, 1080))
             
-            # Координаты и размеры окна
             cx, cy = c["at"]
             cw, ch = c["size"]
 
-            # ПРОВЕРКА ВИДИМОСТИ ОКНА:
             is_mapped = c.get("mapped", True)
             is_hidden = c.get("hidden", False)
             
-            # Пересекается ли окно с монитором (видно ли оно сейчас на экране)
             is_on_screen = (
                 cx < (mx + mw) and
                 (cx + cw) > mx and
@@ -266,7 +258,6 @@ class Overview(Box):
                 (cy + ch) > my
             )
 
-            # Если окно спрятано или проскроллено за пределы монитора - не рисуем его
             if not is_mapped or is_hidden or not is_on_screen:
                 continue
 
