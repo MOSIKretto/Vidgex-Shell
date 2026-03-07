@@ -70,7 +70,7 @@ def _switch_workspace(target_ws, on_complete=None):
     target_row = (target_ws - 1) // 3
     target_col = (target_ws - 1) % 3
 
-    ANIM_TIME_MS = 200 # Время стоянки/анимации на каждом промежуточном столе
+    ANIM_TIME_MS = 200
 
     def move_vert(ws):
         cmd = f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; dispatch workspace {ws} ; keyword animation workspaces,1,6,overshot,slide"
@@ -202,7 +202,19 @@ class Overview(Box):
         self.cli = {}
         self.wsb = {}
 
-        for ev in ("openwindow", "closewindow", "movewindow"):
+        # РАСШИРЕННЫЙ СПИСОК СОБЫТИЙ:
+        # activewindow отслеживает переключение окон (и как следствие - скроллинг)
+        # workspace отслеживает смену рабочих столов
+        events = (
+            "openwindow", 
+            "closewindow", 
+            "movewindow", 
+            "activewindow", 
+            "workspace",
+            "fullscreen",
+            "changefloatingmode"
+        )
+        for ev in events:
             _conn.connect(f"event::{ev}", self.update)
 
         self.update()
@@ -223,7 +235,8 @@ class Overview(Box):
         md = _get_monitors()
         cd = _get_clients()
 
-        mons = {m["id"]: (m["x"], m["y"]) for m in md}
+        # Собираем данные монитора (включая ширину и высоту для проверки видимости)
+        mons = {m["id"]: (m["x"], m["y"], m["width"], m["height"]) for m in md}
         rows = [Box(spacing=8) for _ in range(3)]
         self.children = rows
 
@@ -234,10 +247,32 @@ class Overview(Box):
             if not ws_s <= wid <= ws_e:
                 continue
 
-            mx, my = mons.get(c["monitor"], (0, 0))
+            # Координаты и размеры монитора
+            mx, my, mw, mh = mons.get(c["monitor"], (0, 0, 1920, 1080))
+            
+            # Координаты и размеры окна
+            cx, cy = c["at"]
+            cw, ch = c["size"]
+
+            # ПРОВЕРКА ВИДИМОСТИ ОКНА:
+            is_mapped = c.get("mapped", True)
+            is_hidden = c.get("hidden", False)
+            
+            # Пересекается ли окно с монитором (видно ли оно сейчас на экране)
+            is_on_screen = (
+                cx < (mx + mw) and
+                (cx + cw) > mx and
+                cy < (my + mh) and
+                (cy + ch) > my
+            )
+
+            # Если окно спрятано или проскроллено за пределы монитора - не рисуем его
+            if not is_mapped or is_hidden or not is_on_screen:
+                continue
+
             addr = c["address"]
             aid = c["initialClass"]
-            sz = (int(c["size"][0] * _BS), int(c["size"][1] * _BS))
+            sz = (int(cw * _BS), int(ch * _BS))
 
             btn = HyprlandWindowButton(addr, aid, c["title"], sz, wid)
             self.cli[addr] = btn
@@ -245,17 +280,18 @@ class Overview(Box):
             if wid not in self.wsb:
                 self.wsb[wid] = Gtk.Fixed()
 
-            self.wsb[wid].put(btn, int(abs(c["at"][0] - mx) * _BS), int(abs(c["at"][1] - my) * _BS))
+            self.wsb[wid].put(btn, int((cx - mx) * _BS), int((cy - my) * _BS))
 
         for wid in range(ws_s, ws_e + 1):
-            rows[(wid - ws_s) // 3].add(Box(
+            ws_box = Box(
                 name="overview-workspace-box",
                 orientation="vertical",
                 children=[
                     Label(name="overview-workspace-label", label=f"Workspace {wid}"),
                     WorkspaceEventBox(wid, self.wsb.get(wid)),
                 ],
-            ))
+            )
+            rows[(wid - ws_s) // 3].add(ws_box)
 
     def cleanup(self):
         for b in self.cli.values():
