@@ -142,6 +142,7 @@
 | 🔭 | **Продвинутый обзор** | Перетаскивание, закрытие и перегруппировка окон в режиме Overview |
 | 🖥️ | **Современный Dock** | Панель задач, вдохновлённая лучшими решениями macOS и Ubuntu |
 | ♻️ | **Сохранение и восстановление сессий** | Автоматически сохраняет прогресс сессии и при следующем запуске полностью восстанавливает её |
+| ⌨️ | **Автоматическое переключение раскладки** | Меняет язык, если вы забыли переключить раскладку перед вводом текста |
 
 </details>
 
@@ -210,24 +211,38 @@
 
 <br/>
 
+
+
 ## ⌨️ Горячие клавиши
 
 <br/>
 
-<div align="center">
+### 🔑 Базовые горячие клавиши
 
-**Базовые горячие клавиши**
-
-<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard1.png" width="600"/>
+| Комбинация | Действие |
+|:---|:---|
+| `Alt` + `Q` | Dashboard |
+| `Alt` + `W` | WI-FI |
+| `Alt` + `E` | Bluetooth |
+| `Alt` + `R` | Wallpapers |
+| `Alt` + `T` | Mixer |
+| `Alt` + `A` | Launcher |
+| `Alt` + `S` | Cliphist |
+| `Alt` + `D` | Session Manager |
+| `Super` + `Space` | Overview |
+| `Caps Lock` | Смена языка |
+| `Print Screen` | Tools |
 
 <br/>
-<br/>
 
-**Дополнительные горячие клавиши**
+### ⚡ Дополнительные горячие клавиши
 
-<img src="https://raw.githubusercontent.com/MOSIKretto/Vidgex-Shell/develop/helper-folder/keyboard2.png" width="600"/>
-
-</div>
+| Комбинация | Действие |
+|:---|:---|
+| `Super` + `Shift` + `Q` | Закрыть активное окно |
+| `Super` + `Shift` + `W` | Рандомные обои |
+| `Super` + `Shift` + `E` | Power Menu |
+| `Super` + `Shift` + `R` | Перезапуск Shell |
 
 <br/>
 
