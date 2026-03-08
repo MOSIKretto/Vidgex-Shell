@@ -18,7 +18,7 @@ from fabric.widgets.eventbox import EventBox
 from gi.repository import Gdk, GLib, Gtk
 
 from modules.Notch.Widgets.buttons import AutolayoutButton
-from modules.Bar.metrics import Battery, MetricsSmall, NetworkApplet
+from modules.Bar.metrics import Battery, MetricsSmall
 from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
@@ -72,7 +72,6 @@ def _dispatch_exact(conn, target_row, target_col, is_vertical=False):
 _LST = 0.0
 
 def _check_scroll_cooldown(e, axis=None):
-    """Определяет направление: +1 (Next), -1 (Prev), 0 (Игнор)."""
     global _LST
     now = time()
     if now - _LST < _CD: 
@@ -183,7 +182,6 @@ class LeftWorkspaces(Box):
             btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
             btn.add_style_class("row-dot") 
             btn.connect("clicked", lambda _, r=row: self._on_dot_clicked(r))
-            # Скролл на кнопках
             btn.add_events(_SM)
             btn.connect("scroll-event", self._on_scroll)
             _hov(btn)
@@ -403,7 +401,7 @@ class SideBarWindow(Window):
 class Bar(Window):
     __slots__ = (
         "mid", "notch", "lang", "conn", "ws", "wsc",
-        "tray", "net", "rl", "met", "rr", "ll", "dt", "bat", "bp",
+        "tray", "rl", "met", "rr", "ll", "dt", "bat", "bp",
         "sidebar"
     )
 
@@ -428,12 +426,11 @@ class Bar(Window):
         self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")        
 
         self.tray = SystemTray()
-        self.net = NetworkApplet()
         self.met = MetricsSmall()
 
         self.rl = Revealer(
             name="bar-revealer", transition_type="slide-right", child_revealed=True,
-            child=Box(name="bar-revealer-box", spacing=4, children=[self.tray, Box(name="network-container", children=[self.net])]),
+            child=Box(name="bar-revealer-box", spacing=4, children=[self.tray]),
         )
 
         self.rr = Revealer(
@@ -506,6 +503,5 @@ class Bar(Window):
             self.sidebar.destroy()
             self.sidebar = None
         if hasattr(self.tray, 'cleanup'): self.tray.cleanup()
-        if hasattr(self.net, 'cleanup'): self.net.cleanup()
         if hasattr(self.bat, 'cleanup'): self.bat.cleanup()
         self.notch = self.conn = self.lang = None

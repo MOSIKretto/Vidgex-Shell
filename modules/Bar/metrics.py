@@ -25,7 +25,6 @@ _cursor_hand = None
 
 
 def _hov(w):
-    """Меняет курсор на hand2 при наведении на виджет"""
     def sc(widget, _, is_hovered):
         global _cursor_hand
         if not _cursor_hand:
@@ -41,6 +40,10 @@ def _sub(widget):
     _subs.add(widget)
     if _prov is None:
         _prov = MetricsProvider()
+
+
+def format_bytes(sp):
+    return (f'{sp:.0f} B/s' if sp < 1024 else f'{sp * 0.0009765625:.1f} KB/s' if sp < 1048576 else f'{sp * 9.5367431640625e-07:.1f} MB/s')
 
 
 class MetricsProvider:
@@ -250,24 +253,90 @@ class SingularMetricSmall:
         return f'{self.ic} {self.nm}'
 
 
+class NetworkMetricSmall:
+    __slots__ = ('nm', 'ic', 'icon', 'circle', 'dl_level', 'dl_rev', 'box', '_lv', '_ldl')
+
+    def __init__(self):
+        self.nm = "Disconnected"
+        self.ic = icons.world_off
+        self._lv = -1
+        self._ldl = ""
+        
+        self.icon = Label(name='metrics-icon', markup=self.ic)
+        self.circle = CircularProgressBar(name='metrics-circle', value=0, size=28, line_width=2, start_angle=150, end_angle=390, style_classes='net', child=self.icon)
+        
+        self.dl_level = Label(name='metrics-level', style_classes='net', label='0 B/s')
+        
+        dl_box = Box(orientation='h', spacing=2, children=[
+            Label(name='download-icon-label', markup=icons.download, style="margin-left: 2px;"), 
+            self.dl_level
+        ])
+        
+        self.dl_rev = Revealer(name='metrics-net-dl-revealer', transition_duration=250, transition_type='slide-right', child=dl_box, child_revealed=False)
+        
+        self.box = Box(name='metrics-net-box', orientation='h', spacing=0, children=[self.circle, self.dl_rev])
+
+    def update(self, val, ssid, icon_markup, dl_str):
+        self.nm = ssid
+        self.ic = icon_markup
+        
+        if abs(self._lv - val) > 0.005:
+            self.circle.set_value(val)
+            self._lv = val
+            
+        self.icon.set_markup(icon_markup)
+            
+        if self._ldl != dl_str:
+            self.dl_level.set_markup(dl_str)
+            self._ldl = dl_str
+
+    def markup(self):
+        return f'{self.ic} {self.nm}'
+
+
 class Metrics(Box):
-    __slots__ = ('temp', 'disk', 'ram', 'cpu', 'gpu')
+    __slots__ = ('nc', 'net', 'temp', 'disk', 'ram', 'cpu', 'gpu')
 
     def __init__(self, **kwargs):
         super().__init__(name='metrics', spacing=8, h_align='center', v_align='fill', visible=True, all_visible=True)
         _sub(self)
+        
+        self.nc = NetworkClient()
+        
+        self.net = SingularMetric('net', 'СЕТЬ', icons.world_off)
         self.temp = SingularMetric('temp', 'ТЕМП', icons.temp)
         self.disk = [SingularMetric('disk', 'ДИСК', icons.disk)]
         self.ram = SingularMetric('ram', 'ОЗУ', icons.memory)
         self.cpu = SingularMetric('cpu', 'ЦП', icons.cpu)
-        
         self.gpu = [SingularMetric('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
                    
-        for m in (self.temp,) + tuple(self.disk) + (self.ram, self.cpu) + tuple(self.gpu):
+        for m in (self.net, self.temp,) + tuple(self.disk) + (self.ram, self.cpu) + tuple(self.gpu):
             self.add(m.box)
 
     def _upd(self):
         if not _prov: return
+        
+        ed, wd = self.nc.ethernet_device, self.nc.wifi_device
+        net_val = 0.0
+        net_icon = icons.world_off
+        ssid_name = "Disconnected"
+
+        if ed and ed.internet in ('activated', 'activating'):
+            net_icon = icons.world
+            net_val = 1.0
+            ssid_name = "Ethernet"
+        elif wd and getattr(wd, 'enabled', False):
+            ssid = getattr(wd, 'ssid', None)
+            if ssid and ssid not in ('Disconnected', 'Выключено', 'Не подключено'):
+                s = wd.strength
+                net_icon = icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0
+                net_val = s * 0.01
+                ssid_name = ssid
+
+        self.net.label.set_markup(net_icon)
+        self.net.box.set_tooltip_markup(f'{net_icon} {ssid_name}')
+        self.net.set_val(net_val)
+
         self.temp.set_val(min(_prov.temp * 0.00666667, 1.0))
         self.ram.set_val(_prov.mem * 0.01)
         self.cpu.set_val(_prov.cpu * 0.01)
@@ -279,19 +348,23 @@ class Metrics(Box):
 
 
 class MetricsSmall(Button):
-    __slots__ = ('temp', 'cpu', 'ram', 'disk', 'gpu', 'htim', 'hov', '_all')
+    __slots__ = ('nc', 'net', 'temp', 'cpu', 'ram', 'disk', 'gpu', 'htim', 'hov', '_all')
 
     def __init__(self, **kwargs):
         super().__init__(name='metrics-small', **kwargs)
         _sub(self)
         box = Box(spacing=0, orientation='h', visible=True, all_visible=True)
+        
+        self.nc = NetworkClient()
+        
+        self.net = NetworkMetricSmall()
         self.temp = SingularMetricSmall('temp', 'ТЕМП', icons.temp, True)
         self.disk = [SingularMetricSmall('disk', 'ДИСК', icons.disk)]
         self.cpu = SingularMetricSmall('cpu', 'ЦП', icons.cpu)
         self.ram = SingularMetricSmall('ram', 'ОЗУ', icons.memory)
         self.gpu = [SingularMetricSmall('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
         
-        self._all = [self.temp] + self.disk + [self.ram, self.cpu] + self.gpu
+        self._all = [self.net, self.temp] + self.disk + [self.ram, self.cpu] + self.gpu
         
         for w in self._all:
             box.add(w.box)
@@ -305,6 +378,27 @@ class MetricsSmall(Button):
     def _upd(self):
         if not _prov: return
         
+        ed, wd = self.nc.ethernet_device, self.nc.wifi_device
+        net_icon = icons.world_off
+        net_val = 0.0
+        ssid_name = "Disconnected"
+
+        if ed and ed.internet in ('activated', 'activating'):
+            net_icon = icons.world
+            net_val = 1.0
+            ssid_name = "Ethernet"
+        elif wd and getattr(wd, 'enabled', False):
+            ssid = getattr(wd, 'ssid', None)
+            if ssid and ssid not in ('Disconnected', 'Выключено', 'Не подключено'):
+                s = wd.strength
+                net_icon = icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0
+                net_val = s * 0.01
+                ssid_name = ssid
+
+        dl_str = format_bytes(_prov.net_dl) if _prov.net_dl > 0 else "0 B/s"
+        
+        self.net.update(net_val, ssid_name, net_icon, dl_str)
+
         self.temp.update(min(_prov.temp * 0.00666667, 1.0), f'{int(_prov.temp + 0.5)}°C')
         self.cpu.update(_prov.cpu * 0.01, f'{int(_prov.cpu)}%')
         self.ram.update(_prov.mem * 0.01, f'{int(_prov.mem)}%')
@@ -321,7 +415,11 @@ class MetricsSmall(Button):
         if self.htim:
             GLib.source_remove(self.htim)
             self.htim = None
-        for m in self._all: m.rev.set_reveal_child(True)
+        for m in self._all:
+            if hasattr(m, 'dl_rev'):
+                m.dl_rev.set_reveal_child(True)
+            else:
+                m.rev.set_reveal_child(True)
         return False
 
     def _lv(self, *_):
@@ -332,7 +430,11 @@ class MetricsSmall(Button):
         return False
 
     def _hide(self):
-        for m in self._all: m.rev.set_reveal_child(False)
+        for m in self._all:
+            if hasattr(m, 'dl_rev'):
+                m.dl_rev.set_reveal_child(False)
+            else:
+                m.rev.set_reveal_child(False)
         self.htim = None
         return False
 
@@ -524,8 +626,8 @@ class NetworkApplet(Button):
         if not _prov: return
         
         if self.hov or self.dlr.get_child_revealed():
-            fdl = self._fmt(_prov.net_dl)
-            ful = self._fmt(_prov.net_ul)
+            fdl = format_bytes(_prov.net_dl)
+            ful = format_bytes(_prov.net_ul)
             if self._ldl != fdl:
                 self.dl.set_markup(fdl)
                 self._ldl = fdl
@@ -549,7 +651,3 @@ class NetworkApplet(Button):
                 s = wd.strength
                 self.wl.set_markup(icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0)
                 self.set_tooltip_text(ssid)
-
-    @staticmethod
-    def _fmt(sp):
-        return (f'{sp:.0f} B/s' if sp < 1024 else f'{sp * 0.0009765625:.1f} KB/s' if sp < 1048576 else f'{sp * 9.5367431640625e-07:.1f} MB/s')
