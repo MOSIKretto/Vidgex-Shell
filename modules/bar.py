@@ -442,7 +442,7 @@ class Bar(Window):
         self.bat = Battery()
 
         self.bp = Button(
-            name="button-bar", tooltip_markup="<b>Меню питания</b>",
+            name="button-bar", tooltip_markup="<b>Energy menu</b>",
             on_clicked=self._pwr, child=Label(name="button-bar-label", markup=icons.shutdown),
         )
         _hov(self.bp)

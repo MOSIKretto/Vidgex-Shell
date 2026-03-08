@@ -17,15 +17,15 @@ class Toolbox(HorizontalNavigationMixin, Box):
         self._path = Gio.File.new_for_path(__file__).get_parent().get_parent().get_parent().get_child("scripts").get_path()
         
         items = [
-            (icons.ssregion, "screenshot.sh s", "<b>Область</b>", 0),
-            (icons.sswindow, "screenshot.sh w", "<b>Окно</b>", 0),
-            (icons.ssfull, "screenshot.sh p", "<b>Экран</b>", 0),
-            (icons.screenrecord, "screenrecord.sh", "<b>Запись</b>", 1),
+            (icons.ssregion, "screenshot.sh s", "<b>Screenshot of screen area</b>", 0),
+            (icons.sswindow, "screenshot.sh w", "<b>Window screenshot</b>", 0),
+            (icons.ssfull, "screenshot.sh p", "<b>Screenshot</b>", 0),
+            (icons.screenrecord, "screenrecord.sh", "<b>Screen Recording</b>", 1),
             None,
             (icons.ocr, "ocr.sh s", "<b>OCR</b>", 0),
-            (icons.colorpicker, "hyprpicker.sh -hex", "<b>Пипетка</b>", 0),
+            (icons.colorpicker, "hyprpicker.sh -hex", "<b>Pipette</b>", 0),
             None,
-            (icons.gamemode, "gamemode.sh", "<b>Игра</b>", 2),
+            (icons.gamemode, "gamemode.sh", "<b>Game mode</b>", 2),
         ]
         
         for item in items:

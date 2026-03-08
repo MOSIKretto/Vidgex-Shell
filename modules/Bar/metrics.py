@@ -59,7 +59,7 @@ class MetricsProvider:
         self.net_dl = self.net_ul = 0.0
         self.disk = [0.0]
         self.gpu = []
-        self.gpus = [] # Список найденных видеокарт
+        self.gpus = [] # List of detected GPUs
         self.bat_chg = None
         
         self._nr = self._ns = 0
@@ -303,11 +303,11 @@ class Metrics(Box):
         
         self.nc = NetworkClient()
         
-        self.net = SingularMetric('net', 'СЕТЬ', icons.world_off)
-        self.temp = SingularMetric('temp', 'ТЕМП', icons.temp)
-        self.disk = [SingularMetric('disk', 'ДИСК', icons.disk)]
-        self.ram = SingularMetric('ram', 'ОЗУ', icons.memory)
-        self.cpu = SingularMetric('cpu', 'ЦП', icons.cpu)
+        self.net = SingularMetric('net', 'NET', icons.world_off)
+        self.temp = SingularMetric('temp', 'TEMP', icons.temp)
+        self.disk = [SingularMetric('disk', 'DISK', icons.disk)]
+        self.ram = SingularMetric('ram', 'RAM', icons.memory)
+        self.cpu = SingularMetric('cpu', 'CPU', icons.cpu)
         self.gpu = [SingularMetric('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
                    
         for m in (self.net, self.temp,) + tuple(self.disk) + (self.ram, self.cpu) + tuple(self.gpu):
@@ -358,10 +358,10 @@ class MetricsSmall(Button):
         self.nc = NetworkClient()
         
         self.net = NetworkMetricSmall()
-        self.temp = SingularMetricSmall('temp', 'ТЕМП', icons.temp, True)
-        self.disk = [SingularMetricSmall('disk', 'ДИСК', icons.disk)]
-        self.cpu = SingularMetricSmall('cpu', 'ЦП', icons.cpu)
-        self.ram = SingularMetricSmall('ram', 'ОЗУ', icons.memory)
+        self.temp = SingularMetricSmall('temp', 'TEMP', icons.temp, True)
+        self.disk = [SingularMetricSmall('disk', 'DISK', icons.disk)]
+        self.cpu = SingularMetricSmall('cpu', 'CPU', icons.cpu)
+        self.ram = SingularMetricSmall('ram', 'RAM', icons.memory)
         self.gpu = [SingularMetricSmall('gpu', g.get('name', 'GPU'), icons.gpu) for g in (_prov.get_gpu_info() if _prov else [])]
         
         self._all = [self.net, self.temp] + self.disk + [self.ram, self.cpu] + self.gpu
@@ -480,20 +480,20 @@ class BatteryButton(Button):
                 self.cir.add_style_class('battery-normal')
                 self.cir.remove_style_class('battery-low')
             
-        t = f'{int(bt)}сек' if bt < 60 else f'{int(bt/60)}мин' if bt < 3600 else f'{int(bt/3600)}ч'
+        t = f'{int(bt)}sec' if bt < 60 else f'{int(bt/60)}min' if bt < 3600 else f'{int(bt/3600)}h'
         
         if pct == 100:
             self.ic.set_markup(icons.battery)
-            tip = f'{icons.bat_full} Полностью заряжено' + ('' if chg else f' - осталось {t}')
+            tip = f'{icons.bat_full} Fully charged' + ('' if chg else f' - {t} remaining')
         elif chg:
             self.ic.set_markup(icons.charging)
-            tip = f'{icons.bat_charging} Заряжается - осталось {t}'
+            tip = f'{icons.bat_charging} Charging - {t} remaining'
         elif low:
             self.ic.set_markup(icons.alert)
-            tip = f'{icons.bat_low} Низкий заряд - осталось {t}'
+            tip = f'{icons.bat_low} Low battery - {t} remaining'
         else:
             self.ic.set_markup(icons.discharging)
-            tip = f'{icons.bat_discharging} Разряжается - осталось {t}'
+            tip = f'{icons.bat_discharging} Discharging - {t} remaining'
             
         self.set_tooltip_markup(tip)
         if self._obc: self._obc(val, chg)
@@ -531,9 +531,9 @@ class Battery(Box):
 
     def _build_pm_ui(self):
         for mode, name, icon, tip in (
-            ('power-saver', 'battery-save', icons.power_saving, 'Энергосбережение'),
-            ('balanced', 'battery-balanced', icons.power_balanced, 'Сбалансированный'),
-            ('performance', 'battery-performance', icons.power_performance, 'Производительный')
+            ('power-saver', 'battery-save', icons.power_saving, 'Saving'),
+            ('balanced', 'battery-balanced', icons.power_balanced, 'Balanced'),
+            ('performance', 'battery-performance', icons.power_performance, 'Performance')
         ):
             btn = Button(name=name, child=Label(name=f'{name}-label', markup=icon), tooltip_text=tip)
             btn.connect('clicked', self._on_mode_btn_clicked, mode)

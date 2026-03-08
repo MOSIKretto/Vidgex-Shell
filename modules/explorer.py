@@ -137,8 +137,6 @@ class Explorer(
         self._history: List[Path] = [home]
         self._history_index = 0
 
-        # Инициализируем таргеты СРАЗУ ЖЕ, чтобы миксин DnDMixin мог привязать их
-        # к кнопкам левого меню во время _init_ui()
         self._dnd_targets = [
             Gtk.TargetEntry.new("text/uri-list", 0, self.TARGET_URI_LIST),
             Gtk.TargetEntry.new("text/plain", 0, self.TARGET_TEXT),
@@ -365,12 +363,10 @@ class Explorer(
             return None
         win_x, win_y = origin
 
-        # Ищем папку в основном окне
         for widget, path in self._folder_widgets:
             if self._widget_contains_point(widget, win_x, win_y, root_x, root_y):
                 return path
 
-        # Функция для поиска во внешних контейнерах (левое меню, пути)
         def check_container(container) -> Optional[Path]:
             if not container:
                 return None
@@ -380,15 +376,12 @@ class Explorer(
                         return child._path
             return None
 
-        # Ищем в боковом меню
         found = check_container(getattr(self, 'sidebar_content', None))
         if found: return found
 
-        # Ищем в корзине
         found = check_container(getattr(self, 'trash_button_container', None))
         if found: return found
 
-        # Ищем в строке пути (хлебные крошки)
         found = check_container(getattr(self, 'path_container', None))
         if found: return found
 
@@ -910,7 +903,6 @@ class Explorer(
         btn.get_style_context().add_class("directory")
         btn.show_all()
         
-        # Миксин теперь увидит self._dnd_targets и корректно привяжет события!
         self._setup_drop_target(btn, target_path=path)
         return btn
 
