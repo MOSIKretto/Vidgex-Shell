@@ -76,6 +76,8 @@ class AppLauncher(ListNavigationMixin, Box):
         self.notch.close_notch()
 
     def _arr(self, q=""):
+        if self._apps is None:
+            return
         if self._hnd: remove_handler(self._hnd)
         self.vp.children, self.sel, qf = [], -1, q.casefold()
         apps = sorted((a for a in self._apps if not qf or any(qf in (s or "").casefold() 

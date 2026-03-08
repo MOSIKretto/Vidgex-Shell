@@ -445,6 +445,9 @@ class SessionManagerUI(ListNavigationMixin, Box):
         self.sel, self._hnd = -1, 0
         
         self._apps = get_desktop_applications()
+        
+        self.vp_picker = None
+        self.vp_ignored = None
 
         btn_save = Button(name="clear-button", tooltip_markup="<b>Save Session</b>", child=Label(name="clear-label", markup=icons.download), on_clicked=self._on_save)
         btn_add = Button(name="session-add-btn", label="Add Application", h_expand=True, on_clicked=lambda *_: self.stack.set_visible_child_name("picker"))
@@ -553,6 +556,8 @@ class SessionManagerUI(ListNavigationMixin, Box):
         return str(name).lower()
 
     def _arr(self, q=""):
+        if self.vp_picker is None:
+            return
         if self._hnd: remove_handler(self._hnd)
         self.vp_picker.children, self.sel, qf = [], -1, q.casefold()
         

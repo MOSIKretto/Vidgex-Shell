@@ -277,7 +277,7 @@ class BluetoothConnections(Box):
             return self._load_retries < 6
 
         devs = sorted(
-            devices.values(),
+            devices.values() if isinstance(devices, dict) else devices,
             key=lambda d: (not getattr(d, "connected", False), not _is_dev_known(d))
         )
         for dev in devs:
