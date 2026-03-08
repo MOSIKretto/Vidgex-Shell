@@ -137,7 +137,13 @@ class Explorer(
         self._history: List[Path] = [home]
         self._history_index = 0
 
-        self._dnd_targets = None
+        # Инициализируем таргеты СРАЗУ ЖЕ, чтобы миксин DnDMixin мог привязать их
+        # к кнопкам левого меню во время _init_ui()
+        self._dnd_targets = [
+            Gtk.TargetEntry.new("text/uri-list", 0, self.TARGET_URI_LIST),
+            Gtk.TargetEntry.new("text/plain", 0, self.TARGET_TEXT),
+        ]
+
         self._drag_source_path = None
         self._drag_hover_path = None
         self._drag_hover_widget = None
@@ -192,15 +198,6 @@ class Explorer(
         self._update_monitor()
         self._init_ui()
         GLib.idle_add(self._delayed_show)
-
-    @property
-    def _dnd_target_entries(self):
-        if self._dnd_targets is None:
-            self._dnd_targets = [
-                Gtk.TargetEntry.new("text/uri-list", 0, self.TARGET_URI_LIST),
-                Gtk.TargetEntry.new("text/plain", 0, self.TARGET_TEXT),
-            ]
-        return self._dnd_targets
 
     def _init_xdg_bookmarks(self, home: Path):
         for glib_dir, icon, fallback_name in _XDG_FOLDERS:
@@ -368,9 +365,33 @@ class Explorer(
             return None
         win_x, win_y = origin
 
+        # Ищем папку в основном окне
         for widget, path in self._folder_widgets:
             if self._widget_contains_point(widget, win_x, win_y, root_x, root_y):
                 return path
+
+        # Функция для поиска во внешних контейнерах (левое меню, пути)
+        def check_container(container) -> Optional[Path]:
+            if not container:
+                return None
+            for child in container.get_children():
+                if hasattr(child, '_path') and child.get_mapped():
+                    if self._widget_contains_point(child, win_x, win_y, root_x, root_y):
+                        return child._path
+            return None
+
+        # Ищем в боковом меню
+        found = check_container(getattr(self, 'sidebar_content', None))
+        if found: return found
+
+        # Ищем в корзине
+        found = check_container(getattr(self, 'trash_button_container', None))
+        if found: return found
+
+        # Ищем в строке пути (хлебные крошки)
+        found = check_container(getattr(self, 'path_container', None))
+        if found: return found
+
         return None
 
     def _cancel_activator_hover_timer(self):
@@ -888,6 +909,8 @@ class Explorer(
         btn.connect("button-press-event", self._clear_focus_on_click)
         btn.get_style_context().add_class("directory")
         btn.show_all()
+        
+        # Миксин теперь увидит self._dnd_targets и корректно привяжет события!
         self._setup_drop_target(btn, target_path=path)
         return btn
 
@@ -912,9 +935,12 @@ class Explorer(
         btn = Gtk.Button()
         btn.set_name("explorer-clear-trash-btn")
         btn.add(content)
+        btn._path = self._trash_path
         btn.connect("clicked", self._on_clear_trash_clicked)
         btn.connect("button-press-event", self._clear_focus_on_click)
         btn.show_all()
+        
+        self._setup_drop_target(btn, target_path=self._trash_path)
         return btn
 
     def _update_trash_button(self):
@@ -943,10 +969,9 @@ class Explorer(
             v_expand=True, h_expand=True)
         self.files_scrolled.set_min_content_height(100)
 
-        targets = self._dnd_target_entries
         self.files_scrolled.drag_dest_set(
             Gtk.DestDefaults.MOTION | Gtk.DestDefaults.HIGHLIGHT | Gtk.DestDefaults.DROP,
-            targets, _DRAG_ACTIONS)
+            self._dnd_targets, _DRAG_ACTIONS)
         self.files_scrolled.connect("drag-motion", self._on_file_view_drag_motion)
         self.files_scrolled.connect("drag-leave", self._on_file_view_drag_leave)
         self.files_scrolled.connect("drag-drop", self._h_dst_drop, None)
