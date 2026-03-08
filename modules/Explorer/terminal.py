@@ -137,7 +137,6 @@ class TerminalMixin:
         term.set_can_focus(True)
         term.set_font(Pango.FontDescription.from_string("Monospace 11"))
         
-        # Включаем возможность выделения текста
         term.set_allow_hyperlink(True)
 
         bg = Gdk.RGBA()
@@ -173,67 +172,40 @@ class TerminalMixin:
         except Exception as e:
             print(f"Error spawning terminal: {e}")
 
-    def _build_terminal_context_menu(self, term: Vte.Terminal) -> Gtk.Menu:
-        """Build context menu for terminal with copy/paste options"""
-        menu = Gtk.Menu()
-        menu.set_name("terminal-context-menu")
-        
-        # Copy
-        copy_item = Gtk.MenuItem(label="Copy  (Ctrl+Shift+C)")
-        copy_item.connect("activate", lambda _: term.copy_clipboard_format(Vte.Format.TEXT))
-        copy_item.set_sensitive(term.get_has_selection())
-        menu.append(copy_item)
-        
-        # Paste
-        paste_item = Gtk.MenuItem(label="Paste  (Ctrl+Shift+V)")
-        paste_item.connect("activate", lambda _: term.paste_clipboard())
-        menu.append(paste_item)
-        
-        menu.append(Gtk.SeparatorMenuItem())
-        
-        # Select All
-        select_all_item = Gtk.MenuItem(label="Select All")
-        select_all_item.connect("activate", lambda _: term.select_all())
-        menu.append(select_all_item)
-        
-        menu.append(Gtk.SeparatorMenuItem())
-        
-        # Clear Terminal
-        clear_item = Gtk.MenuItem(label="Clear Terminal")
-        clear_item.connect("activate", lambda _: term.reset(True, True))
-        menu.append(clear_item)
-        
-        menu.show_all()
-        return menu
-
     def _h_terminal_key_press(self, term: Vte.Terminal, event) -> bool:
-        """Handle keyboard shortcuts for terminal (copy/paste)"""
-        ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
-        shift = event.state & Gdk.ModifierType.SHIFT_MASK
+        ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
         
         if ctrl and shift:
-            # Ctrl+Shift+C - Copy
-            if event.keyval in (Gdk.KEY_C, Gdk.KEY_c):
+            keyval = event.keyval
+            
+            copy_keys = (
+                Gdk.KEY_C, Gdk.KEY_c,
+                getattr(Gdk, 'KEY_Cyrillic_es', 0x06d3),
+                getattr(Gdk, 'KEY_Cyrillic_ES', 0x06f3)
+            )
+            
+            paste_keys = (
+                Gdk.KEY_V, Gdk.KEY_v,
+                getattr(Gdk, 'KEY_Cyrillic_em', 0x06cc),
+                getattr(Gdk, 'KEY_Cyrillic_EM', 0x06ec)
+            )
+            
+            if keyval in copy_keys:
                 if term.get_has_selection():
-                    term.copy_clipboard_format(Vte.Format.TEXT)
+                    if hasattr(term, 'copy_clipboard_format'):
+                        term.copy_clipboard_format(Vte.Format.TEXT)
+                    else:
+                        term.copy_clipboard()
                 return True
             
-            # Ctrl+Shift+V - Paste
-            elif event.keyval in (Gdk.KEY_V, Gdk.KEY_v):
+            elif keyval in paste_keys:
                 term.paste_clipboard()
                 return True
-        
+                
         return False
 
     def _h_terminal_button_press(self, term: Vte.Terminal, event) -> bool:
-        """Handle mouse clicks on terminal (context menu, focus)"""
-        # Right click - context menu
-        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 3:
-            menu = self._build_terminal_context_menu(term)
-            menu.popup_at_pointer(event)
-            return True
-        
-        # Left click - grab focus
         if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 1:
             if hasattr(self, '_cancel_pending_hide'):
                 self._cancel_pending_hide()
@@ -256,7 +228,7 @@ class TerminalMixin:
         term = self._vte_create()
         term.connect("child-exited", lambda t, s: self._h_child_exited(term_id))
         term.connect("button-press-event", self._h_terminal_button_press)
-        term.connect("key-press-event", self._h_terminal_key_press)  # Copy/Paste handler
+        term.connect("key-press-event", self._h_terminal_key_press)
         term.connect("current-directory-uri-changed", self._h_dir_changed, term_id)
         term.connect("window-title-changed", self._h_title_changed, term_id)
 
@@ -533,6 +505,30 @@ class TerminalMixin:
     def _is_terminal_open(self) -> bool:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
+    def _apply_terminal_width(self):
+        """Жестко задает окну ширину в 2/3 экрана."""
+        try:
+            display = Gdk.Display.get_default()
+            monitor = None
+            if hasattr(self, 'get_window') and self.get_window():
+                monitor = display.get_monitor_at_window(self.get_window())
+            if not monitor:
+                monitor = display.get_primary_monitor()
+
+            target_width = 800
+            if monitor:
+                geom = monitor.get_geometry()
+                target_width = int(geom.width * 0.66)
+            else:
+                screen = Gdk.Screen.get_default()
+                if screen:
+                    target_width = int(screen.get_width() * 0.66)
+
+            # Принудительно задаем контейнеру терминала эту ширину
+            self.terminals_stack.set_size_request(target_width, -1)
+        except Exception as e:
+            print(f"Error sizing terminal: {e}")
+
     def _open_terminal(self, cwd=None):
         self.stack.set_visible_child_name("terminal")
         self.bottom_bar_stack.set_visible_child_name("terminal")
@@ -546,6 +542,9 @@ class TerminalMixin:
 
         self.search_entry.set_text("")
         self.btn_terminal.get_style_context().add_class("active")
+
+        # Применяем размер 2/3 экрана (он удержит окно открытым)
+        self._apply_terminal_width()
 
         if hasattr(self, '_cancel_pending_hide'):
             self._cancel_pending_hide()
@@ -566,6 +565,9 @@ class TerminalMixin:
     def _switch_to_files(self):
         if not self._is_terminal_open():
             return
+
+        # Убираем жесткий лимит ширины при возврате к файлам
+        self.terminals_stack.set_size_request(-1, -1)
 
         self.stack.set_visible_child_name("files")
         self.bottom_bar_stack.set_visible_child_name("files")
