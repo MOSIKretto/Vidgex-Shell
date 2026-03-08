@@ -506,7 +506,7 @@ class TerminalMixin:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
     def _apply_terminal_width(self):
-        """Жестко задает окну ширину в 2/3 экрана."""
+        """Жестко задает окну ширину в 3/5 экрана."""
         try:
             display = Gdk.Display.get_default()
             monitor = None
@@ -518,13 +518,12 @@ class TerminalMixin:
             target_width = 800
             if monitor:
                 geom = monitor.get_geometry()
-                target_width = int(geom.width * 0.66)
+                target_width = int(geom.width * 0.5)
             else:
                 screen = Gdk.Screen.get_default()
                 if screen:
-                    target_width = int(screen.get_width() * 0.66)
+                    target_width = int(screen.get_width() * 0.5)
 
-            # Принудительно задаем контейнеру терминала эту ширину
             self.terminals_stack.set_size_request(target_width, -1)
         except Exception as e:
             print(f"Error sizing terminal: {e}")
@@ -543,7 +542,6 @@ class TerminalMixin:
         self.search_entry.set_text("")
         self.btn_terminal.get_style_context().add_class("active")
 
-        # Применяем размер 2/3 экрана (он удержит окно открытым)
         self._apply_terminal_width()
 
         if hasattr(self, '_cancel_pending_hide'):
@@ -566,7 +564,6 @@ class TerminalMixin:
         if not self._is_terminal_open():
             return
 
-        # Убираем жесткий лимит ширины при возврате к файлам
         self.terminals_stack.set_size_request(-1, -1)
 
         self.stack.set_visible_child_name("files")
