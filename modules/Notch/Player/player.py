@@ -21,6 +21,7 @@ from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.circularprogressbar import CircularProgressBar
+from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.overlay import Overlay
 from fabric.widgets.scale import Scale
@@ -751,7 +752,7 @@ class MediaPlayer(Box):
         )
         self.local_player = local_player
         self._health_check_id = None
-        self._player_states = {} # Словарь для запоминания состояний (играет/пауза)
+        self._player_states = {}
 
         self.player_stack = Stack(
             name="player-stack", transition_type="slide-left-right", transition_duration=500,
@@ -1096,6 +1097,22 @@ class TrackList(Box):
         self.add(header); self.add(self._search_overlay); self.add(sw)
         threading.Thread(target=self._scan, daemon=True).start(); self._watch()
 
+    def _make_centered_state(self, icon: str, text: str, name: str) -> Box:
+        inner = Box(
+            orientation="v", h_align="center", v_align="center", spacing=12,
+            children=[
+                Image(icon_name=icon, icon_size=48, name="explorer-empty-icon"),
+                Label(name="explorer-empty-label", label=text),
+            ])
+        wrapper = Box(
+            name=name, orientation="v",
+            h_expand=True, v_expand=True, h_align="fill", v_align="fill")
+        wrapper.set_size_request(-1, -1)
+        wrapper.pack_start(Box(v_expand=True), True, True, 0)
+        wrapper.pack_start(inner, False, False, 0)
+        wrapper.pack_start(Box(v_expand=True), True, True, 0)
+        return wrapper
+
     def _on_search_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_Escape:
             self._search_entry.set_text("")
@@ -1187,9 +1204,11 @@ class TrackList(Box):
         for ch in [*self._list_box.get_children()]: self._list_box.remove(ch); ch.destroy()
         self._rows.clear()
         if not tracks:
-            self._list_box.add(Label(label="No audio files in ~/Music", h_align="center", v_align="center", h_expand=True, v_expand=True))
+            empty_state = self._make_centered_state("folder-open-symbolic", "Folder music is empty", "explorer-empty-state")
+            self._list_box.add(empty_state)
             self._count_lbl.set_text("0 tracks")
-            self._list_box.show_all(); return
+            self._list_box.show_all()
+            return
 
         for artist, title, album, duration_str, search_str, full, length_us, art_url in tracks:
             t_esc = GLib.markup_escape_text(title, -1)
