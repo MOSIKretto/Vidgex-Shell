@@ -9,7 +9,7 @@ import services.icons as icons
 
 
 class Calendar(Gtk.Box):
-    __slots__ = ('view_mode', 'first_weekday', '_c', 'ty', 'tm', 'td', 'sy', 'sm', 'sd', '_pb', '_nb', '_ml', '_hdr', '_wr', '_gr')
+    __slots__ = ('view_mode', 'first_weekday', 'ty', 'tm', 'td', 'sy', 'sm', 'sd', '_pb', '_nb', '_ml', '_hdr', '_wr', 'stack', '_page_counter')
 
     _M = (
         "January", "February", "March", "April", 
@@ -23,7 +23,7 @@ class Calendar(Gtk.Box):
 
         self.view_mode = view_mode
         self.first_weekday = first_weekday
-        self._c = []
+        self._page_counter = 0
 
         if view_mode == "month":
             self.set_halign(Gtk.Align.CENTER)
@@ -62,17 +62,11 @@ class Calendar(Gtk.Box):
             self._wr.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
         self.pack_start(self._wr, False, False, 0)
 
-        self._gr = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name="calendar-grid" if view_mode == "month" else "calendar-grid-week-view")
+        self.stack = Gtk.Stack(name="calendar-stack")
+        self.stack.set_transition_duration(300)
+        self.pack_start(self.stack, True, True, 0)
 
-        rows = 6 if view_mode == "month" else 1
-        for r in range(rows):
-            for c in range(7):
-                lbl = Gtk.Label(name="day-label", valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
-                self._gr.attach(lbl, c, r, 1, 1)
-                self._c.append(lbl)
-
-        self.pack_start(self._gr, True, True, 0)
-        self._upd()
+        self._upd(transition=Gtk.StackTransitionType.NONE)
         self.show_all()
 
     def _rst(self):
@@ -84,11 +78,44 @@ class Calendar(Gtk.Box):
             start = today - datetime.timedelta(days=offset)
             self.sy, self.sm, self.sd = start.year, start.month, start.day
 
-    def _upd(self):
+    def _upd(self, transition=Gtk.StackTransitionType.NONE):
         self._ml.set_text(f"{self._M[self.sm - 1]} {self.sy}")
-        self._um() if self.view_mode == "month" else self._uw()
 
-    def _um(self):
+        visible_child = self.stack.get_visible_child()
+        for child in self.stack.get_children():
+            if child != visible_child:
+                self.stack.remove(child)
+                child.destroy()
+
+        new_grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False)
+        new_grid.set_name("calendar-grid" if self.view_mode == "month" else "calendar-grid-week-view")
+
+        rows = 6 if self.view_mode == "month" else 1
+        labels = []
+        for r in range(rows):
+            for c in range(7):
+                lbl = Gtk.Label(name="day-label", valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
+                new_grid.attach(lbl, c, r, 1, 1)
+                labels.append(lbl)
+
+        if self.view_mode == "month":
+            self._um(labels)
+        else:
+            self._uw(labels)
+
+        new_grid.show_all()
+
+        self._page_counter += 1
+        page_name = f"page_{self._page_counter}"
+        
+        self.stack.add_named(new_grid, page_name)
+        
+        if transition != Gtk.StackTransitionType.NONE:
+            self.stack.set_visible_child_full(page_name, transition)
+        else:
+            self.stack.set_visible_child_name(page_name)
+
+    def _um(self, labels):
         f_wd, mdays = calendar.monthrange(self.sy, self.sm)
         off = (f_wd - self.first_weekday) % 7
         
@@ -97,7 +124,7 @@ class Calendar(Gtk.Box):
         
         is_curr_m_y = (sm == tm and sy == ty)
 
-        for i, lbl in enumerate(self._c):
+        for i, lbl in enumerate(labels):
             ctx = lbl.get_style_context()
             if ctx.has_class("current-day"): ctx.remove_class("current-day")
             
@@ -112,13 +139,13 @@ class Calendar(Gtk.Box):
                 lbl.set_name("day-empty")
                 lbl.set_markup(icons.dot)
 
-    def _uw(self):
+    def _uw(self, labels):
         ty, tm, td = self.ty, self.tm, self.td
         ref_m = self.sm
         
         start_date = datetime.date(self.sy, self.sm, self.sd)
 
-        for i, lbl in enumerate(self._c):
+        for i, lbl in enumerate(labels):
             curr = start_date + datetime.timedelta(days=i)
             y, m, d = curr.year, curr.month, curr.day
             
@@ -136,7 +163,7 @@ class Calendar(Gtk.Box):
 
     def reset_to_current(self):
         self._rst()
-        self._upd()
+        self._upd(transition=Gtk.StackTransitionType.CROSSFADE)
 
     def _prev(self, _):
         if self.view_mode == "month":
@@ -146,7 +173,8 @@ class Calendar(Gtk.Box):
         else:
             prev_week = datetime.date(self.sy, self.sm, self.sd) - datetime.timedelta(days=7)
             self.sy, self.sm, self.sd = prev_week.year, prev_week.month, prev_week.day
-        self._upd()
+            
+        self._upd(transition=Gtk.StackTransitionType.SLIDE_RIGHT)
 
     def _next(self, _):
         if self.view_mode == "month":
@@ -156,9 +184,9 @@ class Calendar(Gtk.Box):
         else:
             next_week = datetime.date(self.sy, self.sm, self.sd) + datetime.timedelta(days=7)
             self.sy, self.sm, self.sd = next_week.year, next_week.month, next_week.day
-        self._upd()
+            
+        self._upd(transition=Gtk.StackTransitionType.SLIDE_LEFT)
 
     def cleanup(self):
-        self._c.clear()
         self._pb = self._nb = self._ml = None
-        self._hdr = self._wr = self._gr = None
+        self._hdr = self._wr = self.stack = None
