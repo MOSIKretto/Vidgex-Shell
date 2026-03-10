@@ -82,6 +82,7 @@ PACKAGES=(
   python-onnxruntime-cpu
   python-dbus
   python-evdev
+  python-mutagen
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════

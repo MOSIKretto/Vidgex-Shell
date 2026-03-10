@@ -5,25 +5,25 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-from modules.Notch.Mixer.mixer import Mixer
+from modules.Notch.Player.player import Player
 from modules.Notch.Wallpaper.wallpapers import WallpaperSelector
 from modules.Notch.Widgets.widgets import Widgets
 
 
 class Dashboard(Box):
-    __slots__ = ('notch', 'widgets', 'wallpapers', 'mixer', 'stack', 'switcher', '_sections')
+    __slots__ = ('notch', 'widgets', 'wallpapers', 'player', 'stack', 'switcher', '_sections')
 
     def __init__(self, **kwargs):
         self.notch = kwargs.get("notch")
 
         self.widgets = Widgets(notch=self.notch)
         self.wallpapers = WallpaperSelector()
-        self.mixer = Mixer()
+        self.player = Player()
 
         self._sections = {
             "widgets": self.widgets,
+            "player": self.player,
             "wallpapers": self.wallpapers,
-            "mixer": self.mixer
         }
 
         self.stack = Stack(name="stack", transition_type="slide-left-right", v_expand=True)
@@ -36,16 +36,16 @@ class Dashboard(Box):
         self.switcher.set_can_focus(True)
 
         self.stack.add_titled(self.widgets, "widgets", "Dashboard")
+        self.stack.add_titled(self.player, "player", "Player")
         self.stack.add_titled(self.wallpapers, "wallpapers", "Wallpapers")
-        self.stack.add_titled(self.mixer, "mixer", "Mixer")
 
         self.stack.connect("notify::visible-child", self._on_vis)
 
         super().__init__(
-            name="dashboard", 
-            orientation="v", 
-            spacing=8, 
-            visible=True, 
+            name="dashboard",
+            orientation="v",
+            spacing=8,
+            visible=True,
             all_visible=True,
             children=(self.switcher, self.stack)
         )
@@ -68,7 +68,7 @@ class Dashboard(Box):
             self.stack.set_visible_child(tgt)
 
     def cleanup(self):
-        for w in (self.widgets, self.wallpapers, self.mixer):
+        for w in (self.widgets, self.wallpapers, self.player):
             try:
                 w.cleanup()
             except AttributeError:

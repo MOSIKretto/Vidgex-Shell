@@ -395,13 +395,13 @@ class GestureCrosspad:
 
 
 def start_recognition():
-    script = os.path.expanduser('~/.config/Vidgex-Shell/scripts/cycle_workspace_matrix.sh')
+    script = os.path.expanduser('~/.config/Vidgex-Shell/scripts/matrix_nav.sh')
     
     commands = {
-        SwipeDirection.RIGHT: f'{script} nextL',
-        SwipeDirection.LEFT: f'{script} nextR',
-        SwipeDirection.UP: f'{script} nextD',
-        SwipeDirection.DOWN: f'{script} nextU',
+        SwipeDirection.RIGHT: f'{script} workspace nextL',
+        SwipeDirection.LEFT: f'{script} workspace nextR',
+        SwipeDirection.UP: f'{script} workspace nextD',
+        SwipeDirection.DOWN: f'{script} workspace nextU',
     }
     
     GestureCrosspad(commands).run()

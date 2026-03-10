@@ -257,7 +257,7 @@ class Notch(Window):
 
         if name in ("network_applet", "bluetooth"): self._showdw(name)
         elif name == "dashboard": self._showdw("notification_history")
-        elif name in ("wallpapers", "mixer"): self._showdb(name)
+        elif name in ("wallpapers", "player"): self._showdb(name)
         elif name == "overview": self.stack.set_visible_child(self.overview)
         elif name == "power": self.stack.set_visible_child(self.power)
         elif name == "tools": self.stack.set_visible_child(self.tools)
