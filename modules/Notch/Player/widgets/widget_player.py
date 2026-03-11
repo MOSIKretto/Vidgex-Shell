@@ -72,6 +72,14 @@ _SNAP_FACTOR   = 0.18
 _SNAP_EPSILON  = 0.005
 _TAU           = math.tau
 
+# ── smooth progress bar ──────────────────────────────────────────────
+_PROG_MS    = 16       # ~60 fps visual refresh
+_SYNC_MS    = 500      # query real position every 500 ms
+_LERP_SEEK  = 0.14     # lerp factor for ±5 s seek animation
+_LERP_RESET = 0.20     # lerp factor for track-change reset-to-zero
+_LERP_CORR  = 0.30     # lerp factor for small live corrections
+_LERP_EPS   = 0.002    # "close enough" snap threshold
+
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
 def _cleanup_cache():
@@ -155,6 +163,10 @@ def _mpris_id(mp):
     return (getattr(mp, "player_instance", None)
             or getattr(mp, "player_name", None)
             or f"player_{id(mp)}")
+
+def _fmt_time(us):
+    s = int(us) // 1_000_000
+    return f"{s // 60}:{s % 60:02}"
 
 
 class LocalPlayer(Service):
@@ -293,8 +305,11 @@ class PlayerBox(Box):
         'btn_box', 'info_box', 'player_box', 'overlay_container',
         '_angle', '_anim_id', '_spinning', '_flick_v', '_snapping',
         '_last_art', '_extract_tried', '_is_wall', '_dcancel', '_wmon',
-        '_ptid', '_upd', '_scroll_acc',
+        '_upd', '_scroll_acc',
         '_local_order',
+        # smooth progress state
+        '_pv', '_pt', '_panim', '_ptimer', '_stimer',
+        '_kpos', '_ktime', '_klen', '_kplay', '_tkey', '_last_time_txt',
     )
 
     def __init__(self, mpris_player=None):
@@ -305,7 +320,7 @@ class PlayerBox(Box):
         self.mpris_player = mpris_player
 
         self._sig_id = self._exit_sig_id = None
-        self._ptid   = self._anim_id = None
+        self._anim_id = None
         self._dcancel = self._wmon = None
         self._upd = False
 
@@ -320,6 +335,19 @@ class PlayerBox(Box):
 
         self._scroll_acc = 0.0
         self._local_order = "normal"
+
+        # ── smooth progress ──
+        self._pv     = 0.0               # displayed progress 0‥1
+        self._pt     = 0.0               # target for seek anim
+        self._panim  = 'idle'            # idle | live | seek | reset
+        self._ptimer = None              # 60 fps visual timer
+        self._stimer = None              # 500 ms sync timer
+        self._kpos   = 0                 # last known position (µs)
+        self._ktime  = time.monotonic()  # wall‑clock of last query
+        self._klen   = 0                 # known length (µs)
+        self._kplay  = False             # is playing
+        self._tkey   = None              # (title, artist, arturl)
+        self._last_time_txt = ""
 
         self.cover = CircleImage(
             name="player-cover", image_file=_WALL,
@@ -428,9 +456,11 @@ class PlayerBox(Box):
 
         if mpris_player:
             self._wire()
-            self._ptid_start()
+            self._prog_start()
         else:
             self._setup_empty()
+
+    # ── helpers ───────────────────────────────────────────────────────
 
     @staticmethod
     def _btn(icon, sc=()):
@@ -451,6 +481,8 @@ class PlayerBox(Box):
 
     def _is_reversed(self):
         return self._get_order() == "reverse"
+
+    # ── cover rotation ────────────────────────────────────────────────
 
     def _on_cover_draw(self, w, cr):
         child = w.get_child()
@@ -541,6 +573,8 @@ class PlayerBox(Box):
         if mp and getattr(mp, "playback_status", "") == "playing" and not self._is_wall:
             self._spin_on()
 
+    # ── scroll / click on cover ───────────────────────────────────────
+
     def _on_scroll(self, _w, ev):
         d = ev.direction
         if d == Gdk.ScrollDirection.UP:
@@ -567,6 +601,8 @@ class PlayerBox(Box):
             if mp:
                 mp.play_pause()
         return True
+
+    # ── cover art loading ─────────────────────────────────────────────
 
     def _ucover(self, arturl):
         if arturl == self._last_art:
@@ -692,6 +728,8 @@ class PlayerBox(Box):
             pass
         GLib.idle_add(self._try_extract)
 
+    # ── wiring ────────────────────────────────────────────────────────
+
     def _wire(self):
         self._refresh()
         mp = self.mpris_player
@@ -729,14 +767,26 @@ class PlayerBox(Box):
         for b in (self.backward, self.forward, self.prev, self.next,
                   self.shuffle_btn, self.repeat_btn):
             b.add_style_class("disabled")
+        # reset smooth progress state
         self.progressbar.set_value(0.0)
         self.time.set_text(_NO_TIME)
+        self._pv    = 0.0
+        self._pt    = 0.0
+        self._panim = 'idle'
+        self._kpos  = 0
+        self._klen  = 0
+        self._kplay = False
+        self._tkey  = None
+        self._last_time_txt = ""
+
+    # ── seeking (±5 s) ────────────────────────────────────────────────
 
     def _seek(self, direction):
         mp = self.mpris_player
         if not mp:
             return
         ok = at0 = False
+        new_us = None
 
         if isinstance(mp, LocalPlayer):
             pb = mp._playbin
@@ -750,18 +800,34 @@ class PlayerBox(Box):
                         tgt = max(0, pos - _SEEK_NS)
                         at0 = tgt == 0
                     pb.seek_simple(Gst.Format.TIME, _SEEK_FLAGS, tgt)
+                    new_us = tgt // 1000          # ns → µs
                     ok = True
         elif isinstance(mp, MprisPlayer) and mp.can_seek:
+            cur_pos = getattr(mp, "position", 0) or 0
             if direction < 0:
-                at0 = (getattr(mp, "position", 0) or 0) <= _SEEK_US
+                at0 = cur_pos <= _SEEK_US
             mp.seek(_SEEK_US * direction)
+            new_us = max(0, cur_pos + _SEEK_US * direction)
+            if self._klen > 0:
+                new_us = min(new_us, self._klen)
             ok = True
 
-        if ok and not self._is_wall:
-            if at0 and direction < 0:
-                self._snap()
-            else:
-                self._flick(float(direction))
+        if ok:
+            # smooth progress → lerp to estimated new fraction
+            if new_us is not None and self._klen > 0:
+                self._kpos  = int(new_us)
+                self._ktime = time.monotonic()
+                self._pt    = max(0.0, min(1.0, new_us / self._klen))
+                self._panim = 'seek'
+
+            # cover flick / snap
+            if not self._is_wall:
+                if at0 and direction < 0:
+                    self._snap()
+                else:
+                    self._flick(float(direction))
+
+    # ── playback‑mode toggles ─────────────────────────────────────────
 
     def _toggle_order(self, *_):
         mp = self.mpris_player
@@ -828,6 +894,8 @@ class PlayerBox(Box):
                 return False
             GLib.idle_add(_safe_set)
 
+    # ── refresh / change handling ─────────────────────────────────────
+
     def _refresh(self):
         mp = self.mpris_player
         if not mp:
@@ -846,6 +914,7 @@ class PlayerBox(Box):
         self._uicon()
         self._umode(mp)
         self._ubtn(mp)
+        self._update_prog_state(mp)
 
     def _sync_order(self, mp):
         try:
@@ -896,7 +965,7 @@ class PlayerBox(Box):
             sb.set_tooltip_text("Shuffle")
             _set_style(sb, "active", True)
         else:
-            sl.set_markup(icons.shuffle)
+            sl.set_markup(icons.reverse_order)
             sb.set_tooltip_text("Order")
             _set_style(sb, "active", False)
         sb.remove_style_class("disabled")
@@ -938,9 +1007,7 @@ class PlayerBox(Box):
         _set_style(self.backward, "disabled", stopped or not can_seek)
         _set_style(self.forward,  "disabled", stopped or not can_seek)
 
-        if stopped:
-            self.progressbar.set_value(0.0)
-            self.time.set_text(_NO_TIME)
+        # progress / time now handled by _update_prog_state + _prog_tick
 
         if isinstance(mp, LocalPlayer):
             live = status in ("playing", "paused")
@@ -954,33 +1021,146 @@ class PlayerBox(Box):
         _set_style(self.play_pause, "disabled",
                    not getattr(mp, "can_play", True) and not getattr(mp, "can_pause", True))
 
-    def _ptid_start(self):
-        if not self._ptid:
-            self._ptid = GLib.timeout_add(500, self._ptick)
-            self._ptick()
+    # ── smooth progress engine ────────────────────────────────────────
 
-    def _ptid_stop(self):
-        t = self._ptid
+    def _prog_start(self):
+        """Start the 60 fps visual timer + 500 ms position‑sync timer."""
+        if not self._ptimer:
+            self._ptimer = GLib.timeout_add(_PROG_MS, self._prog_tick)
+        if not self._stimer:
+            self._stimer = GLib.timeout_add(_SYNC_MS, self._sync_tick)
+        self._sync_pos()
+        if self._panim == 'idle':
+            self._panim = 'live'
+
+    def _prog_stop(self):
+        """Kill both progress timers."""
+        t = self._ptimer
         if t:
             GLib.source_remove(t)
-            self._ptid = None
+            self._ptimer = None
+        t = self._stimer
+        if t:
+            GLib.source_remove(t)
+            self._stimer = None
 
-    def _ptick(self):
+    def _sync_pos(self):
+        """Read actual position / length / status from the player."""
+        mp = self.mpris_player
+        if not mp:
+            return
+        self._kpos  = getattr(mp, 'position', 0) or 0
+        self._ktime = time.monotonic()
+        self._klen  = getattr(mp, 'length', 0) or 0
+        self._kplay = getattr(mp, 'playback_status', '') == 'playing'
+
+    def _sync_tick(self):
+        """Periodic 500 ms sync — query the real position."""
         mp = self.mpris_player
         if not mp or getattr(mp, '_dead', False):
-            self._ptid = None
+            self._stimer = None
             return False
-        cur = getattr(mp, "position", 0) or 0
-        tot = getattr(mp, "length", 0)  or 0
-        if tot <= 0:
-            self.progressbar.set_value(0.0)
-            self.time.set_text(_NO_TIME)
-        else:
-            s = min(cur, tot)
-            self.progressbar.set_value(max(0.0, min(1.0, s / tot)))
-            cs, ts = int(s) // 1_000_000, int(tot) // 1_000_000
-            self.time.set_text(f"{cs // 60}:{cs % 60:02} / {ts // 60}:{ts % 60:02}")
+        self._kplay = getattr(mp, 'playback_status', '') == 'playing'
+        self._klen  = getattr(mp, 'length', 0) or 0
+        # only overwrite position when NOT mid‑animation
+        if self._panim not in ('seek', 'reset'):
+            self._kpos  = getattr(mp, 'position', 0) or 0
+            self._ktime = time.monotonic()
         return True
+
+    def _prog_tick(self):
+        """~60 fps: compute displayed progress with smooth interpolation."""
+        mp = self.mpris_player
+        if not mp or getattr(mp, '_dead', False):
+            self._ptimer = None
+            return False
+
+        tot = self._klen
+        if tot <= 0:
+            if self._pv != 0.0:
+                self._pv = 0.0
+                self.progressbar.set_value(0.0)
+            self._set_time_text(_NO_TIME)
+            return True
+
+        mode = self._panim
+
+        if mode == 'reset':
+            # ── track changed → lerp to 0 ──
+            if self._pv < _LERP_EPS:
+                self._pv    = 0.0
+                self._panim = 'live'
+                self._sync_pos()
+            else:
+                self._pv += (0.0 - self._pv) * _LERP_RESET
+
+        elif mode == 'seek':
+            # ── ±5 s seek → lerp to target fraction ──
+            diff = self._pt - self._pv
+            if abs(diff) < _LERP_EPS:
+                self._pv    = self._pt
+                self._panim = 'live'
+                # anchor prediction from where we landed
+                self._kpos  = int(self._pt * tot)
+                self._ktime = time.monotonic()
+            else:
+                self._pv += diff * _LERP_SEEK
+
+        else:
+            # ── live / idle → linear prediction with smooth correction ──
+            if self._kplay:
+                elapsed_us = (time.monotonic() - self._ktime) * 1_000_000
+                predicted  = self._kpos + elapsed_us
+                target     = max(0.0, min(1.0, predicted / tot))
+            else:
+                target = max(0.0, min(1.0, self._kpos / tot))
+
+            diff = target - self._pv
+            if abs(diff) < 0.0003:
+                self._pv = target
+            else:
+                self._pv += diff * _LERP_CORR
+
+        val = max(0.0, min(1.0, self._pv))
+        self.progressbar.set_value(val)
+
+        # build time string and only push when it actually changed
+        cur_us = int(val * tot)
+        txt = f"{_fmt_time(cur_us)} / {_fmt_time(tot)}"
+        self._set_time_text(txt)
+        return True
+
+    def _set_time_text(self, txt):
+        if txt != self._last_time_txt:
+            self._last_time_txt = txt
+            self.time.set_text(txt)
+
+    def _update_prog_state(self, mp):
+        """Called from _refresh — detect track change / status change."""
+        status = getattr(mp, 'playback_status', 'stopped')
+        self._kplay = status == 'playing'
+        self._klen  = getattr(mp, 'length', 0) or 0
+
+        if status == 'stopped':
+            self._pv    = 0.0
+            self._panim = 'idle'
+            self.progressbar.set_value(0.0)
+            self._set_time_text(_NO_TIME)
+            self._tkey = None
+            return
+
+        new_key = (mp.title, mp.artist, getattr(mp, 'arturl', ''))
+        if self._tkey is not None and new_key != self._tkey:
+            # track changed → animate to 0
+            self._panim = 'reset'
+        elif self._panim == 'idle':
+            # first play after stopped / init
+            self._panim = 'live'
+            self._kpos  = getattr(mp, 'position', 0) or 0
+            self._ktime = time.monotonic()
+        self._tkey = new_key
+
+    # ── change coalescing ─────────────────────────────────────────────
 
     def _on_changed(self, *_):
         if not self._upd:
@@ -993,9 +1173,11 @@ class PlayerBox(Box):
             self._refresh()
         return False
 
+    # ── cleanup ───────────────────────────────────────────────────────
+
     def cleanup(self):
         self._anim_off()
-        self._ptid_stop()
+        self._prog_stop()
         dc = self._dcancel
         if dc:
             dc.cancel()
