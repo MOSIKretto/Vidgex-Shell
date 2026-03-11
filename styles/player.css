@@ -330,6 +330,104 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+   ARTIST GROUPS (ГРУППЫ АРТИСТОВ)
+══════════════════════════════════════════════════════════════════════════════ */
+
+#artist-group {
+  margin-bottom: 4px;
+}
+
+#artist-group + #artist-group {
+  margin-top: 8px;
+}
+
+/* ── Заголовок группы ── */
+#artist-group-header {
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 4px;
+  border: 2px solid transparent;
+  margin-bottom: 4px;
+  transition: all 200ms ease-in-out;
+}
+
+#artist-group-header.expanded {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+#artist-expand-button {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+#artist-header-content {
+  min-height: 24px;
+}
+
+/* ── Имя артиста ── */
+#artist-group-name {
+  font-weight: bold;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+/* ── Бейдж-счётчик ── */
+#artist-group-count {
+  color: var(--shadow);
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 8px;
+  background-color: var(--primary);
+  border-radius: 8px;
+  margin-right: 4px;
+}
+
+/* ── Стрелка ── */
+#artist-expand-icon {
+  color: var(--outline);
+  font-size: 14px;
+}
+
+/* ── Раскрытое состояние ── */
+#artist-group-header.expanded #artist-group-name,
+#artist-group-header.expanded #artist-group-count,
+#artist-group-header.expanded #artist-expand-icon {
+  color: var(--on-primary);
+}
+
+#artist-group-header.expanded #artist-group-count {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* ── Hover на заголовке ── */
+#artist-group-header:hover {
+  border-color: var(--primary);
+}
+
+#artist-group-header.expanded:hover {
+  background-color: var(--primary);
+  border-color: var(--foreground);
+}
+
+/* ── Контейнер треков внутри группы ── */
+#artist-tracks-container {
+  margin-top: 4px;
+}
+
+#artist-tracks-container #track-row {
+  opacity: 0.95;
+  transition: opacity 150ms ease-in-out, border-color 150ms ease-in-out;
+}
+
+#artist-tracks-container #track-row:hover {
+  opacity: 1;
+  border-color: var(--primary);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
    MIXER SECTION (МИКШЕРЫ: INPUT / OUTPUT)
 ══════════════════════════════════════════════════════════════════════════════ */
 
