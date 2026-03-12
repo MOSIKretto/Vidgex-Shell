@@ -167,9 +167,6 @@ def _get_metadata(filepath, filename):
     return artist, title, album, duration_str, secs * 1_000_000, art_url
 
 
-# ── Collapsible artist group ─────────────────────────────────────────────────
-
-
 class ArtistGroup(Box):
     """Сворачиваемая группа треков одного артиста."""
 
@@ -292,9 +289,6 @@ class ArtistGroup(Box):
         if opening and self._on_expand_cb:
             self._on_expand_cb(self)
         self.set_expanded(opening)
-
-
-# ── Track list ────────────────────────────────────────────────────────────────
 
 
 class TrackList(Box):
@@ -422,8 +416,6 @@ class TrackList(Box):
         threading.Thread(target=self._scan, daemon=True).start()
         self._watch()
 
-    # ── static helpers ────────────────────────────────────────────────
-
     @staticmethod
     def _make_centered_state(icon: str, text: str, name: str) -> Box:
         inner = Box(
@@ -447,15 +439,11 @@ class TrackList(Box):
         wrapper.pack_start(inner, True, False, 0)
         return wrapper
 
-    # ── nav helpers ───────────────────────────────────────────────────
-
     def _emit_nav(self, has_visible: bool):
         lp = self.local_player
         lp.can_go_previous = has_visible
         lp.can_go_next = has_visible
         lp.emit("changed")
-
-    # ── artist group helpers ──────────────────────────────────────────
 
     def _on_group_expanded(self, expanded_group):
         for g in self._artist_groups.values():
@@ -467,8 +455,6 @@ class TrackList(Box):
         for g in self._artist_groups.values():
             if g.is_expanded:
                 g.set_expanded(False)
-
-    # ── smooth scroll animation ──────────────────────────────────────
 
     def _scroll_to_group(self, group):
         if self._anim_id:
@@ -513,8 +499,6 @@ class TrackList(Box):
         new_scroll = current_scroll + diff * 0.15
         vadj.set_value(new_scroll)
         return True
-
-    # ── search ────────────────────────────────────────────────────────
 
     def _on_search_key_press(self, _widget, event):
         if event.keyval != Gdk.KEY_Escape:
@@ -573,8 +557,6 @@ class TrackList(Box):
         )
         self._emit_nav(visible_count > 0)
 
-    # ── filesystem watching ───────────────────────────────────────────
-
     def _watch(self):
         if not os.path.isdir(_MUSIC_DIR):
             return
@@ -596,8 +578,6 @@ class TrackList(Box):
         self._pend_id = 0
         threading.Thread(target=self._scan, daemon=True).start()
         return False
-
-    # ── scan & populate ───────────────────────────────────────────────
 
     def _scan(self):
         tracks = []
@@ -722,8 +702,6 @@ class TrackList(Box):
         list_box.show_all()
         self._emit_nav(any(r.btn.get_visible() for r in self._rows))
 
-    # ── playback ──────────────────────────────────────────────────────
-
     def _on_row_clicked(self, _btn, path):
         self._play_by_path(path)
 
@@ -794,8 +772,6 @@ class TrackList(Box):
             target = 0 if direction > 0 else -1
 
         self._play_by_path(vis[target % len(vis)].path, force=True)
-
-    # ── cleanup ───────────────────────────────────────────────────────
 
     def cleanup(self):
         self._dead = True
