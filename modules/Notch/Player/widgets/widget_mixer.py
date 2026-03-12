@@ -1,6 +1,7 @@
-from gi.repository import Gtk
+from gi.repository import Gdk, Gtk, GLib
 
 from fabric.widgets.box import Box
+from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
 from fabric.widgets.scale import Scale
@@ -8,6 +9,37 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 
 _MUTED_CLASS = "muted"
+_SECTION_MUTED_CLASS = "section-muted"
+_ANIM_STEPS = 25
+_ANIM_INTERVAL_MS = 16
+
+_pointer_cursor: Gdk.Cursor | None = None
+_default_cursor: Gdk.Cursor | None = None
+
+
+def _get_cursors(display: Gdk.Display):
+    global _pointer_cursor, _default_cursor
+    if _pointer_cursor is None:
+        _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
+        _default_cursor = Gdk.Cursor.new_from_name(display, "default")
+    return _pointer_cursor, _default_cursor
+
+
+def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+    win = widget.get_window()
+    if win:
+        pointer, _ = _get_cursors(win.get_display())
+        win.set_cursor(pointer)
+    return False
+
+
+def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+    win = widget.get_window()
+    if win:
+        _, default = _get_cursors(win.get_display())
+        win.set_cursor(default)
+    return False
+
 
 class MixerSlider(Scale):
     __slots__ = ("stream", "_updating", "_muted_style")
@@ -171,17 +203,32 @@ class MixerSlot(Box):
 
 
 class MixerSection(Box):
-    __slots__ = ("_title_lbl", "_content", "_slots", "scroll")
+    __slots__ = (
+        "_title_btn", "_content", "_slots", "scroll",
+        "_muted", "_saved_volumes", "_anim_id",
+    )
 
     def __init__(self, title: str, **kwargs):
-        title_lbl = Label(
+        title_btn = Button(
             name="mixer-section-title",
             label=title,
             h_expand=True,
-            h_align="start",
+            h_align="fill",
             v_expand=False,
         )
-        self._title_lbl = title_lbl
+        self._title_btn = title_btn
+        self._muted = False
+        self._saved_volumes: dict[int, float] = {}
+        self._anim_id = None
+
+        title_btn.connect("clicked", self._on_title_clicked)
+
+        # ── курсор-указатель ТОЛЬКО на кнопке ──
+        title_btn.add_events(
+            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
+        )
+        title_btn.connect("enter-notify-event", _on_btn_enter)
+        title_btn.connect("leave-notify-event", _on_btn_leave)
 
         content = Box(
             name="mixer-content",
@@ -214,10 +261,74 @@ class MixerSection(Box):
             spacing=4,
             h_expand=True,
             v_expand=True,
-            children=(title_lbl, scroll),
+            children=(title_btn, scroll),
             **kwargs,
         )
 
+    # ── toggle mute / unmute ──────────────────────────────────────────────
+    def _on_title_clicked(self, _btn):
+        if self._anim_id is not None:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
+
+        ctx = self._title_btn.get_style_context()
+
+        if not self._muted:
+            self._saved_volumes.clear()
+            for sid, slot in self._slots.items():
+                s = slot.stream
+                if s is not None:
+                    self._saved_volumes[sid] = s.volume
+            self._muted = True
+            ctx.add_class(_SECTION_MUTED_CLASS)
+            self._run_animation(to_zero=True)
+        else:
+            self._muted = False
+            ctx.remove_class(_SECTION_MUTED_CLASS)
+            self._run_animation(to_zero=False)
+
+    # ── smooth volume ramp ────────────────────────────────────────────────
+    def _run_animation(self, to_zero: bool):
+        targets: dict[int, tuple[float, float]] = {}
+        for sid, slot in self._slots.items():
+            s = slot.stream
+            if s is None:
+                continue
+            start = s.volume
+            end = 0.0 if to_zero else self._saved_volumes.get(sid, 100.0)
+            if abs(start - end) < 0.5:
+                s.volume = end
+                continue
+            targets[sid] = (start, end)
+
+        if not targets:
+            if not to_zero:
+                self._saved_volumes.clear()
+            return
+
+        step = [0]
+
+        def _tick():
+            step[0] += 1
+            t = min(step[0] / _ANIM_STEPS, 1.0)
+            ease = 1.0 - (1.0 - t) ** 3
+
+            for sid, (s, e) in targets.items():
+                slot = self._slots.get(sid)
+                if slot is None or slot.stream is None:
+                    continue
+                slot.stream.volume = s + (e - s) * ease
+
+            if step[0] >= _ANIM_STEPS:
+                self._anim_id = None
+                if not to_zero:
+                    self._saved_volumes.clear()
+                return False
+            return True
+
+        self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
+
+    # ── public API ────────────────────────────────────────────────────────
     def update_streams(self, streams):
         slots = self._slots
         content = self._content
@@ -243,12 +354,17 @@ class MixerSection(Box):
                 content.remove(slot)
                 slot.cleanup()
                 slot.destroy()
+                self._saved_volumes.pop(sid, None)
 
         if changed:
             content.show_all()
 
     def cleanup(self):
+        if self._anim_id is not None:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
         for slot in self._slots.values():
             slot.cleanup()
             slot.destroy()
         self._slots.clear()
+        self._saved_volumes.clear()
