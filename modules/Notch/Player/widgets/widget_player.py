@@ -72,7 +72,6 @@ _SNAP_FACTOR   = 0.18
 _SNAP_EPSILON  = 0.005
 _TAU           = math.tau
 
-# ── smooth progress ──────────────────────────────────────────────────
 _PROG_FPS     = 16
 _SYNC_MS      = 500
 
@@ -98,7 +97,6 @@ _CORR_THRESH  = 0.012
 _CORR_DUR     = 0.20
 _CORR_POW     = 2.5
 
-# ── Vidgex scrolling ASCII logo ──────────────────────────────────────
 _V_ART_LINES = [
     "@№@        @@/    \\@@##    /@@@@@@@@\\         /@@@@@@*@@@@/   /@@@№№@@@@@/    @@@      /@|",
     " @@\\      @№|      @@@     @@@@###@@@\\      /@!58@@@@@@@/     @@@@#=@@@/      |@@\\     @@|",
@@ -115,7 +113,6 @@ _V_ART   = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
 _V_SCROLL_SPEED = 1.0
 _V_GAP          = 12
 
-# ── glitch effect ────────────────────────────────────────────────────
 _GL_CHANCE    = 0.015
 _GL_DUR       = (4, 18)
 _GL_CD        = 90
@@ -556,8 +553,6 @@ class PlayerBox(Box):
     def _is_reversed(self):
         return self._get_order() == "reverse"
 
-    # ── cover rotation / scrolling V-logo ─────────────────────────────
-
     def _on_cover_draw(self, w, cr):
         if self._is_wall:
             alloc = w.get_allocation()
@@ -582,7 +577,6 @@ class PlayerBox(Box):
         return True
 
     def _draw_v(self, cr, w, h):
-        """Scrolling Vidgex ASCII logo with glitch effect."""
         rgba = self.artist.get_style_context().get_color(Gtk.StateFlags.NORMAL)
         if rgba.alpha < 0.01:
             r, g, b, a = 0.55, 0.55, 0.55, 1.0
@@ -619,7 +613,6 @@ class PlayerBox(Box):
         off = self._v_offset % block if block > 0 else 0.0
         y0 = (h - lh) * 0.5
 
-        # circular clip
         cr.save()
         cx, cy = w * 0.5, h * 0.5
         radius = min(w, h) * 0.5
@@ -639,7 +632,6 @@ class PlayerBox(Box):
         cr.restore()
 
     def _draw_glitch(self, cr, w, h, font, r, g, b, a, block, off, y0, total_h):
-        """Per-line glitch: displacement, chromatic aberration, corruption."""
         lines  = _V_ART_LINES
         n      = len(lines)
         shifts = self._g_shifts
@@ -691,8 +683,6 @@ class PlayerBox(Box):
             cr.rectangle(0, bar_y, w, random.uniform(2, 8))
             cr.fill()
 
-    # ── V-logo scroll timer + glitch state machine ───────────────────
-
     def _v_start_scroll(self):
         if not self._v_scroll_id:
             self._v_scroll_id = GLib.timeout_add(_ANIM_MS, self._v_scroll_tick)
@@ -729,8 +719,6 @@ class PlayerBox(Box):
 
         self._cover_box.queue_draw()
         return True
-
-    # ── cover spin animation ──────────────────────────────────────────
 
     def _ensure_anim(self):
         if self._anim_id is None:
@@ -803,8 +791,6 @@ class PlayerBox(Box):
         if mp and getattr(mp, "playback_status", "") == "playing" and not self._is_wall:
             self._spin_on()
 
-    # ── scroll / click ────────────────────────────────────────────────
-
     def _on_scroll(self, _w, ev):
         d = ev.direction
         if d == Gdk.ScrollDirection.UP:
@@ -831,8 +817,6 @@ class PlayerBox(Box):
             if mp:
                 mp.play_pause()
         return True
-
-    # ── cover art ─────────────────────────────────────────────────────
 
     def _ucover(self, arturl):
         if arturl == self._last_art:
@@ -961,8 +945,6 @@ class PlayerBox(Box):
             pass
         GLib.idle_add(self._try_extract)
 
-    # ── wiring ────────────────────────────────────────────────────────
-
     def _wire(self):
         self._refresh()
         mp = self.mpris_player
@@ -1011,10 +993,6 @@ class PlayerBox(Box):
         self._tkey  = None
         self._last_time_txt = ""
 
-    # ══════════════════════════════════════════════════════════════════
-    #  CHAINED ANIMATION ENGINE
-    # ══════════════════════════════════════════════════════════════════
-
     def _begin_seg(self, to, dur, power):
         self._a_active = True
         self._a_t0     = _time.monotonic()
@@ -1034,10 +1012,6 @@ class PlayerBox(Box):
     def _cancel_anim(self):
         self._a_active = False
         self._a_chain  = []
-
-    # ══════════════════════════════════════════════════════════════════
-    #  SMOOTH PROGRESS — 60 fps tick + sync
-    # ══════════════════════════════════════════════════════════════════
 
     def _prog_start(self):
         if not self._ptimer:
@@ -1190,8 +1164,6 @@ class PlayerBox(Box):
 
         self._tkey = new_key
 
-    # ── seeking with random overshoot ─────────────────────────────────
-
     def _seek(self, direction):
         mp = self.mpris_player
         if not mp:
@@ -1253,8 +1225,6 @@ class PlayerBox(Box):
                 self._snap()
             else:
                 self._flick(float(direction))
-
-    # ── mode toggles ──────────────────────────────────────────────────
 
     def _toggle_order(self, *_):
         mp = self.mpris_player
@@ -1320,8 +1290,6 @@ class PlayerBox(Box):
                     pass
                 return False
             GLib.idle_add(_safe_set)
-
-    # ── refresh ───────────────────────────────────────────────────────
 
     def _refresh(self):
         mp = self.mpris_player
@@ -1446,8 +1414,6 @@ class PlayerBox(Box):
         _set_style(self.play_pause, "disabled",
                    not getattr(mp, "can_play", True) and not getattr(mp, "can_pause", True))
 
-    # ── change coalescing ─────────────────────────────────────────────
-
     def _on_changed(self, *_):
         if not self._upd:
             self._upd = True
@@ -1458,8 +1424,6 @@ class PlayerBox(Box):
         if self.mpris_player:
             self._refresh()
         return False
-
-    # ── cleanup ───────────────────────────────────────────────────────
 
     def cleanup(self):
         self._anim_off()
