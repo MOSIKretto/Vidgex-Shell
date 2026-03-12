@@ -8,7 +8,6 @@ from gi.repository import Gdk, Gtk
 import services.icons as icons
 
 
-# ── Pointer cursor (singleton) ───────────────────────────────────────────
 _pointer_cursor: Gdk.Cursor | None = None
 _default_cursor: Gdk.Cursor | None = None
 

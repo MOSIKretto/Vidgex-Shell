@@ -21,8 +21,8 @@ from fabric.widgets.overlay import Overlay
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-from modules.Notch.MusicPlayer.Player.mpris import MprisPlayer, MprisPlayerManager
-from modules.Notch.MusicPlayer.Player.circleImage import CircleImage
+from modules.MainWindow.MusicPlayer.Player.mpris import MprisPlayer, MprisPlayerManager
+from modules.MainWindow.MusicPlayer.Player.circleImage import CircleImage
 
 
 _LBL_H = 20

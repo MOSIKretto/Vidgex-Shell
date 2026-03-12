@@ -8,18 +8,18 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 from gi.repository import Gdk, GLib, Gtk
 
-from modules.Notch.dashboard import Dashboard
-from modules.Notch.cliphist import ClipHistory
-from modules.Notch.launcher import AppLauncher
-from modules.Notch.overview import Overview
-from modules.Notch.power import PowerMenu
-from modules.Notch.tools import Toolbox
-from modules.Notch.sessionManager import SessionManagerUI
+from modules.mainWindow import Dashboard
+from modules.cliphist import ClipHistory
+from modules.launcher import AppLauncher
+from modules.overview import Overview
+from modules.power import PowerMenu
+from modules.tools import Toolbox
+from modules.sessionManager import SessionManagerUI
 
 from modules.corners import MyCorner
-from modules.Notch.Dashboard.controls import ControlSmall, get_audio
+from modules.MainWindow.Dashboard.controls import ControlSmall, get_audio
 
-from modules.Notch.Dashboard.Controls.brightness import Brightness
+from modules.MainWindow.Dashboard.Controls.brightness import Brightness
 from services.iconResolver import IconResolver
 from services.wayland import WaylandWindow as Window
 
@@ -63,7 +63,6 @@ class Notch(Window):
 
     def _get_or_create(self, key, widget_class, w=None, h=None):
         if key not in self._wc:
-            # ДОБАВЛЕН 'sessions' в список виджетов, которым передается notch=self
             if key in ('dashboard', 'launcher', 'power', 'cliphist', 'tools', 'sessions'):
                 widget = widget_class(notch=self) 
             else:

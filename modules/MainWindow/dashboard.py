@@ -5,12 +5,12 @@ from gi.repository import Gtk
 from fabric.widgets.box import Box
 from fabric.widgets.stack import Stack
 
-from modules.Notch.Dashboard.calendar import Calendar
-from modules.Notch.Dashboard.time import TimeWidget
-from modules.Notch.Dashboard.network import NetworkConnections
-from modules.Notch.Dashboard.bluetooth import BluetoothConnections
-from modules.Notch.Dashboard.buttons import Buttons
-from modules.Notch.Dashboard.controls import ControlSliders
+from modules.MainWindow.Dashboard.calendar import Calendar
+from modules.MainWindow.Dashboard.time import TimeWidget
+from modules.MainWindow.Dashboard.network import NetworkConnections
+from modules.MainWindow.Dashboard.bluetooth import BluetoothConnections
+from modules.MainWindow.Dashboard.buttons import Buttons
+from modules.MainWindow.Dashboard.controls import ControlSliders
 from modules.Bar.metrics import Metrics
 from modules.Notifications.history import NotificationHistory
 

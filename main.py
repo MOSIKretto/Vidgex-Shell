@@ -12,7 +12,7 @@ from modules.bar import Bar
 from modules.corners import Corners
 from modules.dock import Dock
 from modules.explorer import Explorer
-from modules.Notch.sessionManager import SessionManager
+from modules.sessionManager import SessionManager
 
 
 session_manager: SessionManager = None

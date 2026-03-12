@@ -17,7 +17,7 @@ from fabric.widgets.eventbox import EventBox
 
 from gi.repository import Gdk, GLib, Gtk
 
-from modules.Notch.Dashboard.buttons import AutolayoutButton
+from modules.MainWindow.Dashboard.buttons import AutolayoutButton
 from modules.Bar.metrics import Battery, MetricsSmall
 from modules.Bar.systemtray import SystemTray
 from services.wayland import WaylandWindow as Window

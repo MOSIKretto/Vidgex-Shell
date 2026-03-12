@@ -8,7 +8,7 @@ from fabric.widgets.overlay import Overlay
 from fabric.widgets.scale import Scale
 from gi.repository import Gdk, Gtk, GLib
 
-from modules.Notch.Dashboard.Controls.brightness import Brightness
+from modules.MainWindow.Dashboard.Controls.brightness import Brightness
 import services.icons as icons
 
 
