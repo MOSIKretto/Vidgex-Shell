@@ -50,10 +50,39 @@ _STATIC = (
     (0, 1.0, 1.0, 0.0, True),
 )
 
+_pointer_cursor: Gdk.Cursor | None = None
+_default_cursor: Gdk.Cursor | None = None
+
+def _get_cursors(display: Gdk.Display):
+    global _pointer_cursor, _default_cursor
+    if _pointer_cursor is None:
+        _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
+        _default_cursor = Gdk.Cursor.new_from_name(display, "default")
+    return _pointer_cursor, _default_cursor
+
+def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+    win = widget.get_window()
+    if win:
+        pointer, _ = _get_cursors(win.get_display())
+        win.set_cursor(pointer)
+    return False
+
+def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+    win = widget.get_window()
+    if win:
+        _, default = _get_cursors(win.get_display())
+        win.set_cursor(default)
+    return False
+
+def _setup_pointer_cursor(widget: Gtk.Widget):
+    widget.add_events(
+        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
+    )
+    widget.connect("enter-notify-event", _on_btn_enter)
+    widget.connect("leave-notify-event", _on_btn_leave)
 
 def _md5hex(s):
     return hashlib.md5(s.encode()).hexdigest()
-
 
 def _rpath(c, x, y, w, h, r):
     xr, yr, yhr, xrr = x + w - r, y + r, y + h - r, x + r
@@ -148,8 +177,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
         ql = q.casefold()
         self._rst(tuple(f for f in self._files if ql in f.casefold()))
 
-    # ── thumbnail pipeline ──────────────────────────────────
-
     def _sched(self):
         if self._ldq or self._dead or self._bnc:
             return
@@ -240,8 +267,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
                 self.queue_draw()
         return False
 
-    # ── drawing ─────────────────────────────────────────────
-
     def _draw(self, w, cr):
         alloc = w.get_allocation()
         flt = self._flt
@@ -312,8 +337,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
             cr.stroke()
         cr.restore()
 
-    # ── input ───────────────────────────────────────────────
-
     def _key(self, _, e):
         k = e.keyval
         if k == Gdk.KEY_Left:
@@ -355,8 +378,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if d and not self._anim:
             self.nav(d)
         return True
-
-    # ── navigation & animation ──────────────────────────────
 
     def nav(self, dr, anim=True):
         if not self._flt or (self._anim and anim and not self._spl):
@@ -421,8 +442,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._spi = 20 if p < 0.6 else 20 + int(((p - 0.6) * 2.5) ** 2 * 200)
         GLib.timeout_add(self._spi, self._spst)
         return False
-
-    # ── selection & bounce ──────────────────────────────────
 
     def _sel(self, emit=True):
         if not self._flt or self._bnc:
@@ -524,6 +543,7 @@ class WallpaperSelector(Box):
             label=_SCH[self._sch_idx][1],
             tooltip_text="Click to select scheme, or scroll",
         )
+        _setup_pointer_cursor(self._sch_btn)
 
         self._sch_rev = Gtk.Revealer(
             transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN
@@ -536,15 +556,11 @@ class WallpaperSelector(Box):
             btn = Button(label=v, name="scheme-list-item")
             btn.get_child().set_halign(Gtk.Align.START)
             btn.connect("clicked", lambda _, idx=i: self._on_list_item_clicked(idx))
+            _setup_pointer_cursor(btn)
             list_box.add(btn)
         self._sch_rev.add(list_box)
 
-        self._sch_btn.connect(
-            "clicked",
-            lambda *_: self._sch_rev.set_reveal_child(
-                not self._sch_rev.get_reveal_child()
-            ),
-        )
+        self._sch_btn.connect("clicked", self._on_sch_btn_clicked)
         self._sch_btn.add_events(Gdk.EventMask.SCROLL_MASK)
         self._sch_btn.connect("scroll-event", self._on_sch_scroll)
 
@@ -554,6 +570,7 @@ class WallpaperSelector(Box):
             tooltip_text="Random Wallpaper",
         )
         self._rb.connect("clicked", self.random_wall)
+        _setup_pointer_cursor(self._rb)
 
         self._lbl = Label(name="wallpaper-name-label", label="Select a wallpaper")
 
@@ -575,6 +592,15 @@ class WallpaperSelector(Box):
 
     def _on_search_changed(self, entry, _):
         self._deb("s", 300, self._srch, entry.get_text())
+
+    def _on_sch_btn_clicked(self, *_):
+        revealed = not self._sch_rev.get_reveal_child()
+        self._sch_rev.set_reveal_child(revealed)
+        ctx = self._sch_btn.get_style_context()
+        if revealed:
+            ctx.add_class("open")
+        else:
+            ctx.remove_class("open")
 
     def _scan(self):
         try:
@@ -667,6 +693,7 @@ class WallpaperSelector(Box):
 
     def _on_list_item_clicked(self, idx):
         self._sch_rev.set_reveal_child(False)
+        self._sch_btn.get_style_context().remove_class("open")
         if self._sch_idx != idx:
             self._set_scheme(idx)
 

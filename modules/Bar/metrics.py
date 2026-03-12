@@ -14,8 +14,8 @@ from fabric.widgets.scale import Scale
 from fabric.utils import exec_shell_command_async
 from gi.repository import Gdk, GLib
 
-from services.network import NetworkClient
-from services.upower import UPowerManager
+from modules.Notch.Dashboard.Network.network import NetworkClient
+from modules.Bar.Metrics.upower import UPowerManager
 import services.icons as icons
 
 

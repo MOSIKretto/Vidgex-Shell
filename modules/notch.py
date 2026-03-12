@@ -14,13 +14,13 @@ from modules.Notch.launcher import AppLauncher
 from modules.Notch.overview import Overview
 from modules.Notch.power import PowerMenu
 from modules.Notch.tools import Toolbox
-from modules.Notch.extra_life import SessionManagerUI
+from modules.Notch.sessionManager import SessionManagerUI
 
 from modules.corners import MyCorner
-from modules.Notch.Widgets.controls import ControlSmall, get_audio
+from modules.Notch.Dashboard.controls import ControlSmall, get_audio
 
-from services.brightness import Brightness
-from services.icon_resolver import IconResolver
+from modules.Notch.Dashboard.Controls.brightness import Brightness
+from services.iconResolver import IconResolver
 from services.wayland import WaylandWindow as Window
 
 

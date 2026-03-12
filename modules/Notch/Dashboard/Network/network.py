@@ -106,7 +106,6 @@ class Wifi(Service):
 
     @Property(list, "readable")
     def access_points(self) -> list:
-        # Optimized generator for memory savings
         device_aps = self._device.get_access_points() if self._device else []
         result = []
         for ap in device_aps:

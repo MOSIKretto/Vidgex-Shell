@@ -6,9 +6,9 @@ from fabric.audio.service import Audio
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 
-from modules.Notch.Player.widgets.widget_player import LocalPlayer, MediaPlayer
-from modules.Notch.Player.widgets.widget_mixer import MixerSection
-from modules.Notch.Player.widgets.widget_library import TrackList
+from modules.Notch.MusicPlayer.player import LocalPlayer, MediaPlayer
+from modules.Notch.MusicPlayer.mixer import MixerSection
+from modules.Notch.MusicPlayer.musicLibrary import TrackList
 
 
 _GAP = 8

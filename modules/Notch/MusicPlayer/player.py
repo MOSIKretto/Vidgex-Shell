@@ -21,81 +21,81 @@ from fabric.widgets.overlay import Overlay
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-from modules.Notch.Player.mpris import MprisPlayer, MprisPlayerManager
-from services.circle_image import CircleImage
+from modules.Notch.MusicPlayer.Player.mpris import MprisPlayer, MprisPlayerManager
+from modules.Notch.MusicPlayer.Player.circleImage import CircleImage
 
 
-_LBL_H      = 20
+_LBL_H = 20
 _COVER_SIZE = 174
-_PROG_SIZE  = 200
-_BTN_SIZE   = 28
-_PLAY_SIZE  = 36
+_PROG_SIZE = 200
+_BTN_SIZE = 28
+_PLAY_SIZE = 36
 
-_NO_TIME        = "--:-- / --:--"
-_DEFAULT_TITLE  = "Nothing Playing"
+_NO_TIME = "--:-- / --:--"
+_DEFAULT_TITLE = "Nothing Playing"
 _DEFAULT_ARTIST = "¯\\_(ツ)_/¯"
-_DEFAULT_ALBUM  = "Enjoy the silence"
+_DEFAULT_ALBUM = "Enjoy the silence"
 
 _CACHE_BASE = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell")
-_CACHE_DIR  = os.path.join(_CACHE_BASE, "covers")
-_MODE_FILE  = os.path.join(_CACHE_BASE, "playback_mode.json")
+_CACHE_DIR = os.path.join(_CACHE_BASE, "covers")
+_MODE_FILE = os.path.join(_CACHE_BASE, "playback_mode.json")
 
-_REPEAT_ONCE     = f"{icons.repeat}<small><b>1</b></small>"
+_REPEAT_ONCE = f"{icons.repeat}<small><b>1</b></small>"
 _VALID_COVER_EXT = frozenset({'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'})
-_MAX_IMG_SIZE    = 10 << 20
-_SEEK_FLAGS      = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT
-_SEEK_NS         = 5_000_000_000
-_SEEK_US         = 5_000_000
+_MAX_IMG_SIZE = 10 << 20
+_SEEK_FLAGS = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT
+_SEEK_NS = 5_000_000_000
+_SEEK_US = 5_000_000
 
 _ORDER_NEXT_3 = {"normal": "reverse", "reverse": "shuffle", "shuffle": "normal"}
 _ORDER_NEXT_2 = {"normal": "reverse", "reverse": "normal"}
-_REPEAT_NEXT  = {"None": "Playlist", "Playlist": "Track", "Track": "None"}
+_REPEAT_NEXT = {"None": "Playlist", "Playlist": "Track", "Track": "None"}
 
-_PNG_SIG  = b'\x89PNG\r\n\x1a\n'
+_PNG_SIG = b'\x89PNG\r\n\x1a\n'
 _JPEG_SIG = b'\xff\xd8'
 _GIF_SIGS = (b'GIF87a', b'GIF89a')
-_BMP_SIG  = b'BM'
+_BMP_SIG = b'BM'
 _RIFF_SIG = b'RIFF'
 _WEBP_SIG = b'WEBP'
 
-_HOVER_MASK       = Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-_SCROLL_MASK      = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
-_COVER_EVENTS     = _HOVER_MASK | _SCROLL_MASK
+_HOVER_MASK = Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+_SCROLL_MASK = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
+_COVER_EVENTS = _HOVER_MASK | _SCROLL_MASK
 _SCROLL_THRESHOLD = 5.0
 
-_ANIM_MS       = 16
-_SPIN_STEP     = 0.003
+_ANIM_MS = 16
+_SPIN_STEP = 0.003
 _FLICK_INITIAL = 0.12
-_FLICK_DECAY   = 0.88
-_FLICK_MIN     = 0.001
-_SNAP_FACTOR   = 0.18
-_SNAP_EPSILON  = 0.005
-_TAU           = math.tau
+_FLICK_DECAY = 0.88
+_FLICK_MIN = 0.001
+_SNAP_FACTOR = 0.18
+_SNAP_EPSILON = 0.005
+_TAU = math.tau
 
-_PROG_FPS     = 16
-_SYNC_MS      = 500
+_PROG_FPS = 16
+_SYNC_MS = 500
 
 _OVERSHOOT_MIN = 0.035
 _OVERSHOOT_MAX = 0.15
 
-_SK_DUR_1     = 0.32
-_SK_POW_1     = 4.5
-_SK_DUR_2     = 0.24
-_SK_POW_2     = 2.5
-_SK_SCALE_MD  = 1.3
-_SK_SCALE_LG  = 1.6
+_SK_DUR_1 = 0.32
+_SK_POW_1 = 4.5
+_SK_DUR_2 = 0.24
+_SK_POW_2 = 2.5
+_SK_SCALE_MD = 1.3
+_SK_SCALE_LG = 1.6
 
-_SW_DUR_BASE  = 0.25
+_SW_DUR_BASE = 0.25
 _SW_DUR_SCALE = 0.65
-_SW_POW       = 2.0
+_SW_POW = 2.0
 
-_RISE_DUR     = 0.45
-_RISE_POW     = 5.0
-_RISE_MIN     = 0.008
+_RISE_DUR = 0.45
+_RISE_POW = 5.0
+_RISE_MIN = 0.008
 
-_CORR_THRESH  = 0.012
-_CORR_DUR     = 0.20
-_CORR_POW     = 2.5
+_CORR_THRESH = 0.012
+_CORR_DUR = 0.20
+_CORR_POW = 2.5
 
 _V_ART_LINES = [
     "@№@        @@/    \\@@##    /@@@@@@@@\\         /@@@@@@*@@@@/   /@@@№№@@@@@/    @@@      /@|",
@@ -108,21 +108,21 @@ _V_ART_LINES = [
     "     @@@/         #@@@\\    \\@@@>-@@@/         \\@,,@@@@@/      \\@@@@@@@@@@/    /@@      @@|",
 ]
 _V_MAX_W = max(len(l) for l in _V_ART_LINES)
-_V_ART   = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
+_V_ART = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
 
 _V_SCROLL_SPEED = 1.0
-_V_GAP          = 12
+_V_GAP = 12
 
-_GL_CHANCE    = 0.015
-_GL_DUR       = (4, 18)
-_GL_CD        = 90
+_GL_CHANCE = 0.015
+_GL_DUR = (4, 18)
+_GL_CD = 90
 _GL_SHIFT_MAX = 15
 _GL_SPLIT_MAX = 4.0
-_GL_CORRUPT   = 0.08
-_GL_FLICKER   = 0.12
-_GL_BAR       = 0.25
-_GL_SPEED     = (0.2, 3.5)
-_GL_CHARS     = "░▒▓█▀▄▌▐@#$%&!?*=~"
+_GL_CORRUPT = 0.08
+_GL_FLICKER = 0.12
+_GL_BAR = 0.25
+_GL_SPEED = (0.2, 3.5)
+_GL_CHARS = "░▒▓█▀▄▌▐@#$%&!?*=~"
 
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
@@ -229,19 +229,19 @@ class LocalPlayer(Service):
 
     def __init__(self):
         super().__init__()
-        self.player_name     = "Library"
-        self.title           = _DEFAULT_TITLE
-        self.artist          = _DEFAULT_ARTIST
-        self.album           = _DEFAULT_ALBUM
-        self.arturl          = ""
+        self.player_name = "Library"
+        self.title = _DEFAULT_TITLE
+        self.artist = _DEFAULT_ARTIST
+        self.album = _DEFAULT_ALBUM
+        self.arturl = ""
         self.playback_status = "stopped"
-        self.length          = 0
-        self.can_seek        = False
-        self.can_pause       = True
-        self.can_go_next     = False
+        self.length = 0
+        self.can_seek = False
+        self.can_pause = True
+        self.can_go_next = False
         self.can_go_previous = False
-        self.on_next_cb      = None
-        self.on_prev_cb      = None
+        self.on_next_cb = None
+        self.on_prev_cb = None
 
         ls, om = _load_mode()
         self._loop_status = ls
@@ -296,9 +296,9 @@ class LocalPlayer(Service):
         pb.set_state(Gst.State.NULL)
         pb.set_property("uri", GLib.filename_to_uri(path, None))
         self.title, self.artist = title, artist
-        self.album   = album or ""
-        self.arturl  = art_url
-        self.length  = length_us
+        self.album = album or ""
+        self.arturl = art_url
+        self.length = length_us
         self.playback_status = "playing"
         self.can_seek = True
         pb.set_state(Gst.State.PLAYING)
@@ -378,45 +378,45 @@ class PlayerBox(Box):
         self._dcancel = None
         self._upd = False
 
-        self._last_art      = None
+        self._last_art = None
         self._extract_tried = False
-        self._is_wall       = True
+        self._is_wall = True
 
-        self._angle    = 0.0
+        self._angle = 0.0
         self._spinning = False
-        self._flick_v  = 0.0
+        self._flick_v = 0.0
         self._snapping = False
 
-        self._scroll_acc  = 0.0
+        self._scroll_acc = 0.0
         self._local_order = "normal"
 
-        self._v_offset    = 0.0
+        self._v_offset = 0.0
         self._v_scroll_id = None
 
-        self._g_on     = False
-        self._g_rem    = 0
-        self._g_cd     = 0
+        self._g_on = False
+        self._g_rem = 0
+        self._g_cd = 0
         self._g_shifts = []
-        self._g_split  = 0.0
+        self._g_split = 0.0
 
-        self._pv     = 0.0
+        self._pv = 0.0
         self._ptimer = None
         self._stimer = None
-        self._kpos   = 0
-        self._ktime  = _time.monotonic()
-        self._klen   = 0
-        self._kplay  = False
-        self._tkey   = None
+        self._kpos = 0
+        self._ktime = _time.monotonic()
+        self._klen = 0
+        self._kplay = False
+        self._tkey = None
         self._last_time_txt = ""
 
         self._a_active = False
-        self._a_t0     = 0.0
-        self._a_from   = 0.0
-        self._a_to     = 0.0
-        self._a_dur    = 0.3
-        self._a_pow    = 4.0
-        self._a_chain  = []
-        self._a_done   = 'live'
+        self._a_t0 = 0.0
+        self._a_from = 0.0
+        self._a_to = 0.0
+        self._a_dur = 0.3
+        self._a_pow = 4.0
+        self._a_chain = []
+        self._a_done = 'live'
 
         self.cover = CircleImage(
             name="player-cover",
@@ -431,8 +431,8 @@ class PlayerBox(Box):
         cb.set_size_request(_COVER_SIZE, _COVER_SIZE)
         cb.add(self.cover)
         cb.add_events(_COVER_EVENTS | Gdk.EventMask.BUTTON_PRESS_MASK)
-        cb.connect("draw",               self._on_cover_draw)
-        cb.connect("scroll-event",       self._on_scroll)
+        cb.connect("draw", self._on_cover_draw)
+        cb.connect("scroll-event", self._on_scroll)
         cb.connect("button-press-event", self._on_cover_click)
         cb.connect("enter-notify-event", _on_hover_enter)
         cb.connect("leave-notify-event", _on_hover_leave)
@@ -448,8 +448,8 @@ class PlayerBox(Box):
             ellipsization="end", max_chars_width=20,
             justify=Gtk.Justification.CENTER,
         )
-        self.title  = Label(name="player-title",  **lkw)
-        self.album  = Label(name="player-album",  **lkw)
+        self.title = Label(name="player-title", **lkw)
+        self.album = Label(name="player-album", **lkw)
         self.artist = Label(name="player-artist", **lkw)
         for lb in (self.title, self.album, self.artist):
             lb.set_size_request(-1, _LBL_H)
@@ -475,11 +475,11 @@ class PlayerBox(Box):
         )
         self.overlay_container.set_size_request(_PROG_SIZE, _PROG_SIZE)
 
-        self.prev       = self._btn(icons.prev)
-        self.backward   = self._btn(icons.skip_back)
+        self.prev = self._btn(icons.prev)
+        self.backward = self._btn(icons.skip_back)
         self.play_pause = self._btn(icons.play, ("play-pause",))
-        self.forward    = self._btn(icons.skip_forward)
-        self.next       = self._btn(icons.next)
+        self.forward = self._btn(icons.skip_forward)
+        self.next = self._btn(icons.next)
 
         self.shuffle_btn = self._btn(icons.shuffle, ("mode",))
         self.shuffle_btn.set_tooltip_text("Order")
@@ -632,10 +632,10 @@ class PlayerBox(Box):
         cr.restore()
 
     def _draw_glitch(self, cr, w, h, font, r, g, b, a, block, off, y0, total_h):
-        lines  = _V_ART_LINES
-        n      = len(lines)
+        lines = _V_ART_LINES
+        n = len(lines)
         shifts = self._g_shifts
-        split  = self._g_split
+        split = self._g_split
         line_h = total_h / n
 
         ll = PangoCairo.create_layout(cr)
@@ -891,11 +891,11 @@ class PlayerBox(Box):
         self._angle = 0.0
         self._is_wall = True
         self._v_offset = 0.0
-        self._g_on     = False
-        self._g_rem    = 0
-        self._g_cd     = 0
+        self._g_on = False
+        self._g_rem = 0
+        self._g_cd = 0
         self._g_shifts = []
-        self._g_split  = 0.0
+        self._g_split = 0.0
         self._v_start_scroll()
         self._cover_box.queue_draw()
 
@@ -948,11 +948,11 @@ class PlayerBox(Box):
     def _wire(self):
         self._refresh()
         mp = self.mpris_player
-        self.prev.connect("clicked",       lambda _: self._do_prev())
-        self.next.connect("clicked",       lambda _: self._do_next())
-        self.play_pause.connect("clicked",  lambda _: mp.play_pause())
-        self.backward.connect("clicked",    lambda _: self._seek(-1))
-        self.forward.connect("clicked",     lambda _: self._seek(1))
+        self.prev.connect("clicked", lambda _: self._do_prev())
+        self.next.connect("clicked", lambda _: self._do_next())
+        self.play_pause.connect("clicked", lambda _: mp.play_pause())
+        self.backward.connect("clicked", lambda _: self._seek(-1))
+        self.forward.connect("clicked", lambda _: self._seek(1))
         self._sig_id = mp.connect("changed", self._on_changed)
 
     def _do_prev(self):
@@ -995,11 +995,11 @@ class PlayerBox(Box):
 
     def _begin_seg(self, to, dur, power):
         self._a_active = True
-        self._a_t0     = _time.monotonic()
-        self._a_from   = self._pv
-        self._a_to     = _clamp01(to)
-        self._a_dur    = max(0.016, dur)
-        self._a_pow    = power
+        self._a_t0 = _time.monotonic()
+        self._a_from = self._pv
+        self._a_to = _clamp01(to)
+        self._a_dur = max(0.016, dur)
+        self._a_pow = power
 
     def _run_chain(self, segments, on_done='live'):
         if not segments:
@@ -1369,8 +1369,8 @@ class PlayerBox(Box):
         rb = self.repeat_btn
         rl = rb.get_child()
         is_m = isinstance(mp, MprisPlayer)
-        ltd  = is_m and getattr(mp, 'is_limited', False)
-        cl   = not is_m or (getattr(mp, 'can_set_loop_status', False) and not ltd)
+        ltd = is_m and getattr(mp, 'is_limited', False)
+        cl = not is_m or (getattr(mp, 'can_set_loop_status', False) and not ltd)
 
         if not cl:
             rl.set_markup(icons.repeat)
@@ -1396,8 +1396,8 @@ class PlayerBox(Box):
 
     def _ubtn(self, mp):
         can_seek = getattr(mp, "can_seek", False)
-        status   = getattr(mp, "playback_status", "stopped")
-        stopped  = status == "stopped"
+        status = getattr(mp, "playback_status", "stopped")
+        stopped = status == "stopped"
 
         _set_style(self.backward, "disabled", stopped or not can_seek)
         _set_style(self.forward,  "disabled", stopped or not can_seek)
@@ -1456,9 +1456,9 @@ class MediaPlayer(Box):
             spacing=0, h_expand=True, v_expand=False,
         )
         self.local_player = local_player
-        self._hc_id  = None
+        self._hc_id = None
         self._states = {}
-        self._repl   = False
+        self._repl = False
 
         self.player_stack = Stack(
             name="player-stack", transition_type="slide-left-right",
@@ -1515,7 +1515,7 @@ class MediaPlayer(Box):
             return False
         name = self.player_stack.child_get_property(pb, "name")
         self._states.pop(name, None)
-        mp   = getattr(pb, 'mpris_player', None)
+        mp = getattr(pb, 'mpris_player', None)
         esig = getattr(pb, '_exit_sig_id', None)
         if mp and esig:
             try:
@@ -1553,13 +1553,13 @@ class MediaPlayer(Box):
         GLib.idle_add(self._remove, pb)
 
     def _health(self):
-        stk      = self.player_stack
+        stk = self.player_stack
         children = stk.get_children()
-        gprop    = stk.child_get_property
-        drop     = []
-        active   = 0
-        nothing  = None
-        goto     = None
+        gprop = stk.child_get_property
+        drop = []
+        active = 0
+        nothing = None
+        goto = None
 
         for ch in children:
             nm = gprop(ch, "name")

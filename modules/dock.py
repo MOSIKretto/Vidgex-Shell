@@ -13,7 +13,7 @@ from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 
 from modules.corners import MyCorner
-from services.icon_resolver import IconResolver
+from services.iconResolver import IconResolver
 from services.wayland import WaylandWindow as Window
 
 

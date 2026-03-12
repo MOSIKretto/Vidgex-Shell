@@ -5,9 +5,9 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-from modules.Notch.Player.player import Player
-from modules.Notch.Wallpaper.wallpapers import WallpaperSelector
-from modules.Notch.Widgets.widgets import Widgets
+from modules.Notch.musicPlayer import Player
+from modules.Notch.wallpapers import WallpaperSelector
+from modules.Notch.Dashboard.widgets import Widgets
 
 
 class Dashboard(Box):

@@ -39,9 +39,7 @@ class IconResolver(GObject.GObject):
     @classmethod
     def get_default(cls):
         return cls()
-    
-    # ==================== HELPERS ====================
-    
+        
     @staticmethod
     def _join(*parts):
         return '/'.join(p.strip('/') for p in parts if p)

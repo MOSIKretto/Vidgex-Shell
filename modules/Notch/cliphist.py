@@ -9,7 +9,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import GdkPixbuf, GLib, Gio
 
 import services.icons as icons
-from services.list_navigation import ListNavigationMixin
+from services.listNavigation import ListNavigationMixin
 
 
 class ClipHistory(ListNavigationMixin, Box):

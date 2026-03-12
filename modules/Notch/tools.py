@@ -5,7 +5,7 @@ from fabric.widgets.label import Label
 from gi.repository import GLib, Gio
 
 import services.icons as icons
-from services.list_navigation import HorizontalNavigationMixin
+from services.listNavigation import HorizontalNavigationMixin
 
 
 class Toolbox(HorizontalNavigationMixin, Box):

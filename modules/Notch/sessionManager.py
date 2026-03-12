@@ -21,7 +21,7 @@ from fabric.widgets.image import Image
 from gi.repository import GLib
 
 import services.icons as icons
-from services.list_navigation import ListNavigationMixin
+from services.listNavigation import ListNavigationMixin
 
 
 SESSION_DIR = Path.home() / ".cache" / "vidgex-shell"

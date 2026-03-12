@@ -1,22 +1,24 @@
 import gi
 gi.require_version("Gtk", "3.0")
 
+from gi.repository import Gtk
 from fabric.widgets.box import Box
 from fabric.widgets.stack import Stack
 
-from modules.Notch.Widgets.calendar import Calendar
-from modules.Notch.Widgets.network import NetworkConnections
-from modules.Notch.Widgets.bluetooth import BluetoothConnections
-from modules.Notch.Widgets.buttons import Buttons
-from modules.Notch.Widgets.controls import ControlSliders
+from modules.Notch.Dashboard.calendar import Calendar
+from modules.Notch.Dashboard.time import TimeWidget
+from modules.Notch.Dashboard.network import NetworkConnections
+from modules.Notch.Dashboard.bluetooth import BluetoothConnections
+from modules.Notch.Dashboard.buttons import Buttons
+from modules.Notch.Dashboard.controls import ControlSliders
 from modules.Bar.metrics import Metrics
 from modules.Notifications.history import NotificationHistory
 
 
 class Widgets(Box):
-    __slots__ = ('notch', 'calendar', 'buttons', 'bluetooth', 'controls',
-                 'metrics', 'notification_history', 'network_connections',
-                 'applet_stack')
+    __slots__ = ('notch', 'time_widget', 'calendar', 'buttons', 'bluetooth',
+                 'controls', 'metrics', 'notification_history',
+                 'network_connections', 'applet_stack', '_size_group')
 
     def __init__(self, notch=None, **kwargs):
         super().__init__(
@@ -31,7 +33,13 @@ class Widgets(Box):
 
         self.notch = notch
 
+        self.time_widget = TimeWidget()
         self.calendar = Calendar(view_mode="month")
+
+        self._size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        self._size_group.add_widget(self.time_widget)
+        self._size_group.add_widget(self.calendar)
+
         self.buttons = Buttons(widgets=self)
         self.bluetooth = BluetoothConnections(widgets=self)
         self.controls = ControlSliders()
@@ -54,6 +62,24 @@ class Widgets(Box):
             children=(self.applet_stack,)
         )
 
+        buttons_controls = Box(
+            name="buttons-controls-col",
+            orientation="v",
+            spacing=8,
+            h_expand=True,
+            v_expand=False,
+            children=(self.buttons, self.controls),
+        )
+
+        top_row = Box(
+            name="top-row",
+            orientation="h",
+            spacing=8,
+            h_expand=True,
+            v_expand=False,
+            children=(self.time_widget, buttons_controls),
+        )
+
         sub = Box(
             name="container-sub-1", spacing=8, h_expand=True, v_expand=True,
             children=(self.calendar, applet_box)
@@ -66,7 +92,7 @@ class Widgets(Box):
 
         self.add(Box(
             name="container-2", orientation="v", spacing=8, h_expand=True, v_expand=True,
-            children=(self.buttons, self.controls, c1)
+            children=(top_row, c1)
         ))
 
     def show_bt(self):
@@ -80,7 +106,7 @@ class Widgets(Box):
             self.notch.open_notch("network_applet")
 
     def cleanup(self):
-        for w in (self.controls, self.bluetooth, self.network_connections):
+        for w in (self.controls, self.bluetooth, self.network_connections, self.time_widget):
             if (c := getattr(w, 'cleanup', None)):
                 c()
         self.notch = None

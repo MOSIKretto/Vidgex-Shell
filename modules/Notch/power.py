@@ -4,7 +4,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
 import services.icons as icons
-from services.list_navigation import HorizontalNavigationMixin
+from services.listNavigation import HorizontalNavigationMixin
 
 
 class PowerMenu(HorizontalNavigationMixin, Box):

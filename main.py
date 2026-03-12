@@ -6,13 +6,13 @@ from fabric import Application
 from fabric.utils import get_relative_path
 from gi.repository import GLib
 
-from modules.popup import NotificationPopup
+from modules.notifications import NotificationPopup
 from modules.notch import Notch
 from modules.bar import Bar
 from modules.corners import Corners
 from modules.dock import Dock
 from modules.explorer import Explorer
-from modules.Notch.extra_life import SessionManager
+from modules.Notch.sessionManager import SessionManager
 
 
 session_manager: SessionManager = None

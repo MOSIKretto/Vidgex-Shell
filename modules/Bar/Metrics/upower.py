@@ -2,7 +2,6 @@ import dbus
 
 
 class UPowerManager:
-    # Выносим статические данные в класс для экономии памяти и ЦП (не пересоздаем каждый раз)
     _DEFAULTS = {
         'HasHistory': False, 'HasStatistics': False, 'IsPresent': False,
         'IsRechargeable': False, 'Online': False, 'PowerSupply': False,

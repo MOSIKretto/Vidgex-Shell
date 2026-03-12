@@ -13,7 +13,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 
 from gi.repository import GdkPixbuf, GLib, Gtk
 
-from .notification_box import (
+from .notificationBox import (
     NotificationBox,
     NotificationGroup,
     HistoricalNotification,
@@ -29,7 +29,7 @@ from .notification_box import (
     NOTIFICATION_WIDTH,
 )
 import services.icons as icons
-from services.image import CustomImage
+from modules.Notifications.NotificationBox.image import CustomImage
 
 
 class NotificationHistory(Box):

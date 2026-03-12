@@ -22,7 +22,7 @@ class Brightness(Service):
         self.device = None
         self.base_path = None
         self.max_screen = 0
-        self._valid = False  # флаг, что backlight действительно работает
+        self._valid = False
 
         try:
             backlight_dir = "/sys/class/backlight"

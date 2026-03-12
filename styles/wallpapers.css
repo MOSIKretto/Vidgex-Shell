@@ -10,15 +10,15 @@
 
 entry#search-entry-walls {
   background: var(--surface);
-  
+
   border-image: none;
-  box-shadow: none; 
+  box-shadow: none;
   outline: none;
-  
+
   border-style: solid;
   border-width: 1px;
   border-color: transparent;
-  
+
   border-radius: 12px;
   color: var(--on-surface);
   padding: 4px 12px;
@@ -47,23 +47,37 @@ entry#search-entry-walls selection {
   color: var(--on-primary);
 }
 
+/* ── Random button (1:1 mixer-section-title) ── */
 #random-wall-button {
+  background-image: none;
+  box-shadow: none;
+  font-weight: bold;
+  padding: 4px 8px;
   background-color: var(--surface);
-  border: 1px solid transparent;
+  border: 2px solid var(--primary);
   border-radius: 12px;
-  padding: 0;
   min-width: 36px;
   min-height: 36px;
-  transition: all 150ms ease-in-out;
+  transition: background-color 250ms ease,
+              border-color   250ms ease,
+              box-shadow     250ms ease;
 }
 
 #random-wall-button label {
   margin: 0;
   padding: 0;
+  color: var(--primary);
+  font-weight: bold;
+  transition: color 250ms ease;
 }
 
 #random-wall-button:hover {
   background-color: var(--surface-bright);
+  border-color: var(--foreground);
+}
+
+#random-wall-button:hover label {
+  color: var(--foreground);
 }
 
 #random-wall-button:active,
@@ -74,49 +88,89 @@ entry#search-entry-walls selection {
 
 #random-wall-button:active label,
 #random-wall-button:checked label {
-  color: var(--on-primary);
+  color: var(--shadow);
 }
 
+/* ── Scheme dropdown button (1:1 mixer-section-title) ── */
 #scheme-wrapper {
-  min-width: 110px; 
-}
-
-#scheme-dropdown-btn {
-  background-color: var(--surface);
-  padding: 6px 8px;
-  border-radius: 12px; 
-  border: 1px solid transparent;
-  transition: background-color 150ms ease-in-out, border-color 150ms ease-in-out;
   min-width: 110px;
 }
 
-#scheme-dropdown-btn label {
+#scheme-dropdown-btn {
+  background-image: none;
+  box-shadow: none;
   font-weight: bold;
-  color: var(--foreground);
-  transition: color 150ms ease-in-out;
+  padding: 4px 8px;
+  background-color: var(--surface);
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+  min-width: 110px;
+  transition: background-color 250ms ease,
+              border-color   250ms ease,
+              box-shadow     250ms ease;
+}
+
+#scheme-dropdown-btn label {
+  color: var(--primary);
+  font-weight: bold;
+  transition: color 250ms ease;
 }
 
 #scheme-dropdown-btn:hover {
   background-color: var(--surface-bright);
+  border-color: var(--foreground);
 }
 
-#scheme-dropdown-btn:active,
-#scheme-dropdown-btn:checked {
+#scheme-dropdown-btn:hover label {
+  color: var(--foreground);
+}
+
+#scheme-dropdown-btn:active {
   background-color: var(--primary);
   border-color: var(--primary);
 }
 
-#scheme-dropdown-btn:active label,
-#scheme-dropdown-btn:checked label {
-  color: var(--on-primary);
+#scheme-dropdown-btn:active label {
+  color: var(--shadow);
 }
 
+/* ── Scheme button open (1:1 mixer-section-title.section-muted) ── */
+#scheme-dropdown-btn.open {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px alpha(var(--primary), 0.35);
+}
+
+#scheme-dropdown-btn.open label {
+  color: var(--shadow);
+}
+
+#scheme-dropdown-btn.open:hover {
+  background-color: var(--foreground);
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 2px alpha(var(--foreground), 0.25);
+}
+
+#scheme-dropdown-btn.open:hover label {
+  color: var(--shadow);
+}
+
+#scheme-dropdown-btn.open:active {
+  background-color: var(--surface-bright);
+  border-color: var(--primary);
+}
+
+#scheme-dropdown-btn.open:active label {
+  color: var(--primary);
+}
+
+/* ── Scheme list ── */
 #scheme-list-container {
   background-color: var(--surface);
-  border: 1px solid var(--primary);
+  border: 2px solid var(--primary);
   border-radius: 12px;
   padding: 4px;
-  margin-top: 4px; 
+  margin-top: 4px;
 }
 
 #scheme-list-item {
@@ -129,7 +183,7 @@ entry#search-entry-walls selection {
   border-radius: 8px;
   padding: 4px 8px;
   transition: background-color 100ms ease-out;
-  min-width: 110px; 
+  min-width: 110px;
 }
 
 #scheme-list-item label {
@@ -163,7 +217,7 @@ entry#search-entry-walls selection {
   min-width: 40px;
   min-height: 20px;
   background-color: var(--surface);
-  border-radius: 12px; 
+  border-radius: 12px;
   padding: 2px;
   transition: background-color 0.3s ease;
 }
@@ -171,7 +225,7 @@ entry#search-entry-walls selection {
 #matugen-switcher slider,
 #dnd-switch slider {
   background-color: var(--primary);
-  border-radius: 12px; 
+  border-radius: 12px;
   min-width: 16px;
   min-height: 8px;
   transition:
@@ -272,16 +326,16 @@ entry#search-entry-walls selection {
 #wallpaper-name-label {
   font-family: "JetBrains Mono", monospace;
   font-weight: 800;
-  font-size: 13px; 
+  font-size: 13px;
   color: var(--primary);
-  
+
   background-color: var(--surface);
-  padding: 4px 12px; 
-  border-radius: 12px; 
-  
-  margin-top: 4px; 
+  padding: 4px 12px;
+  border-radius: 12px;
+
+  margin-top: 4px;
   margin-bottom: 2px;
-  
+
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
 

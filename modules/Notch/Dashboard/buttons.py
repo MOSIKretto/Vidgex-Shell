@@ -9,7 +9,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
 import services.icons as icons
-from modules.Notch.Widgets.network import NetworkClient
+from modules.Notch.Dashboard.network import NetworkClient
 
 
 _TH = (25, 50, 75)
@@ -192,8 +192,8 @@ class NetworkButton(Box):
         if wifi.state == "activated" and wifi.ssid != "Отключено":
             self._stop_anim()
             s = wifi.ssid
-            self.network_ssid.set_label(s[:10] + "..." if len(s) > 10 else s)
-            
+            self.network_ssid.set_label(s[:10].rstrip() + "..." if len(s) > 10 else s)    
+                    
             st = wifi.strength
             ic = _WI[0] if st < _TH[0] else (_WI[1] if st < _TH[1] else (_WI[2] if st < _TH[2] else _WI[3]))
             self._set_icon(ic)
@@ -388,14 +388,14 @@ class CaffeineButton(_ScriptToggleBtn):
 
 class EyesHandsButton(_ScriptToggleBtn):
     PAT = "vidgex-eyes-hands"
-    START = "python ~/.config/Vidgex-Shell/scripts/eyes-hands/eyes-hands.py"
+    START = "python ~/.config/Vidgex-Shell/scripts/eyes-hands/eyesHands.py"
     STOP = "pkill -f vidgex-eyes-hands"
     NAME, ICON, TEXT = "eyes-hands", icons.spy, "Eyes-Hands"
 
 
 class AutolayoutButton(_ScriptToggleBtn):
     PAT = "vidgex-autolanguage" 
-    START = 'python ~/.config/Vidgex-Shell/scripts/autolanguage.py'
+    START = 'python ~/.config/Vidgex-Shell/scripts/autoLanguage.py'
     STOP = "pkill -f vidgex-autolanguage"
     NAME = "autolanguage"
 

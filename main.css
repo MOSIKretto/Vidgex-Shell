@@ -7,6 +7,7 @@
 @import url("./styles/workspaces.css");
 @import url("./styles/metrics.css");
 @import url("./styles/dashboard.css");
+@import url("./styles/time.css");
 @import url("./styles/calendar.css");
 @import url("./styles/player.css");
 @import url("./styles/power.css");
@@ -16,7 +17,7 @@
 @import url("./styles/overview.css");
 @import url("./styles/explorer.css");
 @import url("./styles/terminal.css");
-@import url("./styles/extra_life.css");
+@import url("./styles/sessionManager.css");
 
 
 * {

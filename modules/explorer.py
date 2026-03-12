@@ -22,7 +22,7 @@ from modules.Explorer.navigation import NavigationMixin
 from modules.Explorer.DnD import DnDMixin
 from modules.Explorer.devices import DevicesMixin
 from modules.Explorer.clipboard import ClipboardMixin
-from modules.Explorer.app_chooser import AppChooserMixin
+from modules.Explorer.appChooser import AppChooserMixin
 from modules.Explorer.actions import ActionsMixin
 from modules.Explorer.terminal import TerminalMixin
 

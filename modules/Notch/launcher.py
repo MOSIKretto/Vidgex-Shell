@@ -8,7 +8,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import GLib
 
 import services.icons as icons
-from services.list_navigation import ListNavigationMixin
+from services.listNavigation import ListNavigationMixin
 
 
 class AppLauncher(ListNavigationMixin, Box):

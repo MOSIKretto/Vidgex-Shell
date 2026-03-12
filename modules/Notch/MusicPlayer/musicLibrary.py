@@ -16,7 +16,7 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.scrolledwindow import ScrolledWindow
 
 import services.icons as icons
-from .widget_player import _fex, _hover
+from .player import _fex, _hover
 
 
 _TRACK_NUM_RE = re.compile(r"^(\d+[\s.\-_]+)+")
