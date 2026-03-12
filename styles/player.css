@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════════════
-   PLAYER (МЕДИАПЛЕЕР) — геометрия статичная, размеры заданы в player.py
+   PLAYER (МЕДИАПЛЕЕР)
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #player {
@@ -43,7 +43,6 @@
   color: var(--primary);
 }
 
-/* ── Кнопки управления плеером (включая mode) ── */
 #player-btn label {
   font-size: 16px;
   color: var(--foreground);
@@ -116,7 +115,6 @@
   background-color: var(--primary);
 }
 
-/* ── Кнопка режима — активное состояние подсвечивается ── */
 #player-btn.mode {
   background-color: var(--surface);
 }
@@ -145,7 +143,6 @@
   color: var(--shadow);
 }
 
-/* ФИКС: Шрифт monospace, чтобы цифры не дергались по ширине */
 #player-time {
   font-weight: bold;
   color: var(--outline);
@@ -153,7 +150,6 @@
   font-family: monospace;
 }
 
-/* ── Переключатель плееров ── */
 #player-switcher {
   margin: 0 24px;
 }
@@ -211,7 +207,6 @@
   color: var(--outline);
 }
 
-/* ── Поисковая строка ── */
 #track-search {
   background-color: var(--surface);
   border: 1px solid transparent;
@@ -234,7 +229,6 @@
   outline: none;
 }
 
-/* ── Лупа: цвет меняется при фокусе ── */
 #track-search image {
   color: var(--outline);
   -gtk-icon-style: symbolic;
@@ -251,7 +245,6 @@
   color: var(--shadow);
 }
 
-/* ── Placeholder слева (overlay-label) ── */
 #track-search-placeholder {
   color: var(--outline);
   font-size: 14px;
@@ -341,7 +334,6 @@
   margin-top: 8px;
 }
 
-/* ── Заголовок группы ── */
 #artist-group-header {
   background-color: var(--surface);
   border-radius: 12px;
@@ -367,14 +359,12 @@
   min-height: 24px;
 }
 
-/* ── Имя артиста ── */
 #artist-group-name {
   font-weight: bold;
   color: var(--primary);
   font-size: 14px;
 }
 
-/* ── Бейдж-счётчик ── */
 #artist-group-count {
   color: var(--shadow);
   font-weight: bold;
@@ -385,13 +375,11 @@
   margin-right: 4px;
 }
 
-/* ── Стрелка ── */
 #artist-expand-icon {
   color: var(--outline);
   font-size: 14px;
 }
 
-/* ── Раскрытое состояние ── */
 #artist-group-header.expanded #artist-group-name,
 #artist-group-header.expanded #artist-group-count,
 #artist-group-header.expanded #artist-expand-icon {
@@ -402,7 +390,6 @@
   background-color: rgba(0, 0, 0, 0.2);
 }
 
-/* ── Hover на заголовке ── */
 #artist-group-header:hover {
   border-color: var(--primary);
 }
@@ -412,7 +399,6 @@
   border-color: var(--foreground);
 }
 
-/* ── Контейнер треков внутри группы ── */
 #artist-tracks-container {
   margin-top: 4px;
 }
@@ -437,7 +423,6 @@
   padding: 4px;
 }
 
-/* ── Кнопка-заголовок секции (Inputs / Outputs) ── */
 #mixer-section-title {
   background-image: none;
   box-shadow: none;
@@ -475,7 +460,6 @@
   color: var(--shadow);
 }
 
-/* ── Состояние «все потоки приглушены» ── */
 #mixer-section-title.section-muted {
   background-color: var(--primary);
   border-color: var(--primary);
@@ -578,7 +562,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   ПОЛЗУНКИ УРОВНЯ (SLIDERS)
+   ПОЛЗУНКИ УРОВНЯ (SLIDERS) — без затемнения .muted
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #control-slider {
@@ -609,11 +593,6 @@
   border-radius: 10px 2px 2px 10px;
 }
 
-#control-slider.muted trough highlight,
-#control-slider.muted slider {
-  background-color: var(--surface-bright);
-}
-
 #control-slider slider {
   border-radius: 12px;
   background-color: var(--primary);
@@ -629,7 +608,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   МАЛЕНЬКИЕ ВИДЖЕТЫ ГРОМКОСТИ/МИКРОФОНА/ЯРКОСТИ
+   МАЛЕНЬКИЕ ВИДЖЕТЫ ГРОМКОСТИ/МИКРОФОНА/ЯРКОСТИ — без затемнения .muted
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #control-small {
@@ -643,13 +622,6 @@
 #button-brightness {
   color: var(--surface-bright);
   border: 3px solid var(--primary);
-  border-radius: 12px;
-}
-
-#button-volume.muted,
-#button-mic.muted {
-  color: var(--surface-bright);
-  border: 3px solid var(--outline);
   border-radius: 12px;
 }
 
@@ -681,11 +653,6 @@
   font-size: 16px;
 }
 
-#vol-label.muted,
-#mic-label.muted {
-  color: var(--outline);
-}
-
 #vol-icon,
 #mic-icon,
 #brightness-icon {
@@ -697,20 +664,10 @@
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-#vol-icon.muted,
-#mic-icon.muted {
-  background-color: var(--surface-bright);
-}
-
 #vol-label-dash,
 #mic-label-dash,
 #brightness-label-dash {
   color: var(--shadow);
   font-size: 20px;
   font-family: "Symbols Nerd Font Mono";
-}
-
-#vol-label-dash.muted,
-#mic-label-dash.muted {
-  color: var(--surface);
 }
