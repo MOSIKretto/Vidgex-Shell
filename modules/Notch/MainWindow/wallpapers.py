@@ -1,5 +1,6 @@
 import os
 import hashlib
+import random
 from concurrent.futures import ThreadPoolExecutor
 import cairo
 
@@ -9,7 +10,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
 
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango
 import services.icons as icons
 
 
@@ -49,6 +50,82 @@ _STATIC = (
     (1, 0.85, 0.75, 1.875, False), (-1, 0.85, 0.75, 1.875, False),
     (0, 1.0, 1.0, 0.0, True),
 )
+
+_ARR_L = [
+    "  /@ ",
+    " /!  ",
+    "/@&  ",
+    " \\!  ",
+    "  \\@ ",
+]
+_ARR_R = [
+    " @\\  ",
+    "  !\\ ",
+    "  &@\\",
+    "  !/ ",
+    " @/  ",
+]
+_ARR_FONT_PT = 7
+_ARR_LINES = (_ARR_L, _ARR_R)
+
+_AGL_CHARS = "░▒▓█▀▄▌▐@#$%&!?*=~/\\|"
+_AGL_FRAMES = 12
+_AGL_FRAME_MS = 35
+_AGL_CORRUPT = 0.85
+_AGL_FLICKER = 0.12
+_AGL_SHIFT_CHANCE = 0.30
+_AGL_SHIFT_MAX = 2
+_AGL_RAND_MIN = 10
+_AGL_RAND_MAX = 20
+
+_ARR_FONT = Pango.FontDescription.from_string("monospace")
+_ARR_FONT.set_size(_ARR_FONT_PT * Pango.SCALE)
+_ARR_FONT_STR = _ARR_FONT.to_string()
+
+
+def _get_primary_hex(widget):
+    ctx = widget.get_style_context()
+    found, rgba = ctx.lookup_color("primary")
+    if not found:
+        rgba = ctx.get_color(Gtk.StateFlags.NORMAL)
+    return f"#{int(rgba.red * 255):02x}{int(rgba.green * 255):02x}{int(rgba.blue * 255):02x}"
+
+
+def _arr_set_art(lbl, lines):
+    art = '\n'.join(lines)
+    safe = (art
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;'))
+    fg = _get_primary_hex(lbl)
+    lbl.set_markup(
+        f'<span font_desc="{_ARR_FONT_STR}" foreground="{fg}">{safe}</span>'
+    )
+
+
+def _arr_glitch_lines(lines, progress):
+    rate = _AGL_CORRUPT * (1.0 - progress) ** 1.5
+    result = []
+    for line in lines:
+        if random.random() < _AGL_FLICKER * (1.0 - progress):
+            result.append(' ' * len(line))
+            continue
+        chars = list(line)
+        w = len(chars)
+        for j in range(w):
+            if random.random() < rate:
+                if chars[j] != ' ' or random.random() < 0.4:
+                    chars[j] = random.choice(_AGL_CHARS)
+        out = ''.join(chars)
+        if random.random() < _AGL_SHIFT_CHANCE * (1.0 - progress):
+            shift = random.randint(-_AGL_SHIFT_MAX, _AGL_SHIFT_MAX)
+            if shift > 0:
+                out = ' ' * shift + out[:w - shift]
+            elif shift < 0:
+                out = out[-shift:] + ' ' * (-shift)
+        result.append(out)
+    return result
+
 
 _pointer_cursor: Gdk.Cursor | None = None
 _default_cursor: Gdk.Cursor | None = None
@@ -392,7 +469,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
             self.queue_draw()
             self._sched()
         if self._on_nav:
-            self._on_nav()
+            self._on_nav(dr)
 
     def _slide(self):
         if self._dead:
@@ -500,6 +577,9 @@ class WallpaperSelector(Box):
     __slots__ = (
         '_dead', '_pend', '_files', '_mon', '_car', '_ent',
         '_sch_btn', '_sch_rev', '_sch_idx', '_rb', '_lbl',
+        '_agl_lbls',
+        '_agl_on', '_agl_rem', '_agl_tid',
+        '_agl_rand_tid',
     )
 
     def __init__(self, **kw):
@@ -509,18 +589,52 @@ class WallpaperSelector(Box):
         self._files = ()
         self._mon = None
 
+        self._agl_on = [False, False]
+        self._agl_rem = [0, 0]
+        self._agl_tid = [None, None]
+        self._agl_rand_tid = None
+
         os.makedirs(_WALLS, exist_ok=True)
         os.makedirs(_THUMBS, exist_ok=True)
 
         self._car = WallpaperCarousel(
-            on_select=self._on_sel, on_navigate=self._ulbl
+            on_select=self._on_sel, on_navigate=self._on_nav,
         )
         ew = Gtk.EventBox()
         ew.add(self._car)
         ew.connect("button-press-event", lambda *_: self._car.grab_focus())
 
-        cb = Box(name="carousel-container", h_align="center", v_align="center")
-        cb.pack_start(ew, True, True, 0)
+        lbl_l = Label(name="carousel-arrow-label")
+        lbl_l.set_halign(Gtk.Align.START)
+        lbl_l.set_valign(Gtk.Align.CENTER)
+        lbl_l.set_can_focus(False)
+
+        lbl_r = Label(name="carousel-arrow-label")
+        lbl_r.set_halign(Gtk.Align.END)
+        lbl_r.set_valign(Gtk.Align.CENTER)
+        lbl_r.set_can_focus(False)
+
+        self._agl_lbls = (lbl_l, lbl_r)
+
+        lbl_l.connect("style-updated",
+                       lambda *_: self._arr_render(0) if not self._agl_on[0] else None)
+        lbl_r.connect("style-updated",
+                       lambda *_: self._arr_render(1) if not self._agl_on[1] else None)
+
+        car_ov = Gtk.Overlay()
+        car_ov.add(ew)
+        car_ov.add_overlay(lbl_l)
+        car_ov.add_overlay(lbl_r)
+        car_ov.set_overlay_pass_through(lbl_l, True)
+        car_ov.set_overlay_pass_through(lbl_r, True)
+
+        cb = Box(
+            name="carousel-container",
+            orientation="h",
+            h_align="center",
+            v_align="center",
+        )
+        cb.pack_start(car_ov, True, True, 0)
 
         self._ent = Entry(
             name="search-entry-walls",
@@ -586,9 +700,68 @@ class WallpaperSelector(Box):
         self._roll()
 
         self.connect("destroy", self._destroy)
-        self.connect("realize", lambda *_: self._scan() if not self._files else None)
+        self.connect("realize", self._on_realize_full)
         self._scan()
         self._watch()
+
+    def _on_realize_full(self, *_):
+        self._arr_render(0)
+        self._arr_render(1)
+        self._arr_schedule_rand()
+        if not self._files:
+            self._scan()
+
+    def _arr_render(self, idx):
+        _arr_set_art(self._agl_lbls[idx], _ARR_LINES[idx])
+
+    def _on_nav(self, direction):
+        self._ulbl()
+        if not self._car._spl:
+            self._arr_glitch(0 if direction < 0 else 1)
+
+    def _arr_glitch(self, idx):
+        self._agl_on[idx] = True
+        self._agl_rem[idx] = _AGL_FRAMES
+        if self._agl_tid[idx]:
+            GLib.source_remove(self._agl_tid[idx])
+        self._agl_tid[idx] = GLib.timeout_add(
+            _AGL_FRAME_MS, self._arr_gl_tick, idx
+        )
+
+    def _arr_gl_tick(self, idx):
+        total = _AGL_FRAMES
+        progress = 1.0 - self._agl_rem[idx] / total
+        glitched = _arr_glitch_lines(_ARR_LINES[idx], progress)
+        _arr_set_art(self._agl_lbls[idx], glitched)
+        self._agl_rem[idx] -= 1
+        if self._agl_rem[idx] <= 0:
+            self._agl_on[idx] = False
+            self._agl_tid[idx] = None
+            self._arr_render(idx)
+            return False
+        return True
+
+    def _arr_schedule_rand(self):
+        if self._dead:
+            return
+        delay = random.randint(_AGL_RAND_MIN, _AGL_RAND_MAX)
+        self._agl_rand_tid = GLib.timeout_add_seconds(
+            delay, self._arr_fire_rand
+        )
+
+    def _arr_fire_rand(self):
+        self._agl_rand_tid = None
+        if self._dead:
+            return False
+        pick = random.randint(0, 2)
+        if pick == 0 or pick == 2:
+            if not self._agl_on[0]:
+                self._arr_glitch(0)
+        if pick == 1 or pick == 2:
+            if not self._agl_on[1]:
+                self._arr_glitch(1)
+        self._arr_schedule_rand()
+        return False
 
     def _on_search_changed(self, entry, _):
         self._deb("s", 300, self._srch, entry.get_text())
@@ -652,10 +825,7 @@ class WallpaperSelector(Box):
     def _ekey(self, _, e):
         k = e.keyval
         if k in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-            r = self._car._key(self._car, e)
-            if k == Gdk.KEY_Left or k == Gdk.KEY_Right:
-                GLib.timeout_add(50, self._ulbl)
-            return r
+            return self._car._key(self._car, e)
         if k == Gdk.KEY_Escape:
             self._ent.set_text("")
             return True
@@ -773,6 +943,14 @@ class WallpaperSelector(Box):
 
     def _destroy(self, _):
         self._dead = True
+        for i in (0, 1):
+            tid = self._agl_tid[i]
+            if tid:
+                GLib.source_remove(tid)
+                self._agl_tid[i] = None
+        if self._agl_rand_tid:
+            GLib.source_remove(self._agl_rand_tid)
+            self._agl_rand_tid = None
         if self._mon:
             self._mon.cancel()
         for sid in self._pend.values():
