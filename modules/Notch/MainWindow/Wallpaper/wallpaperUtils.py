@@ -1,7 +1,6 @@
 import hashlib
 import random
 
-import cairo
 from gi.repository import Gdk, Gtk
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import (

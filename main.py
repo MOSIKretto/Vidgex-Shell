@@ -58,19 +58,21 @@ def run():
     )
     restore_thread.start()
 
-    def on_shutdown(sig, frame):
+    def on_shutdown(*args):
         if session_manager:
             session_manager.stop_autosave()
             session_manager.save()
         app.quit()
+        return GLib.SOURCE_REMOVE
 
-    signal.signal(signal.SIGINT, on_shutdown)
-    signal.signal(signal.SIGTERM, on_shutdown)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, on_shutdown)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, on_shutdown)
 
-    import __main__ as main_module
-    main_module.app = app
-    main_module.notch = notch
-    main_module.explorer = explorer
+    main_module = sys.modules.get('__main__')
+    if main_module:
+        main_module.app = app
+        main_module.notch = notch
+        main_module.explorer = explorer
 
     return app.run()
 

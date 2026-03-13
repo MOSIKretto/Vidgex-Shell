@@ -353,13 +353,13 @@ class WallpaperSelector(Box):
 
         exec_shell_command_async(
             f'awww img "{p}" --type outer --transition-duration 0.5'
-            f" --transition-step 255 --transition-fps 60",
+            f" --transition-step 255 --transition-fps 60"
         )
         exec_shell_command_async(f'matugen image "{p}" --type {sch}')
         if notify:
             exec_shell_command_async(
                 f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨'"
-                f" -a 'Vidgex-Shell' -i '{p}' -e",
+                f" -a 'Vidgex-Shell' -i '{p}' -e"
             )
         return True
 

@@ -15,196 +15,179 @@ from gi.repository import GdkPixbuf, GLib, Gtk
 import services.icons as icons
 from modules.Notifications.NotificationBox.image import CustomImage
 
+# ── Константы ──
 
-PERSISTENT_DIR = f"{GLib.get_user_cache_dir()}/vidgex-shell/notifications"
-PERSISTENT_HISTORY_FILE = PERSISTENT_DIR + "/notification_history.json"
-PERSISTENT_IMAGES_DIR = PERSISTENT_DIR + "/images"
+CACHE_DIR = f"{GLib.get_user_cache_dir()}/vidgex-shell/notifications"
+HISTORY_FILE = f"{CACHE_DIR}/notification_history.json"
+IMAGES_DIR = f"{CACHE_DIR}/images"
 
-MAX_NOTIFICATION_HISTORY = 50
-MAX_POPUP_NOTIFICATIONS = 5
-NOTIFICATION_WIDTH = 320
-GROUP_ANIMATION_DURATION = 200
+MAX_HISTORY = 50
+MAX_POPUPS = 5
+NOTIF_WIDTH = 320
+GROUP_ANIM_MS = 200
+THUMB_SIZE = 48
+MAX_IMG_BYTES = 10 * 1024 * 1024
+MAX_IMG_DIM = 2048
 
-THUMBNAIL_SIZE = 48
-MAX_IMAGE_BYTES = 10 * 1024 * 1024
-MAX_IMAGE_DIMENSION = 2048
-
-_history_ignored_apps: frozenset = frozenset()
-
-
-def get_history_ignored_apps():
-    return _history_ignored_apps
-
-def get_safe_image_path(uuid):
-    safe_id = hashlib.md5(str(uuid).encode()).hexdigest()
-    return os.path.join(PERSISTENT_IMAGES_DIR, f"{safe_id}.png")
+_ignored_apps: frozenset = frozenset()
 
 
-def is_safe_image_file(path):
-    if not path or not path.startswith("/") or not os.path.isfile(path):
+def get_ignored_apps():
+    return _ignored_apps
+
+
+# ── Работа с изображениями ──
+
+def _safe_image_id(uid):
+    return hashlib.md5(str(uid).encode()).hexdigest()
+
+
+def image_path_for(uid):
+    return os.path.join(IMAGES_DIR, f"{_safe_image_id(uid)}.png")
+
+
+def is_valid_image(path):
+    if not path or not os.path.isfile(path):
         return False
-
     try:
         size = os.path.getsize(path)
-    except OSError:
-        return False
-
-    if not (0 < size < MAX_IMAGE_BYTES):
-        return False
-
-    try:
-        fmt, width, height = GdkPixbuf.Pixbuf.get_file_info(path)
+        if not (0 < size < MAX_IMG_BYTES):
+            return False
+        fmt, w, h = GdkPixbuf.Pixbuf.get_file_info(path)
+        return fmt is not None and w <= MAX_IMG_DIM and h <= MAX_IMG_DIM
     except Exception:
         return False
 
-    if not fmt or width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
-        return False
 
-    return True
+def load_pixbuf(path, size=THUMB_SIZE):
+    if not is_valid_image(path):
+        return None
+    try:
+        return GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size, size, False)
+    except GLib.Error:
+        return None
 
+
+def scale_pixbuf(pb, size=THUMB_SIZE):
+    try:
+        return pb.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
+    except Exception:
+        return None
+
+
+# ── Фоновый IO-воркер ──
 
 class _IOWorker:
-
-    __slots__ = ("_queue", "_thread")
-
     def __init__(self):
-        self._queue: Queue = Queue()
-        self._thread = Thread(target=self._run, daemon=True, name="notif-io")
-        self._thread.start()
+        self._q: Queue = Queue()
+        Thread(target=self._loop, daemon=True, name="notif-io").start()
 
-    def _run(self):
+    def _loop(self):
         while True:
-            task = self._queue.get(block=True)
+            task = self._q.get()
             if task is None:
                 break
             try:
                 task()
             except Exception:
-                try:
-                    import traceback
-                    traceback.print_exc()
-                except Exception:
-                    pass
-            finally:
-                self._queue.task_done()
+                import traceback
+                traceback.print_exc()
 
-    def submit(self, task):
-        self._queue.put_nowait(task)
-
-    def shutdown(self):
-        self._queue.put_nowait(None)
+    def submit(self, fn):
+        self._q.put_nowait(fn)
 
 
-_io_worker = _IOWorker()
+_io = _IOWorker()
 
 
-def submit_io_task(task):
-    _io_worker.submit(task)
+def _save_thumbnail(notification, uid, callback=None):
+    dest = image_path_for(uid)
+    png_data = None
 
+    pb = getattr(notification, "image_pixbuf", None)
+    if pb:
+        scaled = scale_pixbuf(pb)
+        if scaled:
+            ok, data = scaled.save_to_bufferv("png", [], [])
+            if ok and data:
+                png_data = bytes(data)
 
-def cleanup_orphan_images(active_ids):
-    if not os.path.isdir(PERSISTENT_IMAGES_DIR):
-        return
-    valid = {
-        f"{hashlib.md5(str(uid).encode()).hexdigest()}.png" for uid in active_ids
-    }
-    try:
-        entries = os.listdir(PERSISTENT_IMAGES_DIR)
-    except OSError:
-        return
+    icon = getattr(notification, "app_icon", None) or ""
+    if icon.startswith("file://"):
+        icon = icon[7:]
 
-    for filename in entries:
-        if filename.endswith(".png") and filename not in valid:
-            full = os.path.join(PERSISTENT_IMAGES_DIR, filename)
-            try:
-                os.remove(full)
-            except OSError:
-                pass
+    if not png_data and not is_valid_image(icon):
+        return dest
 
-
-def create_micro_thumbnail(notification, uuid, on_success_callback=None):
-    image_path = get_safe_image_path(uuid)
-    png_bytes = None
-
-    pixbuf = getattr(notification, "image_pixbuf", None)
-    if pixbuf is not None:
-        try:
-            scaled = pixbuf.scale_simple(
-                THUMBNAIL_SIZE, THUMBNAIL_SIZE, GdkPixbuf.InterpType.BILINEAR
-            )
-            if scaled:
-                success, data = scaled.save_to_bufferv("png", [], [])
-                if success and data:
-                    png_bytes = bytes(data)
-        except Exception:
-            pass
-
-    icon_path = getattr(notification, "app_icon", None)
-    if icon_path and icon_path.startswith("file://"):
-        icon_path = icon_path[7:]
-
-    if not png_bytes and (not icon_path or not is_safe_image_file(icon_path)):
-        return image_path
-
-    def _process_and_save():
-        try:
-            os.makedirs(PERSISTENT_IMAGES_DIR, exist_ok=True)
-        except OSError:
-            return
-
+    def _work():
+        os.makedirs(IMAGES_DIR, exist_ok=True)
         saved = False
 
-        if png_bytes:
+        if png_data:
             try:
-                with open(image_path, "wb") as f:
-                    f.write(png_bytes)
+                with open(dest, "wb") as f:
+                    f.write(png_data)
                 saved = True
             except OSError:
                 pass
 
-        if not saved and icon_path:
+        if not saved and is_valid_image(icon):
             try:
-                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                    icon_path, THUMBNAIL_SIZE, THUMBNAIL_SIZE, False
+                p = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                    icon, THUMB_SIZE, THUMB_SIZE, False
                 )
-                if pb:
-                    pb.savev(image_path, "png", [], [])
+                if p:
+                    p.savev(dest, "png", [], [])
                     saved = True
-            except (GLib.Error, Exception):
+            except Exception:
                 pass
 
-        if saved and on_success_callback and os.path.exists(image_path):
-            GLib.idle_add(on_success_callback, image_path, priority=GLib.PRIORITY_LOW)
+        if saved and callback and os.path.exists(dest):
+            GLib.idle_add(callback, dest, priority=GLib.PRIORITY_LOW)
 
-    _io_worker.submit(_process_and_save)
-    return image_path
+    _io.submit(_work)
+    return dest
 
 
-def delete_notification_image(uuid):
+def _delete_image(uid):
+    _io.submit(lambda: _try_remove(image_path_for(uid)))
+
+
+def _clear_all_images():
     def _do():
-        p = get_safe_image_path(uuid)
-        try:
-            os.remove(p)
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
-
-    _io_worker.submit(_do)
+        if os.path.isdir(IMAGES_DIR):
+            shutil.rmtree(IMAGES_DIR, ignore_errors=True)
+    _io.submit(_do)
 
 
-def clear_all_notification_images():
-    def _do():
-        if os.path.isdir(PERSISTENT_IMAGES_DIR):
-            shutil.rmtree(PERSISTENT_IMAGES_DIR, ignore_errors=True)
+def _cleanup_orphans(active_ids):
+    if not os.path.isdir(IMAGES_DIR):
+        return
+    valid = {f"{_safe_image_id(uid)}.png" for uid in active_ids}
+    try:
+        for f in os.listdir(IMAGES_DIR):
+            if f.endswith(".png") and f not in valid:
+                _try_remove(os.path.join(IMAGES_DIR, f))
+    except OSError:
+        pass
 
-    _io_worker.submit(_do)
 
+def _try_remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+# ── Модель исторического уведомления ──
 
 class HistoricalNotification:
-    __slots__ = ("id", "app_icon", "summary", "body", "app_name", "timestamp", "actions")
+    __slots__ = (
+        "id", "app_icon", "summary", "body",
+        "app_name", "timestamp", "actions",
+    )
 
-    def __init__(self, id, app_icon, summary, body, app_name, timestamp):
+    def __init__(self, *, id, app_icon, summary, body, app_name, timestamp):
         self.id = id
         self.app_icon = app_icon
         self.summary = summary
@@ -213,20 +196,18 @@ class HistoricalNotification:
         self.timestamp = timestamp
         self.actions = []
 
-    def __repr__(self):
-        return f"<HistoricalNotification id={self.id!r} app={self.app_name!r}>"
 
+# ── Кнопка действия ──
 
 class ActionButton(Button):
-    __slots__ = ("action", "_nb_ref", "_handlers")
+    def __init__(self, action, index, total, notif_box):
+        self._action = action
+        self._box_ref = weakref.ref(notif_box)
 
-    def __init__(self, action, index, total, notification_box):
-        self.action = action
-        self._nb_ref = weakref.ref(notification_box)
         super().__init__(
             name="action-button",
             h_expand=True,
-            on_clicked=self._on_clicked,
+            on_clicked=self._invoke,
             child=Label(
                 name="button-label",
                 h_expand=True,
@@ -237,144 +218,178 @@ class ActionButton(Button):
             ),
         )
 
-        if index == 0:
-            self.add_style_class("start-action")
-        elif index == total - 1:
-            self.add_style_class("end-action")
-        else:
-            self.add_style_class("middle-action")
+        style = (
+            "start-action" if index == 0
+            else ("end-action" if index == total - 1 else "middle-action")
+        )
+        self.add_style_class(style)
 
-        self._handlers = (
-            self.connect("enter-notify-event", self._on_enter),
-            self.connect("leave-notify-event", self._on_leave),
+        self._h1 = self.connect(
+            "enter-notify-event",
+            lambda *_: self._relay("hover_button"),
+        )
+        self._h2 = self.connect(
+            "leave-notify-event",
+            lambda *_: self._relay("unhover_button"),
         )
 
-    def _on_enter(self, *_):
-        nb = self._nb_ref()
-        if nb and not getattr(nb, "_destroyed", True):
-            nb.hover_button(self)
+    def _relay(self, method):
+        box = self._box_ref()
+        if box and not getattr(box, "_destroyed", True):
+            getattr(box, method)()
 
-    def _on_leave(self, *_):
-        nb = self._nb_ref()
-        if nb and not getattr(nb, "_destroyed", True):
-            nb.unhover_button(self)
-
-    def _on_clicked(self, *_):
-        if self.action:
-            self.action.invoke()
-            parent = getattr(self.action, "parent", None)
-            if parent:
-                parent.close("dismissed-by-user")
+    def _invoke(self, *_):
+        if self._action:
+            self._action.invoke()
+            parent = getattr(self._action, "parent", None)
+            if parent and hasattr(parent, "close"):
+                try:
+                    parent.close("dismissed-by-user")
+                except TypeError:
+                    parent.close()
 
     def destroy(self):
-        for hid in self._handlers:
-            if self.handler_is_connected(hid):
-                self.disconnect(hid)
-        self.action = None
-        self._nb_ref = None
+        for h in (self._h1, self._h2):
+            if self.handler_is_connected(h):
+                self.disconnect(h)
+        self._action = None
+        self._box_ref = None
         super().destroy()
 
 
-class NotificationBox(Box):
-    __slots__ = (
-        "notification",
-        "uuid",
-        "timeout_ms",
-        "_timeout_id",
-        "_container_ref",
-        "_destroyed",
-        "_is_history",
-        "_hover_handlers",
-        "_action_buttons",
-        "_thumb_path",
-        "image_box",
-    )
+# ── Виджет одного уведомления ──
 
-    def __init__(self, notification, timeout_ms=5000, **kwargs):
+class NotificationBox(Box):
+    def __init__(self, notification, timeout_ms=5000):
         super().__init__(
             name="notification-box",
             orientation="v",
             h_align="fill",
             h_expand=True,
         )
+
         self.notification = notification
         self.uuid = getattr(notification, "id", None) or GLib.uuid_string_random()
         self._timeout_id = None
         self._container_ref = None
         self._destroyed = False
         self._is_history = False
-        self._action_buttons: list[ActionButton] = []
+        self._actions: list[ActionButton] = []
+        self.thumb_path = image_path_for(self.uuid)
 
-        self._thumb_path = get_safe_image_path(self.uuid)
+        is_live = not isinstance(notification, HistoricalNotification)
 
-        live_timeout = getattr(notification, "timeout", -1)
+        # Таймаут
+        live_t = getattr(notification, "timeout", -1)
         if timeout_ms == 0:
             self.timeout_ms = 0
-        elif live_timeout != -1:
-            self.timeout_ms = live_timeout
+        elif live_t != -1:
+            self.timeout_ms = live_t
         else:
             self.timeout_ms = timeout_ms
 
         if self.timeout_ms > 0:
             self.start_timeout()
 
-        self.add(self._create_content())
-        actions_widget = self._create_action_buttons()
-        if actions_widget:
-            self.add(actions_widget)
+        # UI
+        self.add(self._build_content(is_live))
+        actions_w = self._build_actions()
+        if actions_w:
+            self.add(actions_w)
 
-        self._hover_handlers = (
-            self.connect("enter-notify-event", self._on_hover_enter),
-            self.connect("leave-notify-event", self._on_hover_leave),
+        self._hh = (
+            self.connect("enter-notify-event", lambda *_: self._pause_container()),
+            self.connect("leave-notify-event", lambda *_: self._resume_container()),
         )
 
-        if not isinstance(notification, HistoricalNotification):
-            create_micro_thumbnail(notification, self.uuid, self._on_thumb_ready)
+        if is_live:
+            _save_thumbnail(
+                notification,
+                self.uuid,
+                lambda p: (
+                    setattr(self, "thumb_path", p)
+                    if not self._destroyed
+                    else None
+                ),
+            )
 
-    def _on_thumb_ready(self, saved_path):
-        if not self._destroyed:
-            self._thumb_path = saved_path
+    # ── Контейнер ──
 
-    def set_is_history(self, value):
-        self._is_history = value
+    def set_container(self, c):
+        self._container_ref = weakref.ref(c) if c else None
 
-    def set_container(self, container):
-        self._container_ref = weakref.ref(container) if container else None
-
-    def get_container(self):
+    def _get_container(self):
         return self._container_ref() if self._container_ref else None
 
-    def _create_content(self):
+    def _pause_container(self):
+        c = self._get_container()
+        if c and hasattr(c, "pause_all"):
+            c.pause_all()
+
+    def _resume_container(self):
+        c = self._get_container()
+        if c and hasattr(c, "resume_all"):
+            c.resume_all()
+
+    def hover_button(self, *_):
+        self._pause_container()
+
+    def unhover_button(self, *_):
+        self._resume_container()
+
+    # ── Таймаут ──
+
+    def start_timeout(self):
+        self.stop_timeout()
+        if self.timeout_ms > 0:
+            self._timeout_id = GLib.timeout_add(self.timeout_ms, self._expire)
+
+    def stop_timeout(self):
+        if self._timeout_id:
+            GLib.source_remove(self._timeout_id)
+            self._timeout_id = None
+
+    def _expire(self):
+        self._timeout_id = None
+        if (
+            not self._destroyed
+            and self.notification
+            and hasattr(self.notification, "close")
+        ):
+            try:
+                self.notification.close("expired")
+            except TypeError:
+                self.notification.close()
+        return GLib.SOURCE_REMOVE
+
+    # ── UI ──
+
+    def _build_content(self, is_live):
         notif = self.notification
-        is_live = not isinstance(notif, HistoricalNotification)
+        pb = self._get_pixbuf(notif, is_live)
 
-        self.image_box = Box(name="notification-image", orientation="v")
-        pb = self._resolve_pixbuf(notif, is_live)
-
+        image_box = Box(name="notification-image", orientation="v")
         if pb:
             img = CustomImage(pixbuf=pb)
             img.set_valign(Gtk.Align.START)
-            self.image_box.add(img)
-
-        self.image_box.add(Box(v_expand=True))
-
-        summary_str = str(getattr(notif, "summary", ""))[:80]
-        app_name_str = str(getattr(notif, "app_name", "Unknown"))[:20]
+            image_box.add(img)
+        image_box.add(Box(v_expand=True))
 
         summary = Label(
             name="notification-summary",
-            markup=summary_str,
+            markup=str(getattr(notif, "summary", ""))[:80],
             h_align="start",
             max_chars_width=20,
             ellipsization="end",
         )
         app_name = Label(
             name="notification-app-name",
-            markup=app_name_str,
+            markup=str(getattr(notif, "app_name", "Unknown"))[:20],
             h_align="start",
             max_chars_width=12,
             ellipsization="end",
         )
+
         text_children = [
             Box(
                 name="notification-summary-box",
@@ -385,14 +400,15 @@ class NotificationBox(Box):
 
         body_raw = getattr(notif, "body", None)
         if body_raw:
-            body = Label(
-                name="notification-body",
-                markup=str(body_raw)[:150],
-                h_align="start",
-                max_chars_width=40,
-                ellipsization="end",
+            text_children.append(
+                Label(
+                    name="notification-body",
+                    markup=str(body_raw)[:150],
+                    h_align="start",
+                    max_chars_width=40,
+                    ellipsization="end",
+                )
             )
-            text_children.append(body)
 
         text_box = Box(
             name="notification-text",
@@ -406,152 +422,91 @@ class NotificationBox(Box):
             name="notif-close-button",
             child=Label(name="notif-close-label", markup=icons.cancel),
         )
-        close_btn.connect("clicked", self._on_close_clicked)
-        close_btn.connect("enter-notify-event", self._on_close_hover_enter)
-        close_btn.connect("leave-notify-event", self._on_close_hover_leave)
+        close_btn.connect("clicked", self._close_notif)
+        close_btn.connect(
+            "enter-notify-event", lambda *_: self._pause_container()
+        )
+        close_btn.connect(
+            "leave-notify-event", lambda *_: self._resume_container()
+        )
 
         return Box(
             name="notification-content",
             spacing=8,
             h_expand=True,
             children=[
-                self.image_box,
+                image_box,
                 text_box,
                 Box(orientation="v", v_align="center", children=[close_btn]),
             ],
         )
 
-    def _resolve_pixbuf(self, notif, is_live):
+    def _get_pixbuf(self, notif, is_live):
         if is_live and getattr(notif, "image_pixbuf", None):
-            return notif.image_pixbuf.scale_simple(
-                THUMBNAIL_SIZE, THUMBNAIL_SIZE, GdkPixbuf.InterpType.BILINEAR
-            )
+            return scale_pixbuf(notif.image_pixbuf)
 
-        if not is_live and self._thumb_path and is_safe_image_file(self._thumb_path):
-            try:
-                return GdkPixbuf.Pixbuf.new_from_file(self._thumb_path)
-            except GLib.Error:
-                pass
+        if not is_live:
+            pb = load_pixbuf(self.thumb_path)
+            if pb:
+                return pb
 
-        if is_live and getattr(notif, "app_icon", None):
-            path = notif.app_icon
-            if path.startswith("file://"):
-                path = path[7:]
-            if is_safe_image_file(path):
-                try:
-                    return GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                        path, THUMBNAIL_SIZE, THUMBNAIL_SIZE, False
-                    )
-                except GLib.Error:
-                    pass
+        if is_live:
+            icon = getattr(notif, "app_icon", "") or ""
+            if icon.startswith("file://"):
+                icon = icon[7:]
+            return load_pixbuf(icon)
 
         return None
 
-    def _create_action_buttons(self):
+    def _build_actions(self):
         actions = getattr(self.notification, "actions", None)
         if not actions:
             return None
-
         grid = Gtk.Grid(column_homogeneous=True, column_spacing=4)
-        for i, action in enumerate(actions):
-            btn = ActionButton(action, i, len(actions), self)
-            self._action_buttons.append(btn)
+        for i, a in enumerate(actions):
+            btn = ActionButton(a, i, len(actions), self)
+            self._actions.append(btn)
             grid.attach(btn, i, 0, 1, 1)
         return grid
 
-    def _on_close_clicked(self, *_):
+    def _close_notif(self, *_):
         if self.notification and hasattr(self.notification, "close"):
-            self.notification.close("dismissed-by-user")
+            try:
+                self.notification.close("dismissed-by-user")
+            except TypeError:
+                self.notification.close()
 
-    def _on_close_hover_enter(self, btn, _):
-        self.hover_button(btn)
-
-    def _on_close_hover_leave(self, btn, _):
-        self.unhover_button(btn)
-
-    def start_timeout(self):
-        self.stop_timeout()
-        if self.timeout_ms > 0:
-            self._timeout_id = GLib.timeout_add(
-                self.timeout_ms, self._close_notification
-            )
-
-    def stop_timeout(self):
-        if self._timeout_id is not None:
-            GLib.source_remove(self._timeout_id)
-            self._timeout_id = None
-
-    def _close_notification(self):
-        if not self._destroyed and self.notification and hasattr(self.notification, "close"):
-            self.notification.close("expired")
-        self.stop_timeout()
-        return GLib.SOURCE_REMOVE
-
-    def _on_hover_enter(self, *_):
-        cont = self.get_container()
-        if cont and hasattr(cont, "pause_and_reset_all_timeouts"):
-            cont.pause_and_reset_all_timeouts()
-
-    def _on_hover_leave(self, *_):
-        cont = self.get_container()
-        if cont and hasattr(cont, "resume_all_timeouts"):
-            cont.resume_all_timeouts()
-
-    def hover_button(self, *_):
-        self._on_hover_enter()
-
-    def unhover_button(self, *_):
-        self._on_hover_leave()
+    def set_is_history(self, v):
+        self._is_history = v
 
     def destroy(self, from_history_delete=False):
         if self._destroyed:
             return
         self._destroyed = True
 
-        for hid in self._hover_handlers:
-            if self.handler_is_connected(hid):
-                self.disconnect(hid)
-        self._hover_handlers = ()
+        for h in self._hh:
+            if self.handler_is_connected(h):
+                self.disconnect(h)
+        self._hh = ()
 
-        for btn in self._action_buttons:
+        for btn in self._actions:
             if btn.get_parent():
                 btn.destroy()
-        self._action_buttons.clear()
+        self._actions.clear()
 
         self.stop_timeout()
         self.notification = None
         self._container_ref = None
 
-        for child in list(self.get_children()):
-            self.remove(child)
-            child.destroy()
-
+        for ch in list(self.get_children()):
+            self.remove(ch)
+            ch.destroy()
         super().destroy()
 
 
-class NotificationGroup(Box):
-    __slots__ = (
-        "app_name",
-        "notification_ids",
-        "is_expanded",
-        "_history_ref",
-        "header_row",
-        "header",
-        "count_label",
-        "expand_icon",
-        "clear_btn",
-        "first_container_box",
-        "stack_indicators_revealer",
-        "stack_indicator_1",
-        "stack_indicator_2",
-        "stacked_revealer",
-        "stacked_container",
-        "latest_arrival_time",
-        "_expand_handler",
-        "_clear_handler",
-        "_is_destroyed",
-    )
+# ── Группа уведомлений ──
 
+class NotificationGroup(Box):
     def __init__(self, app_name, history, is_expanded=False):
         super().__init__(
             name="notification-group",
@@ -559,18 +514,18 @@ class NotificationGroup(Box):
             h_align="fill",
             h_expand=True,
         )
-        self.set_size_request(NOTIFICATION_WIDTH, -1)
+        self.set_size_request(NOTIF_WIDTH, -1)
+
         self.app_name = app_name[:30]
         self._history_ref = weakref.ref(history)
-        self.notification_ids: list = []
+        self.nids: list = []
         self.is_expanded = is_expanded
-        self.latest_arrival_time = None
-        self._is_destroyed = False
-        self._expand_handler = None
-        self._clear_handler = None
-        self._build_ui()
+        self.latest_time = None
+        self._dead = False
 
-    def _build_ui(self):
+        self._build()
+
+    def _build(self):
         self.expand_icon = Label(
             name="group-expand-icon",
             markup=icons.chevron_up if self.is_expanded else icons.chevron_down,
@@ -582,7 +537,7 @@ class NotificationGroup(Box):
         )
         self.count_label.set_no_show_all(True)
 
-        app_label = Label(
+        app_lbl = Label(
             name="group-app-name",
             label=self.app_name,
             h_align="start",
@@ -591,58 +546,60 @@ class NotificationGroup(Box):
             max_chars_width=20,
         )
 
-        self.header = Button(
+        self.header_btn = Button(
             name="group-expand-button",
+            h_expand=True,
             child=Box(
                 name="group-header-content",
                 spacing=8,
                 h_expand=True,
-                children=[self.expand_icon, app_label, self.count_label],
+                children=[self.expand_icon, app_lbl, self.count_label],
             ),
-            h_expand=True,
         )
-        self._expand_handler = self.header.connect("clicked", self._toggle_expand)
+        self._eh = self.header_btn.connect("clicked", self._toggle)
 
         self.clear_btn = Button(
             name="notif-close-button",
             child=Label(name="notif-close-label", markup=icons.cancel),
         )
-        self._clear_handler = self.clear_btn.connect("clicked", self._on_clear_group)
+        self._ch = self.clear_btn.connect("clicked", self._on_clear)
 
         self.header_row = Box(
             name="notification-group-header",
             orientation="h",
             spacing=4,
             h_expand=True,
-            children=[self.header, self.clear_btn],
+            children=[self.header_btn, self.clear_btn],
         )
         self.header_row.set_visible(False)
 
-        self.first_container_box = Box(
-            name="group-first-notification", orientation="v", h_expand=True
+        self.first_box = Box(
+            name="group-first-notification",
+            orientation="v",
+            h_expand=True,
         )
 
-        self.stack_indicator_1 = Box(name="stack-indicator")
-        self.stack_indicator_1.add_style_class("first")
-        self.stack_indicator_1.set_no_show_all(True)
+        self.ind1 = Box(name="stack-indicator")
+        self.ind1.add_style_class("first")
+        self.ind1.set_no_show_all(True)
 
-        self.stack_indicator_2 = Box(name="stack-indicator")
-        self.stack_indicator_2.add_style_class("second")
-        self.stack_indicator_2.set_no_show_all(True)
+        self.ind2 = Box(name="stack-indicator")
+        self.ind2.add_style_class("second")
+        self.ind2.set_no_show_all(True)
 
-        self.stack_indicators_revealer = Revealer(
+        self.ind_revealer = Revealer(
             name="stack-indicators-revealer",
             transition_type="slide-down",
-            transition_duration=GROUP_ANIMATION_DURATION,
+            transition_duration=GROUP_ANIM_MS,
+            reveal_child=False,
             child=Box(
                 name="stack-indicators",
                 orientation="v",
-                children=[self.stack_indicator_1, self.stack_indicator_2],
+                children=[self.ind1, self.ind2],
             ),
-            reveal_child=False,
         )
 
-        self.stacked_container = Box(
+        self.stacked_box = Box(
             name="group-stacked-container",
             orientation="v",
             spacing=4,
@@ -651,149 +608,127 @@ class NotificationGroup(Box):
         self.stacked_revealer = Revealer(
             name="group-stacked-revealer",
             transition_type="slide-down",
-            transition_duration=GROUP_ANIMATION_DURATION,
-            child=self.stacked_container,
+            transition_duration=GROUP_ANIM_MS,
+            child=self.stacked_box,
             reveal_child=self.is_expanded,
         )
 
-        self.add(self.header_row)
-        self.add(self.first_container_box)
-        self.add(self.stack_indicators_revealer)
-        self.add(self.stacked_revealer)
+        for w in (
+            self.header_row,
+            self.first_box,
+            self.ind_revealer,
+            self.stacked_revealer,
+        ):
+            self.add(w)
 
         if self.is_expanded:
-            self._apply_expanded_state()
+            self._set_expanded_style()
 
-    def _apply_expanded_state(self):
+    def _set_expanded_style(self):
         self.expand_icon.set_markup(icons.chevron_up)
         self.header_row.add_style_class("expanded")
         self.add_style_class("expanded")
 
-    def _apply_collapsed_state(self):
+    def _set_collapsed_style(self):
         self.expand_icon.set_markup(icons.chevron_down)
         self.header_row.remove_style_class("expanded")
         self.remove_style_class("expanded")
 
-    def _toggle_expand(self, *_):
-        if self._is_destroyed or len(self.notification_ids) <= 1:
+    def _toggle(self, *_):
+        if self._dead or len(self.nids) <= 1:
             return
         self.is_expanded = not self.is_expanded
-        self.stack_indicators_revealer.set_reveal_child(not self.is_expanded)
+        self.ind_revealer.set_reveal_child(not self.is_expanded)
         self.stacked_revealer.set_reveal_child(self.is_expanded)
         if self.is_expanded:
-            self._apply_expanded_state()
+            self._set_expanded_style()
         else:
-            self._apply_collapsed_state()
+            self._set_collapsed_style()
 
-    def _on_clear_group(self, *_):
-        if self._is_destroyed:
+    def _on_clear(self, *_):
+        if self._dead:
             return
         self.clear_btn.set_sensitive(False)
-        history = self._history_ref()
-        if history and not getattr(history, "_is_destroyed", True):
-            history.clear_history_for_app(self.app_name)
+        h = self._history_ref()
+        if h and not getattr(h, "_dead", True):
+            h.clear_app(self.app_name)
 
-    def _update_stack_indicators(self, count):
-        self.stack_indicator_1.set_visible(count > 1)
-        self.stack_indicator_2.set_visible(count > 2)
-        self.stack_indicators_revealer.set_reveal_child(
-            count > 1 and not self.is_expanded
+    def add_nid(self, nid, time):
+        if nid not in self.nids:
+            self.nids.insert(0, nid)
+        if self.latest_time is None or time > self.latest_time:
+            self.latest_time = time
+
+    def remove_nid(self, nid):
+        if nid in self.nids:
+            self.nids.remove(nid)
+        return len(self.nids) == 0
+
+    def refresh(self, id_map):
+        if self._dead or not self.nids:
+            return
+
+        for box in (self.first_box, self.stacked_box):
+            for ch in list(box.get_children()):
+                box.remove(ch)
+
+        visible = sorted(
+            (id_map[nid] for nid in self.nids if nid in id_map),
+            key=lambda c: c.arrival_time,
+            reverse=True,
         )
-
-    def update_display(self, containers_by_id):
-        if self._is_destroyed or not self.notification_ids:
+        if not visible:
             return
 
-        for box in (self.first_container_box, self.stacked_container):
-            for child in list(box.get_children()):
-                box.remove(child)
+        for i, c in enumerate(visible):
+            target = self.first_box if i == 0 else self.stacked_box
+            p = c.get_parent()
+            if p and p is not target:
+                p.remove(c)
+            if c.get_parent() is None:
+                target.add(c)
 
-        valid = []
-        for nid in self.notification_ids:
-            container = containers_by_id.get(nid)
-            if container is not None:
-                valid.append(container)
-        valid.sort(key=lambda c: c.arrival_time, reverse=True)
-
-        if not valid:
-            return
-
-        for i, container in enumerate(valid):
-            target = self.first_container_box if i == 0 else self.stacked_container
-            parent = container.get_parent()
-            if parent and parent is not target:
-                parent.remove(container)
-            if container.get_parent() is None:
-                target.add(container)
-
-        count = len(valid)
-        is_multi = count > 1
+        count = len(visible)
+        multi = count > 1
         self.header_row.set_visible(True)
+        self.count_label.set_label(f"+{count - 1}" if multi else "")
+        self.count_label.set_visible(multi)
+        self.expand_icon.set_visible(multi)
+        self.header_btn.set_can_focus(multi)
 
-        self.count_label.set_label(f"+{count - 1}" if is_multi else "")
-        self.count_label.set_visible(is_multi)
-        self.expand_icon.set_visible(is_multi)
-        self.header.set_can_focus(is_multi)
-
-        if not is_multi:
+        if not multi:
             self.is_expanded = False
-            self._apply_collapsed_state()
+            self._set_collapsed_style()
 
         self.stacked_revealer.set_reveal_child(
-            self.is_expanded if is_multi else False
+            self.is_expanded if multi else False
         )
-        self._update_stack_indicators(count)
-        self.latest_arrival_time = valid[0].arrival_time
+        self.ind1.set_visible(count > 1)
+        self.ind2.set_visible(count > 2)
+        self.ind_revealer.set_reveal_child(count > 1 and not self.is_expanded)
+        self.latest_time = visible[0].arrival_time
 
-        self.first_container_box.show_all()
-        self.stacked_container.show_all()
+        self.first_box.show_all()
+        self.stacked_box.show_all()
 
-    def add_notification_id(self, nid, arrival_time):
-        if nid not in self.notification_ids:
-            self.notification_ids.insert(0, nid)
-        if self.latest_arrival_time is None or arrival_time > self.latest_arrival_time:
-            self.latest_arrival_time = arrival_time
-
-    def remove_notification_id(self, nid):
-        if nid in self.notification_ids:
-            self.notification_ids.remove(nid)
-        return len(self.notification_ids) == 0
-
-    def get_notification_count(self):
-        return len(self.notification_ids)
-
-    def collapse(self):
-        if self.is_expanded:
-            self._toggle_expand()
-
-    def clear_containers(self):
-        for box in (self.first_container_box, self.stacked_container):
-            for child in list(box.get_children()):
-                box.remove(child)
+    def detach_all(self):
+        for box in (self.first_box, self.stacked_box):
+            for ch in list(box.get_children()):
+                box.remove(ch)
 
     def destroy(self):
-        if self._is_destroyed:
+        if self._dead:
             return
-        self._is_destroyed = True
+        self._dead = True
 
-        if (
-            self._expand_handler
-            and self.header
-            and self.header.handler_is_connected(self._expand_handler)
+        for handler, widget in (
+            (self._eh, self.header_btn),
+            (self._ch, self.clear_btn),
         ):
-            self.header.disconnect(self._expand_handler)
-            self._expand_handler = None
+            if handler and widget and widget.handler_is_connected(handler):
+                widget.disconnect(handler)
 
-        if (
-            self._clear_handler
-            and self.clear_btn
-            and self.clear_btn.handler_is_connected(self._clear_handler)
-        ):
-            self.clear_btn.disconnect(self._clear_handler)
-            self._clear_handler = None
-
-        self.clear_containers()
-        self.notification_ids.clear()
+        self.detach_all()
+        self.nids.clear()
         self._history_ref = None
-
         super().destroy()

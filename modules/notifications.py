@@ -1,12 +1,9 @@
 from fabric.widgets.box import Box
-
 from modules.Notifications.history import NotificationHistory, NotificationContainer
-
 from services.wayland import WaylandWindow as Window
 
 
 class Notification(Window):
-
     def __init__(self, **kwargs):
         super().__init__(
             name="notification-popup",
@@ -18,11 +15,7 @@ class Notification(Window):
             all_visible=True,
         )
 
-        self._destroyed = False
-        self._owns_history = False
-
         widgets = kwargs.get("widgets")
-
         if widgets is not None:
             if not hasattr(widgets, "notification_history"):
                 raise AttributeError(
@@ -35,34 +28,22 @@ class Notification(Window):
             self._owns_history = True
 
         self.notification_container = NotificationContainer(
-            notification_history_instance=self.notification_history,
-            revealer_transition_type="slide-down",
+            history=self.notification_history,
+            revealer_transition="slide-down",
+            window=self,
         )
 
-        self._spacer = Box()
-        self._spacer.set_size_request(1, 1)
-
-        self._popup_box = Box(
+        self.add(Box(
             name="notification-popup-box",
             orientation="v",
-            children=[self.notification_container, self._spacer],
-        )
-        self.add(self._popup_box)
+            children=[self.notification_container, Box()],
+        ))
 
     def destroy(self):
-        if self._destroyed:
-            return
-        self._destroyed = True
-
-        if self.notification_container is not None:
+        if self.notification_container:
             self.notification_container.destroy()
             self.notification_container = None
-
-        if self._owns_history and self.notification_history is not None:
+        if self._owns_history and self.notification_history:
             self.notification_history.destroy()
-
         self.notification_history = None
-        self._spacer = None
-        self._popup_box = None
-
         super().destroy()

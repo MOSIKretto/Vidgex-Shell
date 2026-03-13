@@ -17,39 +17,28 @@ from .notificationBox import (
     NotificationBox,
     NotificationGroup,
     HistoricalNotification,
-    get_history_ignored_apps,
-    is_safe_image_file,
-    delete_notification_image,
-    clear_all_notification_images,
-    submit_io_task,
-    cleanup_orphan_images,
-    PERSISTENT_HISTORY_FILE,
-    MAX_NOTIFICATION_HISTORY,
-    MAX_POPUP_NOTIFICATIONS,
-    NOTIFICATION_WIDTH,
+    get_ignored_apps,
+    is_valid_image,
+    _delete_image,
+    _clear_all_images,
+    _cleanup_orphans,
+    load_pixbuf,
+    HISTORY_FILE,
+    MAX_HISTORY,
+    MAX_POPUPS,
+    NOTIF_WIDTH,
+    image_path_for,
 )
+from .notificationBox import _io as _io_worker
 import services.icons as icons
 from modules.Notifications.NotificationBox.image import CustomImage
 
 
+def _submit(fn):
+    _io_worker.submit(fn)
+
+
 class NotificationHistory(Box):
-
-    __slots__ = (
-        "containers",
-        "groups",
-        "containers_by_id",
-        "_save_timer_id",
-        "_dnd_handler",
-        "header_switch",
-        "do_not_disturb_enabled",
-        "notifications_list",
-        "no_notifications_box",
-        "scroll",
-        "persistent_notifications",
-        "_is_destroyed",
-        "_loading",
-    )
-
     def __init__(self, **kwargs):
         super().__init__(
             name="notification-history",
@@ -59,31 +48,34 @@ class NotificationHistory(Box):
         )
 
         self.containers: list[Box] = []
-        self.containers_by_id: dict[str, Box] = {}
+        self.by_id: dict[str, Box] = {}
         self.groups: dict[str, NotificationGroup] = {}
-        self.persistent_notifications: list[dict] = []
+        self.data: list[dict] = []
 
+        self._dead = False
         self._loading = False
-        self._save_timer_id = None
-        self._dnd_handler = None
-        self._is_destroyed = False
+        self._save_tid = None
+        self._dnd_hid = None
         self.do_not_disturb_enabled = False
 
         self._build_ui()
-        GLib.idle_add(self._start_loading, priority=GLib.PRIORITY_LOW)
+        GLib.idle_add(self._begin_load, priority=GLib.PRIORITY_LOW)
 
     def _build_ui(self):
-        self.header_switch = Gtk.Switch(
+        self.dnd_switch = Gtk.Switch(
             name="dnd-switch", vexpand=False, valign=Gtk.Align.CENTER
         )
-        self._dnd_handler = self.header_switch.connect(
-            "notify::active", self._on_dnd_changed
+        self._dnd_hid = self.dnd_switch.connect(
+            "notify::active",
+            lambda sw, _: setattr(
+                self, "do_not_disturb_enabled", sw.get_active()
+            ),
         )
 
         header = CenterBox(
             name="notification-history-header",
             start_children=[
-                self.header_switch,
+                self.dnd_switch,
                 Label(name="dnd-label", markup=icons.notifications_off),
             ],
             center_children=[
@@ -98,17 +90,17 @@ class NotificationHistory(Box):
                 Button(
                     name="nhh-button",
                     child=Label(name="nhh-button-label", markup=icons.trash),
-                    on_clicked=self.clear_history,
+                    on_clicked=self.clear_all,
                 ),
             ],
         )
 
-        self.notifications_list = Box(
+        self.notif_list = Box(
             name="notifications-list", orientation="vertical", spacing=4
         )
-        self.notifications_list.set_size_request(NOTIFICATION_WIDTH, -1)
+        self.notif_list.set_size_request(NOTIF_WIDTH, -1)
 
-        self.no_notifications_box = Box(
+        self.empty_box = Box(
             name="no-notifications-box",
             v_align="center",
             h_align="center",
@@ -129,7 +121,7 @@ class NotificationHistory(Box):
             child=Box(
                 spacing=4,
                 orientation="vertical",
-                children=[self.notifications_list, self.no_notifications_box],
+                children=[self.notif_list, self.empty_box],
             ),
             v_expand=True,
             propagate_width=False,
@@ -138,30 +130,304 @@ class NotificationHistory(Box):
 
         self.children = [header, self.scroll]
 
-    def _on_dnd_changed(self, switch, _):
-        self.do_not_disturb_enabled = switch.get_active()
+    def _sync_empty(self):
+        has = bool(self.containers)
+        self.empty_box.set_visible(not has)
+        self.notif_list.set_visible(has)
 
-    def _update_empty_state(self):
-        has_items = bool(self.containers)
-        self.no_notifications_box.set_visible(not has_items)
-        self.notifications_list.set_visible(has_items)
+    # ── Добавление уведомления ──
 
-    def _rebuild_with_groups(self):
-        if self._is_destroyed:
+    def add_notification(self, nb: NotificationBox):
+        if self._dead:
+            return
+
+        notif = nb.notification
+        app = str(getattr(notif, "app_name", "Unknown"))[:30]
+        uuid = nb.uuid
+        now = datetime.now()
+
+        if app in get_ignored_apps():
+            nb.destroy(from_history_delete=True)
+            return
+
+        img = getattr(nb, "thumb_path", None)
+        rec = {
+            "id": uuid,
+            "app_icon": img,
+            "summary": str(getattr(notif, "summary", ""))[:80],
+            "body": str(getattr(notif, "body", ""))[:150],
+            "app_name": app,
+            "timestamp": now.isoformat(),
+        }
+        self.data.insert(0, rec)
+        self._schedule_save()
+
+        nb.destroy(from_history_delete=True)
+
+        hist = HistoricalNotification(
+            id=uuid,
+            app_icon=img,
+            summary=rec["summary"],
+            body=rec["body"],
+            app_name=app,
+            timestamp=rec["timestamp"],
+        )
+        box = NotificationBox(hist, timeout_ms=0)
+        box.set_is_history(True)
+
+        self._evict()
+        container = self._make_container(box, now)
+        self.containers.insert(0, container)
+        self.by_id[uuid] = container
+
+        g = self.groups.get(app)
+        if not g:
+            g = NotificationGroup(app, self, is_expanded=True)
+            self.groups[app] = g
+            self.notif_list.add(g)
+
+        g.add_nid(uuid, now)
+        g.refresh(self.by_id)
+        self.notif_list.reorder_child(g, 0)
+        g.show_all()
+        self._sync_empty()
+
+    # ── Удаление ──
+
+    def delete_one(self, uid, container):
+        if self._dead:
+            return
+
+        nb = getattr(container, "notification_box", None)
+        app = (
+            getattr(nb.notification, "app_name", None)
+            if nb and nb.notification
+            else None
+        )
+
+        if nb:
+            nb.destroy(from_history_delete=True)
+            container.notification_box = None
+
+        for i, n in enumerate(self.data):
+            if n.get("id") == uid:
+                self.data.pop(i)
+                _delete_image(uid)
+                self._schedule_save()
+                break
+
+        self.by_id.pop(uid, None)
+        if container in self.containers:
+            self.containers.remove(container)
+
+        p = container.get_parent()
+        if p:
+            p.remove(container)
+
+        if app and app in self.groups:
+            g = self.groups[app]
+            if g.remove_nid(uid):
+                gp = g.get_parent()
+                if gp:
+                    gp.remove(g)
+                g.destroy()
+                del self.groups[app]
+            else:
+                g.refresh(self.by_id)
+
+        container.destroy()
+        self._sync_empty()
+
+    def clear_app(self, app_name):
+        if self._dead or app_name not in self.groups:
+            return
+
+        g = self.groups.pop(app_name)
+        nids = set(g.nids)
+
+        self.data = [n for n in self.data if n.get("id") not in nids]
+        self._schedule_save()
+
+        g.detach_all()
+
+        for nid in nids:
+            _delete_image(nid)
+            c = self.by_id.pop(nid, None)
+            if c is None:
+                continue
+            if c in self.containers:
+                self.containers.remove(c)
+            p = c.get_parent()
+            if p:
+                p.remove(c)
+            nb = getattr(c, "notification_box", None)
+            if nb:
+                nb.destroy(from_history_delete=True)
+                c.notification_box = None
+            c.destroy()
+
+        p = g.get_parent()
+        if p:
+            p.remove(g)
+        g.destroy()
+        self._sync_empty()
+
+    def clear_all(self, *_):
+        if self._dead:
+            return
+
+        for g in self.groups.values():
+            g.detach_all()
+        for ch in list(self.notif_list.get_children()):
+            self.notif_list.remove(ch)
+            ch.destroy()
+        self.groups.clear()
+
+        for c in self.containers:
+            nb = getattr(c, "notification_box", None)
+            if nb:
+                nb.destroy(from_history_delete=True)
+                c.notification_box = None
+            c.destroy()
+        self.containers.clear()
+        self.by_id.clear()
+        self.data.clear()
+
+        _submit(self._rm_file)
+        _clear_all_images()
+        self._sync_empty()
+
+    # ── Загрузка / сохранение ──
+
+    def _begin_load(self):
+        if not self._loading:
+            self._loading = True
+            _submit(self._read_file)
+        return GLib.SOURCE_REMOVE
+
+    def _read_file(self):
+        data = []
+        if os.path.isfile(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        GLib.idle_add(self._on_loaded, data, priority=GLib.PRIORITY_LOW)
+
+    def _on_loaded(self, file_data):
+        if self._dead:
+            return GLib.SOURCE_REMOVE
+
+        existing = {n.get("id") for n in self.data}
+        merged = self.data.copy()
+        for n in file_data if isinstance(file_data, list) else []:
+            if n.get("id") not in existing:
+                merged.append(n)
+        self.data = merged[:MAX_HISTORY]
+
+        if self.data:
+            self._load_batch(list(reversed(self.data)), 0)
+        else:
+            self._finish_load()
+
+        ids = [n.get("id") for n in self.data]
+        _submit(lambda: _cleanup_orphans(ids))
+        return GLib.SOURCE_REMOVE
+
+    def _load_batch(self, notes, idx):
+        if self._dead:
+            return
+        end = min(idx + 5, len(notes))
+        for i in range(idx, end):
+            self._restore_one(notes[i])
+        if end < len(notes):
+            GLib.idle_add(
+                self._load_batch, notes, end, priority=GLib.PRIORITY_LOW
+            )
+        else:
+            self._finish_load()
+
+    def _finish_load(self):
+        if not self._dead:
+            self._rebuild_groups()
+            self._loading = False
+
+    def _restore_one(self, rec):
+        if not isinstance(rec, dict):
+            return
+        h = HistoricalNotification(
+            id=rec.get("id"),
+            app_icon=rec.get("app_icon"),
+            summary=rec.get("summary", ""),
+            body=rec.get("body", ""),
+            app_name=rec.get("app_name", "Unknown"),
+            timestamp=rec.get("timestamp"),
+        )
+        box = NotificationBox(h, timeout_ms=0)
+        box.set_is_history(True)
+
+        try:
+            arrival = datetime.fromisoformat(h.timestamp)
+        except (ValueError, TypeError):
+            arrival = datetime.now()
+
+        container = self._make_container(box, arrival)
+        self.containers.insert(0, container)
+        self.by_id[box.uuid] = container
+
+    def _schedule_save(self):
+        if self._save_tid:
+            GLib.source_remove(self._save_tid)
+        self._save_tid = GLib.timeout_add(1000, self._do_save)
+
+    def _do_save(self):
+        self._save_tid = None
+        if not self._dead:
+            snapshot = list(self.data)
+            _submit(lambda: self._write_file(snapshot))
+        return GLib.SOURCE_REMOVE
+
+    @staticmethod
+    def _write_file(data):
+        tmp = HISTORY_FILE + ".tmp"
+        try:
+            os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, separators=(",", ":"))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, HISTORY_FILE)
+        except (OSError, TypeError, ValueError):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _rm_file():
+        try:
+            os.remove(HISTORY_FILE)
+        except OSError:
+            pass
+
+    # ── Группировка ──
+
+    def _rebuild_groups(self):
+        if self._dead:
             return
 
         expanded = {name: g.is_expanded for name, g in self.groups.items()}
 
-        for child in list(self.notifications_list.get_children()):
-            self.notifications_list.remove(child)
-
+        for ch in list(self.notif_list.get_children()):
+            self.notif_list.remove(ch)
         for g in self.groups.values():
-            g.clear_containers()
+            g.detach_all()
             g.destroy()
         self.groups.clear()
 
-        for container in self.containers:
-            nb = getattr(container, "notification_box", None)
+        for c in self.containers:
+            nb = getattr(c, "notification_box", None)
             if not (nb and nb.notification):
                 continue
             app = getattr(nb.notification, "app_name", "Unknown")
@@ -169,54 +435,43 @@ class NotificationHistory(Box):
                 self.groups[app] = NotificationGroup(
                     app, self, is_expanded=expanded.get(app, False)
                 )
-            self.groups[app].add_notification_id(nb.uuid, container.arrival_time)
+            self.groups[app].add_nid(nb.uuid, c.arrival_time)
 
         for g in self.groups.values():
-            g.update_display(self.containers_by_id)
+            g.refresh(self.by_id)
 
-        sorted_groups = sorted(
+        for g in sorted(
             self.groups.values(),
-            key=lambda grp: grp.latest_arrival_time or datetime.min,
+            key=lambda x: x.latest_time or datetime.min,
             reverse=True,
-        )
-        for g in sorted_groups:
-            self.notifications_list.add(g)
+        ):
+            self.notif_list.add(g)
 
-        self.notifications_list.show_all()
-        self._update_empty_state()
+        self.notif_list.show_all()
+        self._sync_empty()
 
-    def _on_hist_close_clicked(self, _button, uuid, cont_ref):
-        if self._is_destroyed:
-            return
-        cont = cont_ref()
-        if cont is not None:
-            self.delete_historical_notification(uuid, cont)
+    # ── Контейнер истории ──
 
-    def _create_history_container(self, notification_box, arrival_time):
-        container = Box(
+    def _make_container(self, nb, arrival):
+        c = Box(
             name="notification-container",
             orientation="v",
             h_align="fill",
             h_expand=True,
         )
-        container.set_size_request(NOTIFICATION_WIDTH, -1)
-        container.arrival_time = arrival_time
-        container.notification_box = notification_box
+        c.set_size_request(NOTIF_WIDTH, -1)
+        c.arrival_time = arrival
+        c.notification_box = nb
 
-        notif = notification_box.notification
+        notif = nb.notification
+        thumb = getattr(nb, "thumb_path", getattr(notif, "app_icon", None))
 
         image_box = Box(name="notification-image")
-        thumb_path = getattr(
-            notification_box, "_thumb_path", getattr(notif, "app_icon", None)
-        )
-        if thumb_path and is_safe_image_file(thumb_path):
-            try:
-                pb = GdkPixbuf.Pixbuf.new_from_file(thumb_path)
-                img = CustomImage(pixbuf=pb)
-                img.set_valign(Gtk.Align.START)
-                image_box.add(img)
-            except GLib.Error:
-                pass
+        pb = load_pixbuf(thumb) if thumb else None
+        if pb:
+            img = CustomImage(pixbuf=pb)
+            img.set_valign(Gtk.Align.START)
+            image_box.add(img)
 
         summary_box = Box(
             name="notification-summary-box",
@@ -232,7 +487,7 @@ class NotificationHistory(Box):
                 Box(name="notif-sep"),
                 Label(
                     name="notification-timestamp",
-                    label=arrival_time.strftime("%H:%M"),
+                    label=arrival.strftime("%H:%M"),
                     h_align="start",
                 ),
             ],
@@ -257,384 +512,89 @@ class NotificationHistory(Box):
                 )
             )
 
+        # Захватываем uuid и weakref на контейнер в замыкание
+        uuid = nb.uuid
+        c_ref = weakref.ref(c)
         close_btn = Button(
             name="notif-close-button",
             child=Label(name="notif-close-label", markup=icons.cancel),
         )
         close_btn.connect(
             "clicked",
-            self._on_hist_close_clicked,
-            notification_box.uuid,
-            weakref.ref(container),
+            lambda _: self.delete_one(uuid, c_ref()) if c_ref() else None,
         )
 
-        container.add(
+        c.add(
             Box(
                 name="notification-box-hist",
                 spacing=8,
                 children=[
                     image_box,
                     text_box,
-                    Box(orientation="v", v_align="center", children=[close_btn]),
+                    Box(
+                        orientation="v",
+                        v_align="center",
+                        children=[close_btn],
+                    ),
                 ],
             )
         )
-        return container
+        return c
 
-    def clear_history(self, *_):
-        if self._is_destroyed:
-            return
+    # ── Вытеснение ──
 
-        for g in self.groups.values():
-            g.clear_containers()
-
-        for child in list(self.notifications_list.get_children()):
-            self.notifications_list.remove(child)
-            child.destroy()
-
-        self.groups.clear()
-
-        for c in self.containers:
-            nb = getattr(c, "notification_box", None)
+    def _evict(self):
+        while len(self.containers) >= MAX_HISTORY:
+            old_c = self.containers.pop()
+            nb = getattr(old_c, "notification_box", None)
             if nb:
-                nb.destroy(from_history_delete=True)
-                c.notification_box = None
-            c.destroy()
-
-        self.containers.clear()
-        self.containers_by_id.clear()
-        self.persistent_notifications.clear()
-
-        submit_io_task(self._clear_files_sync)
-        clear_all_notification_images()
-
-        self._update_empty_state()
-
-    def clear_history_for_app(self, app_name):
-        if self._is_destroyed or app_name not in self.groups:
-            return
-
-        group = self.groups.pop(app_name)
-        nids = list(group.notification_ids)
-        nids_set = set(nids)
-
-        self.persistent_notifications = [
-            n
-            for n in self.persistent_notifications
-            if n.get("id") not in nids_set
-        ]
-        self._schedule_save()
-
-        group.clear_containers()
-
-        for nid in nids:
-            delete_notification_image(nid)
-            container = self.containers_by_id.pop(nid, None)
-            if container is None:
-                continue
-
-            if container in self.containers:
-                self.containers.remove(container)
-
-            parent = container.get_parent()
-            if parent:
-                parent.remove(container)
-
-            nb = getattr(container, "notification_box", None)
-            if nb:
-                nb.destroy(from_history_delete=True)
-                container.notification_box = None
-            container.destroy()
-
-        parent = group.get_parent()
-        if parent:
-            parent.remove(group)
-        group.destroy()
-
-        self._update_empty_state()
-
-    def delete_historical_notification(self, note_id, container):
-        if self._is_destroyed:
-            return
-
-        nb = getattr(container, "notification_box", None)
-        app_name = None
-        if nb and nb.notification:
-            app_name = getattr(nb.notification, "app_name", None)
-
-        if nb:
-            nb.destroy(from_history_delete=True)
-            container.notification_box = None
-
-        for i, n in enumerate(self.persistent_notifications):
-            if n.get("id") == note_id:
-                self.persistent_notifications.pop(i)
-                delete_notification_image(note_id)
-                self._schedule_save()
-                break
-
-        self.containers_by_id.pop(note_id, None)
-
-        if container in self.containers:
-            self.containers.remove(container)
-
-        parent = container.get_parent()
-        if parent:
-            parent.remove(container)
-
-        if app_name and app_name in self.groups:
-            g = self.groups[app_name]
-            g.remove_notification_id(note_id)
-
-            if g.get_notification_count() == 0:
-                group_parent = g.get_parent()
-                if group_parent:
-                    group_parent.remove(g)
-                g.destroy()
-                del self.groups[app_name]
-            else:
-                g.update_display(self.containers_by_id)
-
-        container.destroy()
-        self._update_empty_state()
-
-
-    def add_notification(self, notification_box):
-        if self._is_destroyed:
-            return
-
-        notif = notification_box.notification
-        app_name = str(getattr(notif, "app_name", "Unknown"))[:30]
-        uuid = notification_box.uuid
-        now = datetime.now()
-
-        if app_name in get_history_ignored_apps():
-            notification_box.destroy(from_history_delete=True)
-            return
-
-        img_path = getattr(notification_box, "_thumb_path", None)
-
-        hist_data = {
-            "id": uuid,
-            "app_icon": img_path,
-            "summary": str(getattr(notif, "summary", ""))[:80],
-            "body": str(getattr(notif, "body", ""))[:150],
-            "app_name": app_name,
-            "timestamp": now.isoformat(),
-        }
-        self.persistent_notifications.insert(0, hist_data)
-        self._schedule_save()
-
-        notification_box.destroy(from_history_delete=True)
-
-        hist_notif = HistoricalNotification(
-            id=uuid,
-            app_icon=img_path,
-            summary=hist_data["summary"],
-            body=hist_data["body"],
-            app_name=app_name,
-            timestamp=hist_data["timestamp"],
-        )
-        light_box = NotificationBox(hist_notif, timeout_ms=0)
-        light_box.set_is_history(True)
-
-        self._evict_oldest_if_needed()
-
-        container = self._create_history_container(light_box, now)
-        self.containers.insert(0, container)
-        self.containers_by_id[uuid] = container
-
-        g = self.groups.get(app_name)
-        if not g:
-            g = NotificationGroup(app_name, self, is_expanded=True)
-            self.groups[app_name] = g
-            self.notifications_list.add(g)
-
-        g.add_notification_id(uuid, now)
-        g.update_display(self.containers_by_id)
-        self.notifications_list.reorder_child(g, 0)
-        g.show_all()
-        self._update_empty_state()
-
-    def _start_loading(self):
-        if not self._loading:
-            self._loading = True
-            submit_io_task(self._load_from_file)
-        return GLib.SOURCE_REMOVE
-
-    def _load_from_file(self):
-        data = []
-        if os.path.isfile(PERSISTENT_HISTORY_FILE):
-            try:
-                with open(PERSISTENT_HISTORY_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                data = []
-        GLib.idle_add(self._on_loaded, data, priority=GLib.PRIORITY_LOW)
-
-    def _on_loaded(self, data):
-        if self._is_destroyed:
-            return GLib.SOURCE_REMOVE
-
-        loaded_list = data if isinstance(data, list) else []
-        existing_ids = {n.get("id") for n in self.persistent_notifications}
-
-        merged = self.persistent_notifications.copy()
-        for n in loaded_list:
-            if n.get("id") not in existing_ids:
-                merged.append(n)
-
-        self.persistent_notifications = merged[:MAX_NOTIFICATION_HISTORY]
-
-        if self.persistent_notifications:
-            self._process_loaded_batch(self.persistent_notifications[::-1], 0)
-        else:
-            self._finish_loading()
-
-        active_ids = [n.get("id") for n in self.persistent_notifications]
-        submit_io_task(lambda: cleanup_orphan_images(active_ids))
-        return GLib.SOURCE_REMOVE
-
-    def _process_loaded_batch(self, notes, idx):
-        if self._is_destroyed:
-            return
-        end = min(idx + 5, len(notes))
-        for i in range(idx, end):
-            self._add_historical_notification(notes[i], rebuild=False)
-        if end < len(notes):
-            GLib.idle_add(
-                self._process_loaded_batch, notes, end,
-                priority=GLib.PRIORITY_LOW,
-            )
-        else:
-            self._finish_loading()
-
-    def _finish_loading(self):
-        if not self._is_destroyed:
-            self._rebuild_with_groups()
-            self._loading = False
-        return GLib.SOURCE_REMOVE
-
-    def _schedule_save(self):
-        if self._save_timer_id:
-            GLib.source_remove(self._save_timer_id)
-        self._save_timer_id = GLib.timeout_add(1000, self._do_save)
-
-    def _do_save(self):
-        self._save_timer_id = None
-        if not self._is_destroyed:
-            snapshot = list(self.persistent_notifications)
-            submit_io_task(lambda: self._save_to_file_sync(snapshot))
-        return GLib.SOURCE_REMOVE
-
-    def _add_historical_notification(self, note, rebuild=True):
-        if not isinstance(note, dict):
-            return
-        hist = HistoricalNotification(
-            id=note.get("id"),
-            app_icon=note.get("app_icon"),
-            summary=note.get("summary", ""),
-            body=note.get("body", ""),
-            app_name=note.get("app_name", "Unknown"),
-            timestamp=note.get("timestamp"),
-        )
-        box = NotificationBox(hist, timeout_ms=0)
-        box.set_is_history(True)
-
-        try:
-            arrival = datetime.fromisoformat(hist.timestamp)
-        except (ValueError, TypeError):
-            arrival = datetime.now()
-
-        container = self._create_history_container(box, arrival)
-        self.containers.insert(0, container)
-        self.containers_by_id[box.uuid] = container
-
-        if rebuild:
-            self._rebuild_with_groups()
-
-    def _evict_oldest_if_needed(self):
-        while len(self.containers) >= MAX_NOTIFICATION_HISTORY:
-            oldest = self.containers.pop()
-            nb_old = getattr(oldest, "notification_box", None)
-
-            if nb_old:
-                old_app = getattr(nb_old.notification, "app_name", None)
-                old_uuid = nb_old.uuid
-
-                if old_app and old_app in self.groups:
-                    g = self.groups[old_app]
-                    g.remove_notification_id(old_uuid)
-                    if g.get_notification_count() == 0:
+                app = getattr(nb.notification, "app_name", None)
+                uid = nb.uuid
+                if app and app in self.groups:
+                    g = self.groups[app]
+                    if g.remove_nid(uid):
                         gp = g.get_parent()
                         if gp:
                             gp.remove(g)
                         g.destroy()
-                        del self.groups[old_app]
+                        del self.groups[app]
                     else:
-                        g.update_display(self.containers_by_id)
+                        g.refresh(self.by_id)
+                self.by_id.pop(uid, None)
+                _delete_image(uid)
+                nb.destroy(from_history_delete=True)
+                old_c.notification_box = None
 
-                self.containers_by_id.pop(old_uuid, None)
-                delete_notification_image(old_uuid)
-                nb_old.destroy(from_history_delete=True)
-                oldest.notification_box = None
+            p = old_c.get_parent()
+            if p:
+                p.remove(old_c)
+            old_c.destroy()
 
-            parent = oldest.get_parent()
-            if parent:
-                parent.remove(oldest)
-            oldest.destroy()
-
-            if len(self.persistent_notifications) > MAX_NOTIFICATION_HISTORY:
-                evicted = self.persistent_notifications.pop()
-                delete_notification_image(evicted.get("id"))
-
-    @staticmethod
-    def _clear_files_sync():
-        if os.path.isfile(PERSISTENT_HISTORY_FILE):
-            try:
-                os.remove(PERSISTENT_HISTORY_FILE)
-            except OSError:
-                pass
-
-    @staticmethod
-    def _save_to_file_sync(data):
-        tmp_file = PERSISTENT_HISTORY_FILE + ".tmp"
-        try:
-            os.makedirs(os.path.dirname(PERSISTENT_HISTORY_FILE), exist_ok=True)
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, separators=(",", ":"))
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_file, PERSISTENT_HISTORY_FILE)
-        except (OSError, TypeError, ValueError):
-            try:
-                os.remove(tmp_file)
-            except OSError:
-                pass
-
+            if len(self.data) > MAX_HISTORY:
+                evicted = self.data.pop()
+                _delete_image(evicted.get("id"))
 
     def destroy(self):
-        if self._is_destroyed:
+        if self._dead:
             return
-        self._is_destroyed = True
+        self._dead = True
 
         if (
-            self._dnd_handler
-            and self.header_switch
-            and self.header_switch.handler_is_connected(self._dnd_handler)
+            self._dnd_hid
+            and self.dnd_switch
+            and self.dnd_switch.handler_is_connected(self._dnd_hid)
         ):
-            self.header_switch.disconnect(self._dnd_handler)
-            self._dnd_handler = None
+            self.dnd_switch.disconnect(self._dnd_hid)
 
-        if self._save_timer_id:
-            GLib.source_remove(self._save_timer_id)
-            self._save_timer_id = None
+        if self._save_tid:
+            GLib.source_remove(self._save_tid)
+            self._save_tid = None
 
-        snapshot = list(self.persistent_notifications)
-        submit_io_task(lambda: self._save_to_file_sync(snapshot))
+        snapshot = list(self.data)
+        _submit(lambda: self._write_file(snapshot))
 
         for g in self.groups.values():
-            g.clear_containers()
+            g.detach_all()
             g.destroy()
         self.groups.clear()
 
@@ -644,90 +604,71 @@ class NotificationHistory(Box):
                 nb.destroy(from_history_delete=True)
                 c.notification_box = None
             c.destroy()
-
         self.containers.clear()
-        self.containers_by_id.clear()
-        self.persistent_notifications.clear()
+        self.by_id.clear()
+        self.data.clear()
 
         super().destroy()
 
+
 class NotificationContainer(Box):
-
-    __slots__ = (
-        "notification_history",
-        "_server",
-        "_server_handler",
-        "_is_destroying",
-        "stack",
-        "prev_button",
-        "close_all_button",
-        "next_button",
-        "navigation_revealer",
-        "main_revealer",
-        "notifications",
-        "current_index",
-        "_destroyed_ids",
-    )
-
-    def __init__(
-        self,
-        notification_history_instance,
-        revealer_transition_type="slide-down",
-    ):
+    def __init__(self, history, revealer_transition="slide-down", window=None):
         super().__init__(
             name="notification-container-main", orientation="v", spacing=4
         )
-        self.notification_history = notification_history_instance
-        self._is_destroying = False
-        self.notifications: list[NotificationBox] = []
-        self.current_index = 0
-        self._destroyed_ids: set = set()
+
+        self.history = history
+        self._window = window
+        self._closing = False
+        self.popups: list[NotificationBox] = []
+        self.idx = 0
+        self._closed: set = set()
 
         self._server = Notifications()
-        self._server_handler = self._server.connect(
-            "notification-added", self._on_new_notification
+        self._srv_hid = self._server.connect(
+            "notification-added", self._on_new
         )
-        self._build_ui(revealer_transition_type)
+        self._build(revealer_transition)
 
-    def _build_ui(self, transition):
+    def _build(self, transition):
         self.stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT,
             transition_duration=120,
             visible=True,
         )
 
-        self.prev_button = Button(
+        self.btn_prev = Button(
             name="nav-button",
             child=Label(name="nav-button-label", markup=icons.chevron_left),
-            on_clicked=self._show_previous,
+            on_clicked=lambda *_: self._nav(-1),
         )
-        self.close_all_button = Button(
+        self.btn_close = Button(
             name="nav-button",
             child=Label(name="nav-button-label", markup=icons.cancel),
             on_clicked=self._close_all,
         )
-        self.close_all_button.get_child().add_style_class("close")
-        self.next_button = Button(
+        self.btn_close.get_child().add_style_class("close")
+        self.btn_next = Button(
             name="nav-button",
             child=Label(name="nav-button-label", markup=icons.chevron_right),
-            on_clicked=self._show_next,
+            on_clicked=lambda *_: self._nav(1),
         )
 
-        for b in (self.prev_button, self.close_all_button, self.next_button):
-            b.connect("enter-notify-event", self._on_nav_enter)
-            b.connect("leave-notify-event", self._on_nav_leave)
+        for b in (self.btn_prev, self.btn_close, self.btn_next):
+            b.connect("enter-notify-event", lambda *_: self.pause_all())
+            b.connect("leave-notify-event", lambda *_: self.resume_all())
 
         nav = Box(
             name="notification-navigation",
             spacing=4,
             h_align="center",
-            children=[self.prev_button, self.close_all_button, self.next_button],
+            children=[self.btn_prev, self.btn_close, self.btn_next],
         )
-        self.navigation_revealer = Revealer(
+        self.nav_rev = Revealer(
             transition_type="slide-down", transition_duration=120, child=nav
         )
 
-        self.main_revealer = Revealer(
+        self.main_rev = Revealer(
             name="notification-main-revealer",
             transition_type=transition,
             transition_duration=150,
@@ -740,160 +681,230 @@ class NotificationContainer(Box):
                         h_align="center",
                         children=[self.stack],
                     ),
-                    self.navigation_revealer,
+                    self.nav_rev,
                 ],
             ),
         )
-        self.add(self.main_revealer)
+        self.add(self.main_rev)
 
-    def pause_and_reset_all_timeouts(self):
-        for nb in self.notifications:
+    # ── Таймауты ──
+
+    def pause_all(self):
+        for nb in self.popups:
             if not getattr(nb, "_destroyed", False):
                 nb.stop_timeout()
 
-    def resume_all_timeouts(self):
-        for nb in self.notifications:
+    def resume_all(self):
+        for nb in self.popups:
             if not getattr(nb, "_destroyed", False):
                 nb.start_timeout()
 
-    def _on_nav_enter(self, _widget, _event):
-        self.pause_and_reset_all_timeouts()
-        return False
+    # ── Навигация ──
 
-    def _on_nav_leave(self, _widget, _event):
-        self.resume_all_timeouts()
-        return False
-
-    def _show_previous(self, *_):
-        if 0 < self.current_index < len(self.notifications):
-            self.current_index -= 1
-            self.stack.set_visible_child(self.notifications[self.current_index])
-            self._update_nav()
-
-    def _show_next(self, *_):
-        if 0 <= self.current_index < len(self.notifications) - 1:
-            self.current_index += 1
-            self.stack.set_visible_child(self.notifications[self.current_index])
+    def _nav(self, delta):
+        new = self.idx + delta
+        if 0 <= new < len(self.popups):
+            self.idx = new
+            self.stack.set_visible_child(self.popups[self.idx])
             self._update_nav()
 
     def _update_nav(self):
-        count = len(self.notifications)
-        self.prev_button.set_sensitive(self.current_index > 0)
-        self.next_button.set_sensitive(self.current_index < count - 1)
-        self.navigation_revealer.set_reveal_child(count > 1)
+        n = len(self.popups)
+        self.btn_prev.set_sensitive(self.idx > 0)
+        self.btn_next.set_sensitive(self.idx < n - 1)
+        self.nav_rev.set_reveal_child(n > 1)
 
-    def _on_new_notification(self, fabric_notif, notif_id):
-        if self._is_destroying:
+    # ── Управление видимостью окна ──
+
+    def _show_window(self):
+        if self._window:
+            self._window.set_visible(True)
+
+    def _hide_window(self):
+        if self._window:
+            self._window.set_visible(False)
+
+    # ── Новое уведомление ──
+
+    def _on_new(self, fabric_service, notification_id):
+        if self._closing:
             return
 
-        n = fabric_notif.get_notification_from_id(notif_id)
-        nb = NotificationBox(n)
+        notification = fabric_service.get_notification_from_id(notification_id)
+        if notification is None:
+            return
 
-        if self.notification_history.do_not_disturb_enabled:
-            self.notification_history.add_notification(nb)
+        nb = NotificationBox(notification)
+
+        if self.history.do_not_disturb_enabled:
+            self.history.add_notification(nb)
             return
 
         nb.set_container(self)
-        if hasattr(n, "connect"):
-            n.connect("closed", self._on_closed)
+        if hasattr(notification, "connect"):
+            notification.connect("closed", self._on_closed)
 
-        str_id = str(notif_id)
+        str_id = str(notification_id)
+
         existing = self.stack.get_child_by_name(str_id)
         if existing:
             self.stack.remove(existing)
-            if existing in self.notifications:
-                self.notifications.remove(existing)
+            if existing in self.popups:
+                i = self.popups.index(existing)
+                self.popups.remove(existing)
+                if i <= self.idx:
+                    self.idx = max(0, self.idx - 1)
             existing.destroy()
 
-        if len(self.notifications) >= MAX_POPUP_NOTIFICATIONS:
-            old = self.notifications.pop(0)
+        if len(self.popups) >= MAX_POPUPS:
+            old = self.popups.pop(0)
             self.stack.remove(old)
-            self.notification_history.add_notification(old)
-            self.current_index = max(0, self.current_index - 1)
+            self.history.add_notification(old)
+            self.idx = max(0, self.idx - 1)
 
         self.stack.add_named(nb, str_id)
-        self.notifications.append(nb)
-        self.current_index = len(self.notifications) - 1
+        self.popups.append(nb)
+        self.idx = len(self.popups) - 1
         self.stack.set_visible_child(nb)
 
-        for b in self.notifications:
+        for b in self.popups:
             b.start_timeout()
 
-        self.main_revealer.show_all()
-        self.main_revealer.set_reveal_child(True)
+        if self._window:
+            self._window.set_visible(True)
+            self._window.show_all()
+
+        self.main_rev.show_all()
+        self.main_rev.set_reveal_child(True)
         self._update_nav()
 
-    def _on_closed(self, notification, reason):
+        # Отложенная проверка размеров после layout
+        GLib.timeout_add(500, self._debug_sizes, nb)
+
+
+    def _debug_sizes(self, nb):
+        print("=== DEBUG SIZES ===")
+        
+        # Окно
+        if self._window:
+            alloc = self._window.get_allocation()
+            print(f"[WINDOW] size={alloc.width}x{alloc.height}, pos=({alloc.x},{alloc.y})")
+            print(f"[WINDOW] get_size()={self._window.get_size()}")
+            print(f"[WINDOW] visible={self._window.get_visible()}, mapped={self._window.get_mapped()}")
+        
+        # Контейнер (self)
+        alloc = self.get_allocation()
+        print(f"[CONTAINER self] size={alloc.width}x{alloc.height}")
+        print(f"[CONTAINER self] visible={self.get_visible()}, mapped={self.get_mapped()}")
+        
+        # main_rev
+        alloc = self.main_rev.get_allocation()
+        print(f"[main_rev] size={alloc.width}x{alloc.height}, reveal={self.main_rev.get_reveal_child()}")
+        child = self.main_rev.get_child()
+        if child:
+            alloc2 = child.get_allocation()
+            print(f"[main_rev child] size={alloc2.width}x{alloc2.height}, visible={child.get_visible()}")
+        
+        # Stack
+        alloc = self.stack.get_allocation()
+        print(f"[stack] size={alloc.width}x{alloc.height}, visible={self.stack.get_visible()}")
+        
+        # NotificationBox
+        alloc = nb.get_allocation()
+        print(f"[NotifBox] size={alloc.width}x{alloc.height}, visible={nb.get_visible()}, mapped={nb.get_mapped()}")
+        
+        # Дети NotificationBox
+        for i, child in enumerate(nb.get_children()):
+            alloc = child.get_allocation()
+            print(f"[NotifBox child {i}] {type(child).__name__} size={alloc.width}x{alloc.height}, visible={child.get_visible()}")
+            if hasattr(child, 'get_children'):
+                for j, grandchild in enumerate(child.get_children()):
+                    alloc2 = grandchild.get_allocation()
+                    print(f"  [grandchild {j}] {type(grandchild).__name__} size={alloc2.width}x{alloc2.height}, visible={grandchild.get_visible()}")
+
+        # Проверяем всю иерархию от nb до window
+        print("\n[HIERARCHY check]")
+        widget = nb
+        depth = 0
+        while widget:
+            alloc = widget.get_allocation()
+            print(f"  {'  '*depth}{type(widget).__name__}: {alloc.width}x{alloc.height} visible={widget.get_visible()} mapped={widget.get_mapped()}")
+            widget = widget.get_parent()
+            depth += 1
+
+        return GLib.SOURCE_REMOVE
+
+    # ── Закрытие уведомления ──
+
+    def _on_closed(self, notification, *_):
         nid = getattr(notification, "id", None)
-        if not nid or self._is_destroying or nid in self._destroyed_ids:
+        if not nid or self._closing or nid in self._closed:
             return
-        self._destroyed_ids.add(nid)
+        self._closed.add(nid)
 
         idx = next(
             (
                 i
-                for i, nb in enumerate(self.notifications)
-                if nb.notification and getattr(nb.notification, "id", None) == nid
+                for i, nb in enumerate(self.popups)
+                if nb.notification
+                and getattr(nb.notification, "id", None) == nid
             ),
             -1,
         )
         if idx == -1:
             return
 
-        nb = self.notifications.pop(idx)
-
+        nb = self.popups.pop(idx)
         self.stack.remove(nb)
+        self.history.add_notification(nb)
 
-        if "dismissed" in str(reason).lower():
-            delete_notification_image(nb.uuid)
-            nb.destroy()
-        else:
-            self.notification_history.add_notification(nb)
-
-        if not self.notifications:
-            self._is_destroying = True
-            self.main_revealer.set_reveal_child(False)
-            GLib.timeout_add(150, self._reset_container)
+        if not self.popups:
+            self._closing = True
+            self.main_rev.set_reveal_child(False)
+            GLib.timeout_add(150, self._reset)
             return
 
-        if idx <= self.current_index:
-            self.current_index = max(0, self.current_index - 1)
-        self.current_index = min(self.current_index, len(self.notifications) - 1)
+        if idx <= self.idx:
+            self.idx = max(0, self.idx - 1)
+        self.idx = min(self.idx, len(self.popups) - 1)
 
-        if 0 <= self.current_index < len(self.notifications):
-            self.stack.set_visible_child(self.notifications[self.current_index])
+        if 0 <= self.idx < len(self.popups):
+            self.stack.set_visible_child(self.popups[self.idx])
         self._update_nav()
 
-    def _reset_container(self):
+    def _reset(self):
         for c in list(self.stack.get_children()):
             self.stack.remove(c)
             c.destroy()
-        self.notifications.clear()
-        self._destroyed_ids.clear()
-        self.current_index = 0
-        self._is_destroying = False
+        self.popups.clear()
+        self._closed.clear()
+        self.idx = 0
+        self._closing = False
+        self._hide_window()
         return GLib.SOURCE_REMOVE
 
     def _close_all(self, *_):
-        for nb in tuple(self.notifications):
+        for nb in tuple(self.popups):
             if nb.notification and hasattr(nb.notification, "close"):
-                nb.notification.close("dismissed-by-user")
+                try:
+                    nb.notification.close("dismissed-by-user")
+                except TypeError:
+                    nb.notification.close()
 
     def destroy(self):
-        self._is_destroying = True
-
+        self._closing = True
         if (
             self._server
-            and self._server_handler
-            and self._server.handler_is_connected(self._server_handler)
+            and self._srv_hid
+            and self._server.handler_is_connected(self._srv_hid)
         ):
-            self._server.disconnect(self._server_handler)
-            self._server_handler = None
+            self._server.disconnect(self._srv_hid)
+            self._srv_hid = None
 
-        for nb in self.notifications:
+        for nb in self.popups:
             nb.destroy()
-        self.notifications.clear()
-        self._destroyed_ids.clear()
-        self.notification_history = None
-
+        self.popups.clear()
+        self._closed.clear()
+        self.history = None
+        self._window = None
         super().destroy()
