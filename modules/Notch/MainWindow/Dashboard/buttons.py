@@ -9,7 +9,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
 import services.icons as icons
-from modules.MainWindow.Dashboard.network import NetworkClient
+from modules.Notch.MainWindow.Dashboard.network import NetworkClient
 
 
 _TH = (25, 50, 75)

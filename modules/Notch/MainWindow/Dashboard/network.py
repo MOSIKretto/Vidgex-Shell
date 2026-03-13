@@ -8,7 +8,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import Gtk, NM, GLib
 
 import services.icons as icons
-from modules.MainWindow.Dashboard.Network.network import NetworkClient
+from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 
 
 class WifiSlot(Gtk.Box):
