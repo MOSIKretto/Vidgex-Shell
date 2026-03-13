@@ -64,6 +64,33 @@ class SystemTray(Box):
         tip = getattr(item, 'get_tooltip_text', lambda: None)() or getattr(item, 'get_title', lambda: None)()
         btn.set_tooltip_text(tip) if tip else btn.set_has_tooltip(False)
 
+    def _set_pointer_cursor(self, widget):
+        win = widget.get_window()
+        if win:
+            cursor = Gdk.Cursor.new_from_name(widget.get_display(), "pointer")
+            win.set_cursor(cursor)
+
+    def _set_pointer_cursor_recursive(self, widget):
+        """Устанавливает курсор-указатель на виджет и всех его потомков."""
+        self._set_pointer_cursor(widget)
+        if isinstance(widget, Gtk.Container):
+            for child in widget.get_children():
+                if child.get_realized():
+                    self._set_pointer_cursor_recursive(child)
+                else:
+                    child.connect("realize", self._set_pointer_cursor)
+
+    def _prepare_menu(self, menu):
+        """Устанавливает курсор-указатель для всего меню и его пунктов."""
+        menu.connect("realize", self._set_pointer_cursor)
+        menu.connect("map", lambda m: self._set_pointer_cursor_recursive(m))
+        # Для подменю — рекурсивно
+        for item in menu.get_children():
+            item.connect("realize", self._set_pointer_cursor)
+            sub = item.get_submenu() if isinstance(item, Gtk.MenuItem) else None
+            if isinstance(sub, Gtk.Menu):
+                self._prepare_menu(sub)
+
     def _on_add(self, _, ident: str):
         item = self._w.get_item_for_identifier(ident)
         if not item:
@@ -76,6 +103,7 @@ class SystemTray(Box):
         btn = Gtk.Button()
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_image(Gtk.Image())
+        btn.connect("realize", self._set_pointer_cursor)
         self._upd(item, btn)
 
         btn.connect("button-press-event", self._click, item)
@@ -108,6 +136,7 @@ class SystemTray(Box):
         elif ev.button == 3:
             m = getattr(item, 'get_menu', lambda: None)()
             if isinstance(m, Gtk.Menu):
+                self._prepare_menu(m)
                 m.popup_at_widget(btn, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, ev)
             elif cm := getattr(item, 'context_menu', None):
                 cm(int(ev.x_root), int(ev.y_root))
