@@ -96,6 +96,8 @@ _GL_SHIFT_MAX = 3
 _GL_RAND_MIN = 1
 _GL_RAND_MAX = 60
 
+_GL_REPEAT_CHANCE = 0.5
+
 
 def _char_col_ranges(text):
     ranges = {}
@@ -165,12 +167,33 @@ def _apply_glitch(rows, changed_ranges, progress):
     return result
 
 
+def _escape(text):
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _rows_to_bold_markup(rows):
+    """Каждый непробельный символ оборачивается в <b>."""
+    markup_lines = []
+    for row in rows:
+        parts = []
+        for ch in row:
+            esc = _escape(ch)
+            if ch != ' ':
+                parts.append(f'<b>{esc}</b>')
+            else:
+                parts.append(esc)
+        markup_lines.append(''.join(parts))
+    return '\n'.join(markup_lines)
+
+
 class TimeWidget(Box):
     __slots__ = (
         '_time_lbl', '_date_lbl', '_tid', '_last_min', '_colon_on',
         '_prev_time_str',
         '_gl_active', '_gl_rem', '_gl_total', '_gl_tid', '_gl_ranges',
         '_gl_rand_tid',
+        '_gl_is_random',
+        '_font_str',
     )
 
     def __init__(self, **kwargs):
@@ -197,6 +220,11 @@ class TimeWidget(Box):
         self._gl_tid = None
         self._gl_ranges = []
         self._gl_rand_tid = None
+        self._gl_is_random = False
+
+        font = Pango.FontDescription.from_string("monospace")
+        font.set_size(_FONT_PT * Pango.SCALE)
+        self._font_str = font.to_string()
 
         self.add(self._time_lbl)
         self.add(self._date_lbl)
@@ -206,16 +234,9 @@ class TimeWidget(Box):
         self._schedule_random_glitch()
 
     def _set_art(self, rows):
-        art = '\n'.join(rows)
-        safe = (art
-                .replace('&', '&amp;')
-                .replace('<', '&lt;')
-                .replace('>', '&gt;'))
-        font = Pango.FontDescription.from_string("monospace")
-        font.set_size(_FONT_PT * Pango.SCALE)
-        font_str = font.to_string()
+        inner = _rows_to_bold_markup(rows)
         self._time_lbl.set_markup(
-            f'<span font_desc="{font_str}">{safe}</span>'
+            f'<span font_desc="{self._font_str}">{inner}</span>'
         )
 
     def _update(self):
@@ -232,6 +253,7 @@ class TimeWidget(Box):
                 if o != n and o != ':'
             }
             if changed:
+                self._gl_is_random = False
                 self._start_glitch(time_str, changed)
 
         self._prev_time_str = time_str
@@ -258,6 +280,7 @@ class TimeWidget(Box):
 
             count = random.randint(1, max(1, len(digit_indices)))
             chosen = set(random.sample(digit_indices, count))
+            self._gl_is_random = True
             self._start_glitch(time_str, chosen)
 
         self._schedule_random_glitch()
@@ -292,6 +315,13 @@ class TimeWidget(Box):
             self._gl_active = False
             self._gl_tid = None
             self._set_art(_render_time(time_str, self._colon_on))
+
+            if self._gl_is_random and random.random() < _GL_REPEAT_CHANCE:
+                digit_indices = [i for i, ch in enumerate(time_str) if ch.isdigit()]
+                count = random.randint(1, max(1, len(digit_indices)))
+                chosen = set(random.sample(digit_indices, count))
+                self._start_glitch(time_str, chosen)
+
             return False
 
         return True

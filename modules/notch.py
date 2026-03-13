@@ -30,6 +30,7 @@ class Notch(Window):
         '_cht', '_csd', '_lv', '_lmv', '_lb', '_init', 'audio', '_br',
         'win_ic', 'ws_lbl', 'awc', 'awb', 'cs', 'ctrl', 'ctrl_rev', 'cc',
         'compact', 'stack', 'cl', 'cr', 'nb', 'nr', 'nc', 'nw', 'heb',
+        '_pointer_cursor',
     )
 
     def __init__(self, **kwargs):
@@ -54,6 +55,7 @@ class Notch(Window):
         self._lmv = None
         self._lb = None
         self._init = False
+        self._pointer_cursor = None
 
         self._build()
         self._signals()
@@ -330,8 +332,9 @@ class Notch(Window):
 
     def _bent(self, w, _):
         if win := w.get_window():
-            if d := Gdk.Display.get_default():
-                win.set_cursor(Gdk.Cursor.new_for_display(d, Gdk.CursorType.HAND2))
+            if not self._pointer_cursor:
+                self._pointer_cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
+            win.set_cursor(self._pointer_cursor)
         return True
 
     def _blev(self, w, e):
@@ -429,4 +432,4 @@ class Notch(Window):
         self._wc.clear()
 
         if hasattr(self.ctrl, 'cleanup'): self.ctrl.cleanup()
-        self._conn = self._icr = self._bar = self.audio = self._br = None
+        self._conn = self._icr = self._bar = self.audio = self._br = self._pointer_cursor = None

@@ -70,7 +70,7 @@ _ARR_R = [
     " //   ",
     "‾‾    ",
 ]
-_ARR_FONT_PT = 7
+_ARR_FONT_PT = 8
 _ARR_LINES = (_ARR_L, _ARR_R)
 
 _AGL_CHARS = "░▒▓█▀▄▌���@#$%&!?*=~/\\|"

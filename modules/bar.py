@@ -20,6 +20,31 @@ from services.wayland import WaylandWindow as Window
 import services.icons as icons
 
 
+def _hand_cursor(widget):
+    widget.add_events(
+        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+    )
+    _cursors = [None, None]
+
+    def _ensure(w):
+        if _cursors[0] is None:
+            d = w.get_display()
+            _cursors[0] = Gdk.Cursor.new_from_name(d, "pointer")
+            _cursors[1] = Gdk.Cursor.new_from_name(d, "default")
+
+    def _set(w, idx):
+        _ensure(w)
+        top = w.get_toplevel()
+        if top and top.get_window():
+            top.get_window().set_cursor(_cursors[idx])
+
+    widget.connect("enter-notify-event",
+                   lambda w, e: (e.detail != Gdk.NotifyType.INFERIOR and _set(w, 0)) or False)
+    widget.connect("leave-notify-event",
+                   lambda w, e: (e.detail != Gdk.NotifyType.INFERIOR and _set(w, 1)) or False)
+    widget.connect("clicked", lambda w, *_: _set(w, 1))
+
+
 class Bar(Window):
     __slots__ = (
         "mid", "notch", "lang", "conn", "ws", "wsc",
@@ -64,10 +89,11 @@ class Bar(Window):
         self.bat = Battery()
 
         self.bp = Button(
-            name="button-bar", tooltip_markup="<b>Energy menu</b>",
+            name="button-bar", tooltip_markup="<b>Power menu</b>",
             on_clicked=self._pwr, child=Label(name="button-bar-label", markup=icons.shutdown),
         )
         _hov(self.bp)
+        _hand_cursor(self.bp)
 
         self.ll = Label(name="lang-label")
 

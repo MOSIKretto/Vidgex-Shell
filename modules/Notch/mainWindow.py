@@ -3,7 +3,8 @@ from fabric.widgets.stack import Stack
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gtk, Gdk
 
 from modules.Notch.MainWindow.musicPlayer import Player
 from modules.Notch.MainWindow.wallpapers import WallpaperSelector
@@ -50,8 +51,25 @@ class MainWindow(Box):
             children=(self.switcher, self.stack)
         )
 
+        self.switcher.connect("realize", self._set_tab_cursors)
+
         self.connect("button-release-event", self._on_btn_rel)
         self.show_all()
+
+    def _set_tab_cursors(self, switcher):
+        hand = Gdk.Cursor.new_from_name(switcher.get_display(), "pointer")
+        for child in switcher.get_children():
+            child.add_events(
+                Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+            )
+            child.connect(
+                "enter-notify-event",
+                lambda w, e, c=hand: e.window.set_cursor(c) or False
+            )
+            child.connect(
+                "leave-notify-event",
+                lambda w, e: e.window.set_cursor(None) or False
+            )
 
     def _on_btn_rel(self, _, e):
         if e.button == 3:

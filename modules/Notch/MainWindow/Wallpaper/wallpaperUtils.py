@@ -30,15 +30,24 @@ def _get_primary_hex(widget):
 
 # ── Рендер ASCII-арта в Label ─────────────────────────────────
 def _arr_set_art(lbl, lines):
-    art = "\n".join(lines)
-    safe = (
-        art.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
     fg = _get_primary_hex(lbl)
+    markup_lines = []
+    for line in lines:
+        parts = []
+        for ch in line:
+            esc = (
+                ch.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            if ch != " ":
+                parts.append(f"<b>{esc}</b>")
+            else:
+                parts.append(esc)
+        markup_lines.append("".join(parts))
+    inner = "\n".join(markup_lines)
     lbl.set_markup(
-        f'<span font_desc="{_ARR_FONT_STR}" foreground="{fg}">{safe}</span>'
+        f'<span font_desc="{_ARR_FONT_STR}" foreground="{fg}">{inner}</span>'
     )
 
 

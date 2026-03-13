@@ -62,13 +62,29 @@ class Dashboard(Box):
             children=(self.applet_stack,)
         )
 
+        buttons_top = Box(
+            v_align="start",
+            v_expand=False,
+            h_expand=True,
+            children=(self.buttons,),
+        )
+
+        controls_centered = Box(
+            orientation="v",
+            v_expand=True,
+            v_align="center",
+            h_expand=True,
+            children=(self.controls,),
+        )
+
         buttons_controls = Box(
             name="buttons-controls-col",
             orientation="v",
             spacing=8,
             h_expand=True,
-            v_expand=False,
-            children=(self.buttons, self.controls),
+            v_expand=True,
+            v_align="fill",
+            children=(buttons_top, controls_centered),
         )
 
         top_row = Box(
@@ -77,6 +93,7 @@ class Dashboard(Box):
             spacing=8,
             h_expand=True,
             v_expand=False,
+            v_align="start",
             children=(self.time_widget, buttons_controls),
         )
 
