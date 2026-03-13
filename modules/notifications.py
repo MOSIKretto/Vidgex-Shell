@@ -5,7 +5,7 @@ from modules.Notifications.history import NotificationHistory, NotificationConta
 from services.wayland import WaylandWindow as Window
 
 
-class NotificationPopup(Window):
+class Notification(Window):
 
     def __init__(self, **kwargs):
         super().__init__(

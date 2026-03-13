@@ -32,10 +32,8 @@ _IB = {"high": icons.bluetooth_connected, "medium": icons.bluetooth, "mute": ico
 _ANIM_STEPS = 25
 _ANIM_INTERVAL_MS = 16
 
-# ── Pointer cursor (singleton) ───────────────────────────────────────────
 _pointer_cursor: Gdk.Cursor | None = None
 _default_cursor: Gdk.Cursor | None = None
-
 
 def _get_cursors(display: Gdk.Display):
     global _pointer_cursor, _default_cursor
@@ -44,7 +42,6 @@ def _get_cursors(display: Gdk.Display):
         _default_cursor = Gdk.Cursor.new_from_name(display, "default")
     return _pointer_cursor, _default_cursor
 
-
 def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
     win = widget.get_window()
     if win:
@@ -52,14 +49,12 @@ def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
         win.set_cursor(pointer)
     return False
 
-
 def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
     win = widget.get_window()
     if win:
         _, default = _get_cursors(win.get_display())
         win.set_cursor(default)
     return False
-
 
 def _setup_pointer_cursor(widget: Gtk.Widget):
     widget.add_events(
@@ -420,7 +415,6 @@ class BrightnessIcon(Box):
         self.brightness.connect("screen", self._chg)
         self._chg()
 
-    # ── toggle: animated brightness ↔ 0 ──────────────────────────────────
     def _tog(self, *_):
         mx = self.brightness.max_screen
         if mx <= 0:
@@ -466,7 +460,6 @@ class BrightnessIcon(Box):
 
         self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
 
-    # ── icon / tooltip update ─────────────────────────────────────────────
     def _chg(self, *_):
         mx = self.brightness.max_screen
         if mx <= 0: return

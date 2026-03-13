@@ -7,21 +7,21 @@ from gi.repository import Gtk
 
 from modules.Notch.MainWindow.musicPlayer import Player
 from modules.Notch.MainWindow.wallpapers import WallpaperSelector
-from modules.Notch.MainWindow.dashboard import Widgets
+from modules.Notch.MainWindow.dashboard import Dashboard
 
 
-class Dashboard(Box):
-    __slots__ = ('notch', 'widgets', 'wallpapers', 'player', 'stack', 'switcher', '_sections')
+class MainWindow(Box):
+    __slots__ = ('notch', 'dashboard', 'wallpapers', 'player', 'stack', 'switcher', '_sections')
 
     def __init__(self, **kwargs):
         self.notch = kwargs.get("notch")
 
-        self.widgets = Widgets(notch=self.notch)
+        self.dashboard = Dashboard(notch=self.notch)
         self.wallpapers = WallpaperSelector()
         self.player = Player()
 
         self._sections = {
-            "widgets": self.widgets,
+            "dashboard": self.dashboard,
             "player": self.player,
             "wallpapers": self.wallpapers,
         }
@@ -35,7 +35,7 @@ class Dashboard(Box):
         self.switcher.set_homogeneous(True)
         self.switcher.set_can_focus(True)
 
-        self.stack.add_titled(self.widgets, "widgets", "Dashboard")
+        self.stack.add_titled(self.dashboard, "dashboard", "Dashboard")
         self.stack.add_titled(self.player, "player", "Player")
         self.stack.add_titled(self.wallpapers, "wallpapers", "Wallpapers")
 
@@ -68,7 +68,7 @@ class Dashboard(Box):
             self.stack.set_visible_child(tgt)
 
     def cleanup(self):
-        for w in (self.widgets, self.wallpapers, self.player):
+        for w in (self.dashboard, self.wallpapers, self.player):
             try:
                 w.cleanup()
             except AttributeError:

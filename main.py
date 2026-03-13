@@ -6,7 +6,7 @@ from fabric import Application
 from fabric.utils import get_relative_path
 from gi.repository import GLib
 
-from modules.notifications import NotificationPopup
+from modules.notifications import Notification
 from modules.notch import Notch
 from modules.bar import Bar
 from modules.corners import Corners
@@ -34,7 +34,7 @@ def run():
     notch.bar = bar
 
     widgets = getattr(getattr(notch, 'dashboard', None), 'widgets', None)
-    notification = NotificationPopup(widgets=widgets)
+    notification = Notification(widgets=widgets)
 
     app_widgets = [bar, notch, dock, corners, notification, explorer]
 

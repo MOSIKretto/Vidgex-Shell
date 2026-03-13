@@ -223,7 +223,6 @@ class MixerSection(Box):
 
         title_btn.connect("clicked", self._on_title_clicked)
 
-        # ── курсор-указатель ТОЛЬКО на кнопке ──
         title_btn.add_events(
             Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
         )
@@ -265,7 +264,6 @@ class MixerSection(Box):
             **kwargs,
         )
 
-    # ── toggle mute / unmute ──────────────────────────────────────────────
     def _on_title_clicked(self, _btn):
         if self._anim_id is not None:
             GLib.source_remove(self._anim_id)
@@ -287,7 +285,6 @@ class MixerSection(Box):
             ctx.remove_class(_SECTION_MUTED_CLASS)
             self._run_animation(to_zero=False)
 
-    # ── smooth volume ramp ────────────────────────────────────────────────
     def _run_animation(self, to_zero: bool):
         targets: dict[int, tuple[float, float]] = {}
         for sid, slot in self._slots.items():
@@ -328,7 +325,6 @@ class MixerSection(Box):
 
         self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
 
-    # ── public API ────────────────────────────────────────────────────────
     def update_streams(self, streams):
         slots = self._slots
         content = self._content

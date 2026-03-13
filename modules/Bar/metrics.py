@@ -34,13 +34,11 @@ def _hov(w):
     w.connect("enter-notify-event", sc, True)
     w.connect("leave-notify-event", sc, False)
 
-
 def _sub(widget):
     global _prov
     _subs.add(widget)
     if _prov is None:
         _prov = MetricsProvider()
-
 
 def format_bytes(sp):
     return (f'{sp:.0f} B/s' if sp < 1024 else f'{sp * 0.0009765625:.1f} KB/s' if sp < 1048576 else f'{sp * 9.5367431640625e-07:.1f} MB/s')
@@ -59,7 +57,7 @@ class MetricsProvider:
         self.net_dl = self.net_ul = 0.0
         self.disk = [0.0]
         self.gpu = []
-        self.gpus = [] # List of detected GPUs
+        self.gpus = []
         self.bat_chg = None
         
         self._nr = self._ns = 0

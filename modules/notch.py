@@ -8,14 +8,13 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 from gi.repository import Gdk, GLib, Gtk
 
-from modules.Notch.mainWindow import Dashboard
+from modules.Notch.mainWindow import MainWindow
 from modules.Notch.cliphist import ClipHistory
 from modules.Notch.launcher import AppLauncher
 from modules.Notch.overview import Overview
 from modules.Notch.power import PowerMenu
 from modules.Notch.tools import Toolbox
 from modules.Notch.sessionManager import SessionManagerUI
-
 
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
@@ -64,7 +63,7 @@ class Notch(Window):
 
     def _get_or_create(self, key, widget_class, w=None, h=None):
         if key not in self._wc:
-            if key in ('dashboard', 'launcher', 'power', 'cliphist', 'tools', 'sessions'):
+            if key in ('main_window', 'launcher', 'power', 'cliphist', 'tools', 'sessions'):
                 widget = widget_class(notch=self) 
             else:
                 widget = widget_class()
@@ -76,7 +75,7 @@ class Notch(Window):
         return self._wc[key]
 
     @property
-    def dashboard(self): return self._get_or_create('dashboard', Dashboard, 1093, 472)
+    def main_window(self): return self._get_or_create('main_window', MainWindow, 1093, 472)
     @property
     def launcher(self): return self._get_or_create('launcher', AppLauncher, 480, 244)
     @property
@@ -269,21 +268,21 @@ class Notch(Window):
         self._setbar(False)
 
     def _showdw(self, wn: str):
-        db = self.dashboard
-        self.stack.set_visible_child(db)
-        db.go_to_section("widgets")
+        mw = self.main_window
+        self.stack.set_visible_child(mw)
+        mw.go_to_section("dashboard")
 
         try:
             target_name = 'network_connections' if wn == "network_applet" else ('bluetooth' if wn == "bluetooth" else 'notification_history')
-            tgt = getattr(db.widgets, target_name, None)
+            tgt = getattr(mw.dashboard, target_name, None)
             if tgt:
-                db.widgets.applet_stack.set_visible_child(tgt)
+                mw.dashboard.applet_stack.set_visible_child(tgt)
         except AttributeError:
             pass
 
     def _showdb(self, b: str):
-        self.stack.set_visible_child(self.dashboard)
-        self.dashboard.go_to_section(b)
+        self.stack.set_visible_child(self.main_window)
+        self.main_window.go_to_section(b)
 
     def _showclip(self):
         ch = self.cliphist
@@ -314,8 +313,8 @@ class Notch(Window):
         self._setbar(True)
 
         try:
-            ws = self._wc['dashboard'].widgets
-            ws.applet_stack.set_visible_child(ws.notification_history)
+            db = self._wc['main_window'].dashboard
+            db.applet_stack.set_visible_child(db.notification_history)
         except (KeyError, AttributeError):
             pass
 

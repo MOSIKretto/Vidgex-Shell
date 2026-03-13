@@ -15,7 +15,7 @@ from modules.Bar.metrics import Metrics
 from modules.Notifications.history import NotificationHistory
 
 
-class Widgets(Box):
+class Dashboard(Box):
     __slots__ = ('notch', 'time_widget', 'calendar', 'buttons', 'bluetooth',
                  'controls', 'metrics', 'notification_history',
                  'network_connections', 'applet_stack', '_size_group')

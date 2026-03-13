@@ -26,7 +26,6 @@ def _bt_cmd(*args, timeout=10):
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
 
-
 def _bt_known_addrs():
     addrs = set()
     try:
@@ -42,7 +41,6 @@ def _bt_known_addrs():
     except Exception:
         pass
     return addrs
-
 
 def _is_dev_known(dev):
     return getattr(dev, "paired", False) or getattr(dev, "trusted", False)
