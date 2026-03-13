@@ -15,6 +15,7 @@ from gi.repository import GdkPixbuf, GLib, Gtk
 import services.icons as icons
 from modules.Notifications.NotificationBox.image import CustomImage
 
+
 PERSISTENT_DIR = f"{GLib.get_user_cache_dir()}/vidgex-shell/notifications"
 PERSISTENT_HISTORY_FILE = PERSISTENT_DIR + "/notification_history.json"
 PERSISTENT_IMAGES_DIR = PERSISTENT_DIR + "/images"

@@ -12,7 +12,9 @@ from modules.Notch.MainWindow.Dashboard.bluetooth import BluetoothConnections
 from modules.Notch.MainWindow.Dashboard.buttons import Buttons
 from modules.Notch.MainWindow.Dashboard.controls import ControlSliders
 from modules.Bar.metrics import Metrics
-from modules.Notifications.history import NotificationHistory
+
+# ИЗМЕНЕНИЕ: импортируем функцию get_shared_history вместо самого класса
+from modules.Notifications.history import get_shared_history
 
 
 class Dashboard(Box):
@@ -44,7 +46,10 @@ class Dashboard(Box):
         self.bluetooth = BluetoothConnections(widgets=self)
         self.controls = ControlSliders()
         self.metrics = Metrics()
-        self.notification_history = NotificationHistory()
+        
+        # ИЗМЕНЕНИЕ: Получаем общий виджет истории
+        self.notification_history = get_shared_history()
+        
         self.network_connections = NetworkConnections(widgets=self)
 
         self.applet_stack = Stack(

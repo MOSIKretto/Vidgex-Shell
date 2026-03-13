@@ -62,10 +62,6 @@ def _get_tag_text(tags, keys):
 
 
 def _split_artists(raw_artist: str) -> tuple:
-    """'Gone.Fludd, Iroh' → ('Gone.Fludd', 'Iroh')
-       'A feat. B & C'    → ('A', 'B, C')
-       'Solo'             → ('Solo', '')
-    """
     if not raw_artist:
         return ("Unknown", "")
     parts = _ARTIST_SPLIT_RE.split(raw_artist)
@@ -168,20 +164,11 @@ def _get_metadata(filepath, filename):
 
 
 class ArtistGroup(Box):
-    """Сворачиваемая группа треков одного артиста."""
-
     __slots__ = (
-        "artist_name",
-        "is_expanded",
-        "_header_box",
-        "_header_btn",
-        "_arrow_lbl",
-        "_name_lbl",
-        "_count_lbl",
-        "_content_box",
-        "_revealer",
-        "_total_count",
-        "_on_expand_cb",
+        "artist_name", "is_expanded", "_header_box",
+        "_header_btn", "_arrow_lbl", "_name_lbl",
+        "_count_lbl", "_content_box", "_revealer",
+        "_total_count", "_on_expand_cb",
     )
 
     def __init__(self, artist_name: str, on_expand_cb=None):
@@ -293,24 +280,12 @@ class ArtistGroup(Box):
 
 class TrackList(Box):
     __slots__ = (
-        "_rows",
-        "_path_map",
-        "_playing_btn",
-        "_search_entry",
-        "_search_overlay",
-        "_search_placeholder",
-        "_list_box",
-        "_count_lbl",
-        "_mon",
-        "_pend_id",
-        "_dead",
-        "local_player",
-        "media_player_ref",
-        "_current_path",
-        "_artist_groups",
-        "_sw",
-        "_anim_id",
-        "_anim_target_group",
+        "_rows", "_path_map", "_playing_btn",
+        "_search_entry", "_search_overlay", "_search_placeholder",
+        "_list_box", "_count_lbl", "_mon",
+        "_pend_id", "_dead", "local_player",
+        "media_player_ref", "_current_path", "_artist_groups",
+        "_sw", "_anim_id", "_anim_target_group",
     )
 
     def __init__(self, local_player, media_player_ref):

@@ -14,18 +14,10 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from gi.repository import GdkPixbuf, GLib, Gtk
 
 from .notificationBox import (
-    NotificationBox,
-    NotificationGroup,
-    HistoricalNotification,
-    get_history_ignored_apps,
-    is_safe_image_file,
-    delete_notification_image,
-    clear_all_notification_images,
-    submit_io_task,
-    cleanup_orphan_images,
-    PERSISTENT_HISTORY_FILE,
-    MAX_NOTIFICATION_HISTORY,
-    MAX_POPUP_NOTIFICATIONS,
+    NotificationBox, NotificationGroup, HistoricalNotification,
+    get_history_ignored_apps, is_safe_image_file, delete_notification_image,
+    clear_all_notification_images, submit_io_task, cleanup_orphan_images,
+    PERSISTENT_HISTORY_FILE, MAX_NOTIFICATION_HISTORY, MAX_POPUP_NOTIFICATIONS,
     NOTIFICATION_WIDTH,
 )
 import services.icons as icons
@@ -651,6 +643,7 @@ class NotificationHistory(Box):
 
         super().destroy()
 
+
 class NotificationContainer(Box):
 
     __slots__ = (
@@ -658,6 +651,7 @@ class NotificationContainer(Box):
         "_server",
         "_server_handler",
         "_is_destroying",
+        "_reset_timeout_id",
         "stack",
         "prev_button",
         "close_all_button",
@@ -679,6 +673,7 @@ class NotificationContainer(Box):
         )
         self.notification_history = notification_history_instance
         self._is_destroying = False
+        self._reset_timeout_id = None
         self.notifications: list[NotificationBox] = []
         self.current_index = 0
         self._destroyed_ids: set = set()
@@ -784,7 +779,11 @@ class NotificationContainer(Box):
 
     def _on_new_notification(self, fabric_notif, notif_id):
         if self._is_destroying:
-            return
+            self._is_destroying = False
+            if self._reset_timeout_id is not None:
+                GLib.source_remove(self._reset_timeout_id)
+                self._reset_timeout_id = None
+            self.main_revealer.set_reveal_child(True)
 
         n = fabric_notif.get_notification_from_id(notif_id)
         nb = NotificationBox(n)
@@ -825,7 +824,7 @@ class NotificationContainer(Box):
 
     def _on_closed(self, notification, reason):
         nid = getattr(notification, "id", None)
-        if not nid or self._is_destroying or nid in self._destroyed_ids:
+        if nid is None or nid in self._destroyed_ids:
             return
         self._destroyed_ids.add(nid)
 
@@ -841,19 +840,14 @@ class NotificationContainer(Box):
             return
 
         nb = self.notifications.pop(idx)
-
         self.stack.remove(nb)
 
-        if "dismissed" in str(reason).lower():
-            delete_notification_image(nb.uuid)
-            nb.destroy()
-        else:
-            self.notification_history.add_notification(nb)
+        self.notification_history.add_notification(nb)
 
         if not self.notifications:
             self._is_destroying = True
             self.main_revealer.set_reveal_child(False)
-            GLib.timeout_add(150, self._reset_container)
+            self._reset_timeout_id = GLib.timeout_add(150, self._reset_container)
             return
 
         if idx <= self.current_index:
@@ -865,6 +859,7 @@ class NotificationContainer(Box):
         self._update_nav()
 
     def _reset_container(self):
+        self._reset_timeout_id = None
         for c in list(self.stack.get_children()):
             self.stack.remove(c)
             c.destroy()
@@ -882,6 +877,10 @@ class NotificationContainer(Box):
     def destroy(self):
         self._is_destroying = True
 
+        if self._reset_timeout_id is not None:
+            GLib.source_remove(self._reset_timeout_id)
+            self._reset_timeout_id = None
+
         if (
             self._server
             and self._server_handler
@@ -897,3 +896,11 @@ class NotificationContainer(Box):
         self.notification_history = None
 
         super().destroy()
+
+_shared_history_instance = None
+
+def get_shared_history():
+    global _shared_history_instance
+    if _shared_history_instance is None:
+        _shared_history_instance = NotificationHistory()
+    return _shared_history_instance
