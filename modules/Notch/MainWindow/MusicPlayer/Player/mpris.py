@@ -25,6 +25,7 @@ _STATUS_TO_STR = {
 _CACHE_DIR = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell", "covers")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
+# Использование кортежей вместо списков экономит память
 _ART_KEYS = ("mpris:artUrl", "xesam:artUrl")
 _ALBUM_KEYS = ("xesam:album", "xesam:albumTitle", "album")
 _TITLE_FALLBACK_KEYS = ("xesam:title", "title", "xesam:name", "xesam:displayName")
@@ -34,20 +35,27 @@ _ARTIST_FALLBACK_KEYS = ("xesam:artist", "xesam:albumArtist", "xesam:composer", 
 def _decode_data_uri(data_uri: str) -> tuple[bytes | None, str]:
     if not data_uri or not data_uri.startswith("data:"):
         return None, ""
+    
+    # Оптимизированный парсинг без лишних аллокаций
+    comma_idx = data_uri.find(',')
+    if comma_idx == -1:
+        return None, ""
+        
     try:
-        if ',' not in data_uri:
-            return None, ""
-        header, encoded_data = data_uri.split(',', 1)
-        header = header[5:]
+        header = data_uri[5:comma_idx]
+        encoded_data = data_uri[comma_idx+1:]
+        
         parts = header.split(';')
         mime_type = parts[0] if parts else "image/png"
         is_base64 = 'base64' in parts
+        
         ext_map = {
             'image/jpeg': '.jpg', 'image/jpg': '.jpg',
             'image/png': '.png', 'image/gif': '.gif',
             'image/webp': '.webp', 'image/bmp': '.bmp',
         }
         ext = ext_map.get(mime_type.lower(), '.png')
+        
         if is_base64:
             encoded_data += "=" * ((4 - len(encoded_data) % 4) % 4)
             data = base64.b64decode(encoded_data)
@@ -64,23 +72,16 @@ def _save_data_uri_to_cache(data_uri: str, cache_key: str) -> str:
         return ""
     md5 = hashlib.md5(cache_key.encode()).hexdigest()
     cache_path = os.path.join(_CACHE_DIR, f"b64_{md5}{ext}")
+    
     if os.path.isfile(cache_path):
         return cache_path
+        
     try:
         with open(cache_path, 'wb') as f:
             f.write(data)
         return cache_path
     except Exception:
         return ""
-
-
-def _probe_property(player: Playerctl.Player, prop: str):
-    """Попытка получить свойство плеера, None если не поддерживается."""
-    try:
-        val = player.get_property(prop)
-        return val
-    except Exception:
-        return None
 
 
 class MprisPlayer(Service):
@@ -109,9 +110,6 @@ class MprisPlayer(Service):
         self._cached_arturl: str = ""
         self._cached_art_key: str = ""
 
-        # Кешируем поддержку loop/shuffle при инициализации,
-        # но разрешаем повторный probe если первый раз вернул None
-        # (плеер мог ещё не полностью инициализироваться).
         self._supports_loop: bool | None = None
         self._supports_shuffle: bool | None = None
         self._probed_loop: bool = False
@@ -138,7 +136,6 @@ class MprisPlayer(Service):
     # ── capability probing ──────────────────────────────────────────
 
     def _probe_loop_support(self) -> bool:
-        """Динамически определяет, поддерживает ли плеер loop_status."""
         if self._dead or not self._player:
             return False
         try:
@@ -148,7 +145,6 @@ class MprisPlayer(Service):
             return False
 
     def _probe_shuffle_support(self) -> bool:
-        """Динамически определяет, поддерживает ли плеер shuffle."""
         if self._dead or not self._player:
             return False
         try:
@@ -158,8 +154,6 @@ class MprisPlayer(Service):
             return False
 
     def _check_loop_support(self) -> bool:
-        # Если уже успешно определили поддержку — используем кеш.
-        # Если ранее probe дал False — пробуем ещё раз (ленивый re-probe).
         if self._supports_loop is True:
             return True
         result = self._probe_loop_support()
@@ -178,7 +172,6 @@ class MprisPlayer(Service):
     # ── signal handlers ─────────────────────────────────────────────
 
     def _on_loop_changed(self):
-        # Раз получили сигнал loop-status — значит точно поддерживается.
         self._supports_loop = True
         self._notifier("loop-status")
 
@@ -239,7 +232,7 @@ class MprisPlayer(Service):
             meta = self._player.get_property("metadata")
             if meta:
                 result = {}
-                for k in meta.keys():
+                for k in meta.keys():  # Восстановлен критически важный способ итерации GLib.Variant
                     try:
                         val = meta[k]
                         if hasattr(val, 'unpack'):
@@ -269,6 +262,7 @@ class MprisPlayer(Service):
         return self._dead
 
     # ── transport controls ──────────────────────────────────────────
+    # Возвращено обязательное "False" в конце лямбд для GTK
 
     def play_pause(self):
         if self._player and not self._dead:
@@ -413,8 +407,7 @@ class MprisPlayer(Service):
         if not self._player or self._dead:
             return 0
         try:
-            meta = self._get_metadata()
-            val = meta.get("mpris:length")
+            val = self._get_metadata().get("mpris:length")
             return int(val) if val else 0
         except Exception:
             return 0
@@ -470,6 +463,7 @@ class MprisPlayer(Service):
                 self._player.set_loop_status(ls)
             except Exception:
                 pass
+            return False
 
         GLib.idle_add(_set_loop)
 
@@ -503,6 +497,7 @@ class MprisPlayer(Service):
                 self._player.set_shuffle(value)
             except Exception:
                 pass
+            return False
 
         GLib.idle_add(_set_shuffle)
 
@@ -564,12 +559,8 @@ class MprisPlayerManager(Service):
         super().__init__(**kwargs)
         self._manager = Playerctl.PlayerManager.new()
 
-        self._sig_appeared = self._manager.connect(
-            "name-appeared", self._on_appeared
-        )
-        self._sig_vanished = self._manager.connect(
-            "name-vanished", self._on_vanished
-        )
+        self._sig_appeared = self._manager.connect("name-appeared", self._on_appeared)
+        self._sig_vanished = self._manager.connect("name-vanished", self._on_vanished)
 
         self._add_existing_players()
 

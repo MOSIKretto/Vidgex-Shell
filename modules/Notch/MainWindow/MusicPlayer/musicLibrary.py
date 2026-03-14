@@ -40,7 +40,8 @@ _COVER_DIR = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell", "covers")
 
 _TrackRow = namedtuple(
     "_TrackRow",
-    ("btn", "search_str", "path", "artist", "title", "album", "length_us", "art_url"),
+    ("btn", "search_str", "path", "artist", "title", "album",
+     "length_us", "art_url", "group_key"),
 )
 
 _UNKNOWN_ARTISTS = frozenset({"unknown", "unknown artist"})
@@ -84,7 +85,7 @@ def _extract_cover(audio, filepath):
     if not audio:
         return ""
 
-    md5 = hashlib.md5(filepath.encode()).hexdigest()
+    md5 = hashlib.md5(filepath.encode(), usedforsecurity=False).hexdigest()
     cpath = os.path.join(_COVER_DIR, f"loc_{md5}.png")
     if _fex(cpath):
         return GLib.filename_to_uri(cpath, None)
@@ -93,9 +94,9 @@ def _extract_cover(audio, filepath):
     try:
         tags = getattr(audio, "tags", None)
         if tags:
-            for key, tag in tags.items():
+            for key in tags:
                 if key.startswith("APIC"):
-                    art_data = tag.data
+                    art_data = tags[key].data
                     break
 
         if not art_data:
@@ -249,6 +250,8 @@ class ArtistGroup(Box):
         self.add(self._revealer)
 
     def set_expanded(self, expanded: bool):
+        if self.is_expanded == expanded:
+            return
         self.is_expanded = expanded
         self._revealer.set_reveal_child(expanded)
         self._arrow_lbl.set_label("▾" if expanded else "▸")
@@ -263,10 +266,11 @@ class ArtistGroup(Box):
         self._count_lbl.set_text(str(self._total_count))
 
     def update_visible_count(self, visible: int):
-        if visible < self._total_count:
-            self._count_lbl.set_text(f"{visible}/{self._total_count}")
+        total = self._total_count
+        if visible < total:
+            self._count_lbl.set_text(f"{visible}/{total}")
         else:
-            self._count_lbl.set_text(str(self._total_count))
+            self._count_lbl.set_text(str(total))
 
     def get_content_box(self):
         return self._content_box
@@ -285,7 +289,7 @@ class TrackList(Box):
         "_list_box", "_count_lbl", "_mon",
         "_pend_id", "_dead", "local_player",
         "media_player_ref", "_current_path", "_artist_groups",
-        "_sw", "_anim_id", "_anim_target_group",
+        "_sw", "_anim_id", "_anim_target_group", "_visible_count",
     )
 
     def __init__(self, local_player, media_player_ref):
@@ -310,6 +314,7 @@ class TrackList(Box):
         self._dead = False
         self._anim_id = None
         self._anim_target_group = None
+        self._visible_count = 0
 
         self.local_player = local_player
         self.media_player_ref = media_player_ref
@@ -414,10 +419,11 @@ class TrackList(Box):
         wrapper.pack_start(inner, True, False, 0)
         return wrapper
 
-    def _emit_nav(self, has_visible: bool):
+    def _emit_nav(self):
+        has = self._visible_count > 0
         lp = self.local_player
-        lp.can_go_previous = has_visible
-        lp.can_go_next = has_visible
+        lp.can_go_previous = has
+        lp.can_go_next = has
         lp.emit("changed")
 
     def _on_group_expanded(self, expanded_group):
@@ -456,13 +462,14 @@ class TrackList(Box):
 
         vadj = sw.get_vadjustment()
         current_scroll = vadj.get_value()
-        absolute_y = current_scroll + coords[1]
-
-        target_y = absolute_y - 8
+        target_y = current_scroll + coords[1] - 8
 
         lower_limit = vadj.get_lower()
         upper_limit = max(lower_limit, vadj.get_upper() - vadj.get_page_size())
-        target_y = max(lower_limit, min(target_y, upper_limit))
+        if target_y < lower_limit:
+            target_y = lower_limit
+        elif target_y > upper_limit:
+            target_y = upper_limit
 
         diff = target_y - current_scroll
         if abs(diff) < 1.0:
@@ -471,8 +478,7 @@ class TrackList(Box):
             self._anim_target_group = None
             return False
 
-        new_scroll = current_scroll + diff * 0.15
-        vadj.set_value(new_scroll)
+        vadj.set_value(current_scroll + diff * 0.15)
         return True
 
     def _on_search_key_press(self, _widget, event):
@@ -511,26 +517,33 @@ class TrackList(Box):
         self._search_placeholder.set_visible(not query and not entry.is_focus())
 
         visible_count = 0
-        for row in self._rows:
-            visible = not query or query in row.search_str
-            row.btn.set_visible(visible)
-            visible_count += visible
+        group_vis_counts: dict[str, int] = {}
+        gvc_get = group_vis_counts.get
 
-        for group in self._artist_groups.values():
-            children = group.get_content_box().get_children()
-            group_vis = sum(1 for c in children if c.get_visible())
-            group.set_visible(group_vis > 0)
-            group.update_visible_count(group_vis)
-            if query and group_vis > 0:
+        for row in self._rows:
+            vis = not query or query in row.search_str
+            row.btn.set_visible(vis)
+            if vis:
+                visible_count += 1
+                gk = row.group_key
+                group_vis_counts[gk] = gvc_get(gk, 0) + 1
+
+        has_query = bool(query)
+        for gk, group in self._artist_groups.items():
+            gv = gvc_get(gk, 0)
+            group.set_visible(gv > 0)
+            group.update_visible_count(gv)
+            if has_query and gv > 0:
                 group.set_expanded(True)
-            elif not query:
+            elif not has_query:
                 group.set_expanded(False)
 
+        self._visible_count = visible_count
         total = len(self._rows)
         self._count_lbl.set_text(
             f"{visible_count}/{total}" if query else f"{total} tracks",
         )
-        self._emit_nav(visible_count > 0)
+        self._emit_nav()
 
     def _watch(self):
         if not os.path.isdir(_MUSIC_DIR):
@@ -558,6 +571,7 @@ class TrackList(Box):
         tracks = []
         if os.path.isdir(_MUSIC_DIR):
             get_meta = _get_metadata
+            gk_func = _artist_group_key
             append = tracks.append
             join = os.path.join
             splitext = os.path.splitext
@@ -571,7 +585,10 @@ class TrackList(Box):
                         continue
                     full = join(root, fname)
                     a, t, al, ds, lu, au = get_meta(full, name)
-                    append((a, t, al, ds, f"{a} {t} {al}".lower(), full, lu, au))
+                    gk = gk_func(a)
+                    append((a, t, al, ds,
+                            f"{a} {t} {al}".lower(),
+                            full, lu, au, gk))
 
         GLib.idle_add(self._populate, tracks)
 
@@ -594,16 +611,16 @@ class TrackList(Box):
                 ),
             )
             self._count_lbl.set_text("0 tracks")
+            self._visible_count = 0
             list_box.show_all()
             return
 
-        tracks.sort(
-            key=lambda t: (_artist_group_key(t[0]).lower(), t[1].lower()),
-        )
+        # group_key уже предвычислен (индекс 8) — sort не вызывает regex
+        tracks.sort(key=lambda t: (t[8].lower(), t[1].lower()))
 
         grouped: dict[str, list] = defaultdict(list)
         for track in tracks:
-            grouped[_artist_group_key(track[0])].append(track)
+            grouped[track[8]].append(track)
 
         sorted_keys = sorted(grouped.keys(), key=str.lower)
 
@@ -612,21 +629,21 @@ class TrackList(Box):
         artist_groups = self._artist_groups
         on_clicked = self._on_row_clicked
         escape = GLib.markup_escape_text
+        on_expand = self._on_group_expanded
 
         for group_key in sorted_keys:
-            group_widget = ArtistGroup(
-                group_key, on_expand_cb=self._on_group_expanded,
-            )
+            group_widget = ArtistGroup(group_key, on_expand_cb=on_expand)
 
-            for artist, title, album, dur_str, search_str, full, length_us, art_url in grouped[group_key]:
+            for (artist, title, album, dur_str,
+                 search_str, full, length_us, art_url, _gk) in grouped[group_key]:
+
                 _, feat = _split_artists(artist)
                 t_esc = escape(title, -1)
 
                 if feat:
-                    f_esc = escape(feat, -1)
                     display = (
                         f"{t_esc}  "
-                        f"<span alpha='50%'>feat. {f_esc}</span>"
+                        f"<span alpha='50%'>feat. {escape(feat, -1)}</span>"
                     )
                 else:
                     display = t_esc
@@ -665,7 +682,8 @@ class TrackList(Box):
                 rows.append(
                     _TrackRow(
                         btn, search_str, full,
-                        artist, title, album, length_us, art_url,
+                        artist, title, album,
+                        length_us, art_url, group_key,
                     ),
                 )
                 group_widget.add_track_widget(btn)
@@ -673,9 +691,11 @@ class TrackList(Box):
             artist_groups[group_key] = group_widget
             list_box.add(group_widget)
 
-        self._count_lbl.set_text(f"{len(tracks)} tracks")
+        n = len(tracks)
+        self._visible_count = n
+        self._count_lbl.set_text(f"{n} tracks")
         list_box.show_all()
-        self._emit_nav(any(r.btn.get_visible() for r in self._rows))
+        self._emit_nav()
 
     def _on_row_clicked(self, _btn, path):
         self._play_by_path(path)
@@ -687,7 +707,7 @@ class TrackList(Box):
         if btn:
             btn.remove_style_class("playing")
             self._playing_btn = None
-        self._emit_nav(any(r.btn.get_visible() for r in self._rows))
+        self._emit_nav()
 
     def _play_by_path(self, path, force=False):
         idx = self._path_map.get(path)
@@ -709,15 +729,14 @@ class TrackList(Box):
         new_btn.add_style_class("playing")
         self._playing_btn = new_btn
 
-        gk = _artist_group_key(row.artist)
-        group = self._artist_groups.get(gk)
+        group = self._artist_groups.get(row.group_key)
         if group:
             self._on_group_expanded(group)
             if not group.is_expanded:
                 group.set_expanded(True)
 
         self.media_player_ref.switch_to_local()
-        self._emit_nav(True)
+        self._emit_nav()
         self.local_player.play_file(
             path, row.artist, row.title, row.album, row.length_us, row.art_url,
         )

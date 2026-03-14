@@ -12,32 +12,32 @@ _MUTED_CLASS = "muted"
 _SECTION_MUTED_CLASS = "section-muted"
 _ANIM_STEPS = 25
 _ANIM_INTERVAL_MS = 16
+_INV_ANIM_STEPS = 1.0 / _ANIM_STEPS
 
-_pointer_cursor: Gdk.Cursor | None = None
-_default_cursor: Gdk.Cursor | None = None
+_pointer_cursor = None
+_default_cursor = None
 
 
-def _get_cursors(display: Gdk.Display):
+def _ensure_cursors(display):
     global _pointer_cursor, _default_cursor
     if _pointer_cursor is None:
         _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
         _default_cursor = Gdk.Cursor.new_from_name(display, "default")
-    return _pointer_cursor, _default_cursor
 
 
-def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+def _on_btn_enter(widget, _event):
     win = widget.get_window()
     if win:
-        pointer, _ = _get_cursors(win.get_display())
-        win.set_cursor(pointer)
+        _ensure_cursors(win.get_display())
+        win.set_cursor(_pointer_cursor)
     return False
 
 
-def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
+def _on_btn_leave(widget, _event):
     win = widget.get_window()
     if win:
-        _, default = _get_cursors(win.get_display())
-        win.set_cursor(default)
+        _ensure_cursors(win.get_display())
+        win.set_cursor(_default_cursor)
     return False
 
 
@@ -70,11 +70,9 @@ class MixerSlider(Scale):
 
         self.connect("value-changed", self._on_value_changed)
 
-        stream_type = getattr(stream, "type", "").lower()
+        ltype = getattr(stream, "type", "").lower()
         self.add_style_class(
-            "mic"
-            if "microphone" in stream_type or "input" in stream_type
-            else "vol",
+            "mic" if "microphone" in ltype or "input" in ltype else "vol"
         )
 
         if muted:
@@ -82,12 +80,9 @@ class MixerSlider(Scale):
 
     def sync(self, stream, pct_str):
         self._updating = True
-
         self.value = stream.volume * 0.01
-
         if pct_str is not None:
             self.set_tooltip_text(pct_str)
-
         muted = stream.muted
         if muted != self._muted_style:
             self._muted_style = muted
@@ -95,17 +90,14 @@ class MixerSlider(Scale):
                 self.add_style_class(_MUTED_CLASS)
             else:
                 self.remove_style_class(_MUTED_CLASS)
-
         self._updating = False
 
     def _on_value_changed(self, _):
         if self._updating:
             return
-
         stream = self.stream
         if stream is None:
             return
-
         new_vol = self.value * 100.0
         if abs(stream.volume - new_vol) > 0.5:
             stream.volume = new_vol
@@ -174,7 +166,8 @@ class MixerSlot(Box):
         self._sig_id = stream.connect("changed", self._on_stream_changed)
 
     def _on_stream_changed(self, stream):
-        pct = int(stream.volume + 0.5)
+        vol = stream.volume
+        pct = int(vol + 0.5)
         pct_str = None
 
         if pct != self._last_pct:
@@ -192,7 +185,8 @@ class MixerSlot(Box):
     def cleanup(self):
         stream = self.stream
         if stream is not None:
-            if sig_id := self._sig_id:
+            sig_id = self._sig_id
+            if sig_id:
                 try:
                     stream.disconnect(sig_id)
                 except Exception:
@@ -222,7 +216,6 @@ class MixerSection(Box):
         self._anim_id = None
 
         title_btn.connect("clicked", self._on_title_clicked)
-
         title_btn.add_events(
             Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
         )
@@ -265,58 +258,67 @@ class MixerSection(Box):
         )
 
     def _on_title_clicked(self, _btn):
-        if self._anim_id is not None:
-            GLib.source_remove(self._anim_id)
+        anim_id = self._anim_id
+        if anim_id is not None:
+            GLib.source_remove(anim_id)
             self._anim_id = None
 
         ctx = self._title_btn.get_style_context()
 
         if not self._muted:
-            self._saved_volumes.clear()
+            saved = self._saved_volumes
+            saved.clear()
             for sid, slot in self._slots.items():
                 s = slot.stream
                 if s is not None:
-                    self._saved_volumes[sid] = s.volume
+                    saved[sid] = s.volume
             self._muted = True
             ctx.add_class(_SECTION_MUTED_CLASS)
-            self._run_animation(to_zero=True)
+            self._run_animation(True)
         else:
             self._muted = False
             ctx.remove_class(_SECTION_MUTED_CLASS)
-            self._run_animation(to_zero=False)
+            self._run_animation(False)
 
     def _run_animation(self, to_zero: bool):
-        targets: dict[int, tuple[float, float]] = {}
-        for sid, slot in self._slots.items():
+        slots = self._slots
+        saved = self._saved_volumes
+
+        # Плоский список (slot, start, delta) — без dict-lookup в каждом кадре
+        anim_list = []
+        for sid, slot in slots.items():
             s = slot.stream
             if s is None:
                 continue
             start = s.volume
-            end = 0.0 if to_zero else self._saved_volumes.get(sid, 100.0)
-            if abs(start - end) < 0.5:
+            end = 0.0 if to_zero else saved.get(sid, 100.0)
+            delta = end - start
+            if abs(delta) < 0.5:
                 s.volume = end
                 continue
-            targets[sid] = (start, end)
+            anim_list.append((slot, start, delta))
 
-        if not targets:
+        if not anim_list:
             if not to_zero:
-                self._saved_volumes.clear()
+                saved.clear()
             return
 
-        step = [0]
+        step = 0
 
         def _tick():
-            step[0] += 1
-            t = min(step[0] / _ANIM_STEPS, 1.0)
+            nonlocal step
+            step += 1
+            t = step * _INV_ANIM_STEPS
+            if t > 1.0:
+                t = 1.0
             ease = 1.0 - (1.0 - t) ** 3
 
-            for sid, (s, e) in targets.items():
-                slot = self._slots.get(sid)
-                if slot is None or slot.stream is None:
-                    continue
-                slot.stream.volume = s + (e - s) * ease
+            for slot, start, delta in anim_list:
+                s = slot.stream
+                if s is not None:
+                    s.volume = start + delta * ease
 
-            if step[0] >= _ANIM_STEPS:
+            if step >= _ANIM_STEPS:
                 self._anim_id = None
                 if not to_zero:
                     self._saved_volumes.clear()
@@ -329,35 +331,37 @@ class MixerSection(Box):
         slots = self._slots
         content = self._content
         seen = set()
-        changed = False
+        added = False
 
         for stream in streams:
             sid = id(stream)
-            if sid in seen:
-                continue
-            seen.add(sid)
-            if sid not in slots:
-                slot = MixerSlot(stream)
-                slots[sid] = slot
-                content.add(slot)
-                changed = True
+            if sid not in seen:
+                seen.add(sid)
+                if sid not in slots:
+                    slot = MixerSlot(stream)
+                    slots[sid] = slot
+                    content.add(slot)
+                    added = True
 
-        stale = slots.keys() - seen
-        if stale:
-            changed = True
+        # Проверяем удалённые только если количество не совпадает
+        if len(seen) < len(slots):
+            stale = [sid for sid in slots if sid not in seen]
+            saved = self._saved_volumes
             for sid in stale:
                 slot = slots.pop(sid)
                 content.remove(slot)
                 slot.cleanup()
                 slot.destroy()
-                self._saved_volumes.pop(sid, None)
+                saved.pop(sid, None)
 
-        if changed:
+        # show_all только при добавлении новых виджетов
+        if added:
             content.show_all()
 
     def cleanup(self):
-        if self._anim_id is not None:
-            GLib.source_remove(self._anim_id)
+        anim_id = self._anim_id
+        if anim_id is not None:
+            GLib.source_remove(anim_id)
             self._anim_id = None
         for slot in self._slots.values():
             slot.cleanup()
