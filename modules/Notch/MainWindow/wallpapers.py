@@ -22,13 +22,21 @@ from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import (
 from modules.Notch.MainWindow.Wallpaper.wallpaperCarousel import WallpaperCarousel
 from modules.Notch.MainWindow.Wallpaper.wallpaperColors import apply_colors
 
+_NAV_KEYS = frozenset((Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Return, Gdk.KEY_KP_Enter))
+_LR_KEYS = frozenset((Gdk.KEY_Left, Gdk.KEY_Right))
+_INV_AGL = 1.0 / _AGL_FRAMES
+_src_rm = GLib.source_remove
+_t_add = GLib.timeout_add
+_t_add_s = GLib.timeout_add_seconds
+_ri_range = GLib.random_int_range
+_randint = random.randint
+
 
 class WallpaperSelector(Box):
     __slots__ = (
         "_dead", "_pend", "_files", "_mon", "_car", "_ent",
         "_sch_btn", "_sch_rev", "_sch_idx", "_rb", "_lbl",
-        "_agl_lbls",
-        "_agl_on", "_agl_rem", "_agl_tid",
+        "_agl_lbls", "_agl_on", "_agl_rem", "_agl_tid",
         "_agl_rand_tid",
     )
 
@@ -50,12 +58,11 @@ class WallpaperSelector(Box):
         os.makedirs(_THUMBS, exist_ok=True)
 
         self._car = WallpaperCarousel(
-            on_select=self._on_sel,
-            on_navigate=self._on_nav,
+            on_select=self._on_sel, on_navigate=self._on_nav,
         )
         ew = Gtk.EventBox()
         ew.add(self._car)
-        ew.connect("button-press-event", lambda *_: self._car.grab_focus())
+        ew.connect("button-press-event", self._on_car_click)
 
         lbl_l = Label(name="carousel-arrow-label")
         lbl_l.set_halign(Gtk.Align.START)
@@ -68,15 +75,8 @@ class WallpaperSelector(Box):
         lbl_r.set_can_focus(False)
 
         self._agl_lbls = (lbl_l, lbl_r)
-
-        lbl_l.connect(
-            "style-updated",
-            lambda *_: self._arr_render(0) if not self._agl_on[0] else None,
-        )
-        lbl_r.connect(
-            "style-updated",
-            lambda *_: self._arr_render(1) if not self._agl_on[1] else None,
-        )
+        lbl_l.connect("style-updated", self._on_style_l)
+        lbl_r.connect("style-updated", self._on_style_r)
 
         car_ov = Gtk.Overlay()
         car_ov.add(ew)
@@ -86,32 +86,27 @@ class WallpaperSelector(Box):
         car_ov.set_overlay_pass_through(lbl_r, True)
 
         cb = Box(
-            name="carousel-container",
-            orientation="h",
-            h_align="center",
-            v_align="center",
+            name="carousel-container", orientation="h",
+            h_align="center", v_align="center",
         )
         cb.pack_start(car_ov, True, True, 0)
 
         self._ent = Entry(
-            name="search-entry-walls",
-            placeholder="Search Wallpapers...",
-            h_expand=True,
-            h_align="fill",
+            name="search-entry-walls", placeholder="Search Wallpapers...",
+            h_expand=True, h_align="fill",
         )
         self._ent.connect("notify::text", self._on_search_changed)
         self._ent.connect("key-press-event", self._ekey)
 
         self._sch_idx = 0
-        cur_sch_id = self._ldsch()
+        cur = self._ldsch()
         for i, (k, _) in enumerate(_SCH):
-            if k == cur_sch_id:
+            if k == cur:
                 self._sch_idx = i
                 break
 
         self._sch_btn = Button(
-            name="scheme-dropdown-btn",
-            label=_SCH[self._sch_idx][1],
+            name="scheme-dropdown-btn", label=_SCH[self._sch_idx][1],
             tooltip_text="Click to select scheme, or scroll",
         )
         _setup_pointer_cursor(self._sch_btn)
@@ -126,10 +121,8 @@ class WallpaperSelector(Box):
         for i, (_, v) in enumerate(_SCH):
             btn = Button(label=v, name="scheme-list-item")
             btn.get_child().set_halign(Gtk.Align.START)
-            btn.connect(
-                "clicked",
-                lambda _, idx=i: self._on_list_item_clicked(idx),
-            )
+            btn._si = i
+            btn.connect("clicked", self._on_sch_item_click)
             _setup_pointer_cursor(btn)
             list_box.add(btn)
         self._sch_rev.add(list_box)
@@ -151,7 +144,6 @@ class WallpaperSelector(Box):
         )
 
         header = Box(spacing=8, children=[self._rb, self._ent, self._sch_btn])
-
         overlay = Gtk.Overlay()
         overlay.add(cb)
         overlay.add_overlay(self._sch_rev)
@@ -166,7 +158,23 @@ class WallpaperSelector(Box):
         self._scan()
         self._watch()
 
-    # ── realize / arrows (без изменений) ──────────────────────
+    def _on_car_click(self, *_):
+        self._car.grab_focus()
+
+    def _on_style_l(self, *_):
+        if not self._agl_on[0]:
+            self._arr_render(0)
+
+    def _on_style_r(self, *_):
+        if not self._agl_on[1]:
+            self._arr_render(1)
+
+    def _on_sch_item_click(self, btn):
+        self._on_list_item_clicked(btn._si)
+
+    def _on_dir_changed(self, *_):
+        if not self._dead:
+            self._deb("r", 1000, self._scan)
 
     def _on_realize_full(self, *_):
         self._arr_render(0)
@@ -186,19 +194,23 @@ class WallpaperSelector(Box):
     def _arr_glitch(self, idx):
         self._agl_on[idx] = True
         self._agl_rem[idx] = _AGL_FRAMES
-        if self._agl_tid[idx]:
-            GLib.source_remove(self._agl_tid[idx])
-        self._agl_tid[idx] = GLib.timeout_add(
+        tid = self._agl_tid[idx]
+        if tid:
+            _src_rm(tid)
+        self._agl_tid[idx] = _t_add(
             _AGL_FRAME_MS, self._arr_gl_tick, idx,
         )
 
     def _arr_gl_tick(self, idx):
-        total = _AGL_FRAMES
-        progress = 1.0 - self._agl_rem[idx] / total
-        glitched = _arr_glitch_lines(_ARR_LINES[idx], progress)
-        _arr_set_art(self._agl_lbls[idx], glitched)
-        self._agl_rem[idx] -= 1
-        if self._agl_rem[idx] <= 0:
+        rem = self._agl_rem
+        r = rem[idx]
+        _arr_set_art(
+            self._agl_lbls[idx],
+            _arr_glitch_lines(_ARR_LINES[idx], 1.0 - r * _INV_AGL),
+        )
+        r -= 1
+        rem[idx] = r
+        if r <= 0:
             self._agl_on[idx] = False
             self._agl_tid[idx] = None
             self._arr_render(idx)
@@ -206,51 +218,44 @@ class WallpaperSelector(Box):
         return True
 
     def _arr_schedule_rand(self):
-        if self._dead:
-            return
-        delay = random.randint(_AGL_RAND_MIN, _AGL_RAND_MAX)
-        self._agl_rand_tid = GLib.timeout_add_seconds(
-            delay, self._arr_fire_rand,
-        )
+        if not self._dead:
+            self._agl_rand_tid = _t_add_s(
+                _randint(_AGL_RAND_MIN, _AGL_RAND_MAX),
+                self._arr_fire_rand,
+            )
 
     def _arr_fire_rand(self):
         self._agl_rand_tid = None
         if self._dead:
             return False
-        pick = random.randint(0, 2)
-        if pick in (0, 2) and not self._agl_on[0]:
+        pick = _randint(0, 2)
+        agl = self._agl_on
+        if pick != 1 and not agl[0]:
             self._arr_glitch(0)
-        if pick in (1, 2) and not self._agl_on[1]:
+        if pick != 0 and not agl[1]:
             self._arr_glitch(1)
         self._arr_schedule_rand()
         return False
 
-    # ── search / keys (без изменений) ─────────────────────────
+    def _on_search_changed(self, *_):
+        self._deb("s", 300, self._do_search)
 
-    def _on_search_changed(self, entry, _):
-        self._deb("s", 300, self._srch, entry.get_text())
-
-    def _srch(self, t):
+    def _do_search(self):
         if not self._dead:
-            self._car.filter_files(t)
+            self._car.filter_files(self._ent.get_text())
             self._ulbl()
 
     def _ekey(self, _, e):
         k = e.keyval
-        if k in (
-            Gdk.KEY_Left, Gdk.KEY_Right,
-            Gdk.KEY_Return, Gdk.KEY_KP_Enter,
-        ):
+        if k in _NAV_KEYS:
             r = self._car._key(self._car, e)
-            if k == Gdk.KEY_Left or k == Gdk.KEY_Right:
-                GLib.timeout_add(50, self._ulbl)
+            if k in _LR_KEYS:
+                _t_add(50, self._ulbl)
             return r
         if k == Gdk.KEY_Escape:
             self._ent.set_text("")
             return True
         return False
-
-    # ── scheme dropdown (без изменений кроме _set_scheme) ─────
 
     def _on_sch_btn_clicked(self, *_):
         revealed = not self._sch_rev.get_reveal_child()
@@ -268,15 +273,13 @@ class WallpaperSelector(Box):
             self._set_scheme(idx)
 
     def _on_sch_scroll(self, _, e):
-        if e.direction == Gdk.ScrollDirection.UP:
+        d = e.direction
+        if d == Gdk.ScrollDirection.UP:
             self._set_scheme(self._sch_idx - 1)
-        elif e.direction == Gdk.ScrollDirection.DOWN:
+        elif d == Gdk.ScrollDirection.DOWN:
             self._set_scheme(self._sch_idx + 1)
         return True
 
-    # ══════════════════════════════════════════════════════════
-    #  ИЗМЕНЕНО: _set_scheme — чистый Python вместо matugen
-    # ══════════════════════════════════════════════════════════
     def _set_scheme(self, idx):
         self._sch_idx = idx % _SCH_LEN
         sch_id, sch_name = _SCH[self._sch_idx]
@@ -288,7 +291,6 @@ class WallpaperSelector(Box):
         except OSError:
             pass
 
-        # определяем путь к текущему изображению
         nm = self._car.cur()
         if nm and nm in self._files:
             p = _WALLS + nm
@@ -297,10 +299,10 @@ class WallpaperSelector(Box):
         else:
             return
 
-        # генерация цветов в фоновом потоке
         self._car._ex.submit(self._gen_colors, p, sch_id)
 
-    def _ldsch(self):
+    @staticmethod
+    def _ldsch():
         try:
             with open(_SCHEME_F) as f:
                 s = f.read().strip()
@@ -309,8 +311,6 @@ class WallpaperSelector(Box):
         except OSError:
             pass
         return "scheme-tonal-spot"
-
-    # ── scan / thumbs / watch (без изменений) ─────────────────
 
     def _scan(self):
         try:
@@ -331,14 +331,16 @@ class WallpaperSelector(Box):
     def _clean_thumbs(files):
         try:
             valid = frozenset(_md5hex(nm) for nm in files)
-            for entry in os.scandir(_THUMBS):
+            scandir = os.scandir
+            remove = os.remove
+            for entry in scandir(_THUMBS):
                 if not entry.is_file(follow_symlinks=False):
                     continue
                 name = entry.name
                 if name.endswith(_SUFFIX) and name[:-_SFXL] in valid:
                     continue
                 try:
-                    os.remove(entry.path)
+                    remove(entry.path)
                 except OSError:
                     pass
         except OSError:
@@ -349,20 +351,10 @@ class WallpaperSelector(Box):
             self._mon = Gio.File.new_for_path(_WALLS).monitor_directory(
                 Gio.FileMonitorFlags.NONE, None,
             )
-            self._mon.connect(
-                "changed",
-                lambda *_: (
-                    self._deb("r", 1000, self._scan)
-                    if not self._dead
-                    else None
-                ),
-            )
+            self._mon.connect("changed", self._on_dir_changed)
         except GLib.Error:
             pass
 
-    # ══════════════════════════════════════════════════════════
-    #  ИЗМЕНЕНО: _apply — чистый Python вместо matugen
-    # ══════════════════════════════════════════════════════════
     def _on_sel(self, nm):
         self._apply(nm)
         self._ulbl()
@@ -374,7 +366,6 @@ class WallpaperSelector(Box):
         p = _WALLS + nm
         sch_id = _SCH[self._sch_idx][0]
 
-        # обновляем симлинк
         try:
             if os.path.lexists(_CURRENT):
                 os.remove(_CURRENT)
@@ -382,7 +373,6 @@ class WallpaperSelector(Box):
         except OSError:
             return False
 
-        # ставим обои через awww
         exec_shell_command_async(
             f'awww img "{p}" -t fade'
             f' --transition-duration 0.5'
@@ -390,7 +380,6 @@ class WallpaperSelector(Box):
             f' --transition-fps 60'
         )
 
-        # генерация цветов — в фоновом потоке
         self._car._ex.submit(self._gen_colors, p, sch_id)
 
         if notify:
@@ -400,11 +389,7 @@ class WallpaperSelector(Box):
             )
         return True
 
-    # ══════════════════════════════════════════════════════════
-    #  НОВОЕ: генерация цветов + перезагрузка CSS
-    # ══════════════════════════════════════════════════════════
     def _gen_colors(self, image_path, scheme_id):
-        """Фоновый поток: генерирует CSS + Hyprland, потом reload."""
         if self._dead:
             return
         try:
@@ -415,24 +400,22 @@ class WallpaperSelector(Box):
 
     @staticmethod
     def _reload_css():
-        """Главный поток: перезагрузка CSS."""
         exec_shell_command_async(
             "fabric-cli exec vidgex-shell 'app.set_css()'"
         )
         return False
 
-    # ── random / label / debounce (без изменений) ─────────────
-
     def _roll(self):
-        self._rb.get_child().set_markup(_DICE[GLib.random_int_range(0, 6)])
+        self._rb.get_child().set_markup(_DICE[_ri_range(0, 6)])
 
     def random_wall(self, _=None, ext=False):
-        if not self._files:
+        files = self._files
+        if not files:
             return
-        i = GLib.random_int_range(0, len(self._files))
+        i = _ri_range(0, len(files))
         if self._ent.get_text():
             self._ent.set_text("")
-        nm = self._files[i]
+        nm = files[i]
         self._car.spin(i, lambda: self._on_spin_done(nm, ext))
 
     def _on_spin_done(self, nm, ext):
@@ -443,37 +426,43 @@ class WallpaperSelector(Box):
     def _ulbl(self, *_):
         nm = self._car.cur()
         if nm:
-            nm = nm.rsplit(".", 1)[0]
+            dot = nm.rfind(".")
+            if dot >= 0:
+                nm = nm[:dot]
             if len(nm) > 50:
                 nm = nm[:47] + "..."
         self._lbl.set_label(nm or "No wallpapers available")
         return False
 
-    def _deb(self, k, ms, func, *args):
+    def _deb(self, k, ms, func):
         old = self._pend.get(k)
         if old:
-            GLib.source_remove(old)
-        self._pend[k] = GLib.timeout_add(ms, self._deb_run, k, func, *args)
+            _src_rm(old)
+        self._pend[k] = _t_add(ms, self._deb_run, k, func)
 
-    def _deb_run(self, k, func, *args):
+    def _deb_run(self, k, func):
         self._pend.pop(k, None)
-        func(*args) if args else func()
+        func()
         return False
 
     def _destroy(self, _):
         self._dead = True
+        tid = self._agl_tid
         for i in (0, 1):
-            tid = self._agl_tid[i]
-            if tid:
-                GLib.source_remove(tid)
-                self._agl_tid[i] = None
-        if self._agl_rand_tid:
-            GLib.source_remove(self._agl_rand_tid)
+            t = tid[i]
+            if t:
+                _src_rm(t)
+                tid[i] = None
+        t = self._agl_rand_tid
+        if t:
+            _src_rm(t)
             self._agl_rand_tid = None
-        if self._mon:
-            self._mon.cancel()
-        for sid in self._pend.values():
-            GLib.source_remove(sid)
-        self._pend.clear()
+        mon = self._mon
+        if mon:
+            mon.cancel()
+        pend = self._pend
+        for sid in pend.values():
+            _src_rm(sid)
+        pend.clear()
         self._car.cleanup()
         self._files = ()

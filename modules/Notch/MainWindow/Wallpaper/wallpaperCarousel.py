@@ -11,6 +11,11 @@ from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import (
 from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import _md5hex, _rpath
 
 
+_EMPTY = ()
+_FPS = 20
+_DECAY = 0.65
+_EPS = 0.015
+
 class WallpaperCarousel(Gtk.DrawingArea):
     __slots__ = (
         "_files", "_flt", "_th", "_ld", "_idx", "_off",
@@ -21,18 +26,18 @@ class WallpaperCarousel(Gtk.DrawingArea):
 
     def __init__(self, on_select=None, on_navigate=None):
         super().__init__()
-        self._files = self._flt = ()
+        self._files = self._flt = _EMPTY
         self._th = {}
         self._ld = set()
         self._idx = 0
         self._off = self._by = self._bvy = 0.0
         self._anim = self._bnc = self._dead = self._ldq = False
         self._spl = self._spt = self._spd = 0
-        self._spi = 16
+        self._spi = _FPS
         self._spcb = None
         self._clr = (1.0, 1.0, 1.0, 1.0)
         self._ph = None
-        self._ex = ThreadPoolExecutor(max_workers=2, thread_name_prefix="w")
+        self._ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="w")
         self._on_sel = on_select
         self._on_nav = on_navigate
 
@@ -52,12 +57,12 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self.connect("style-updated", self._on_style_updated)
         self.set_size_request(800, 280)
 
-    def _on_realize(self, *_):
+    def _on_realize(self, *_a):
         self._mkph()
         self._uclr()
         self._sched()
 
-    def _on_style_updated(self, *_):
+    def _on_style_updated(self, *_a):
         self._uclr()
 
     def _mkph(self):
@@ -76,6 +81,8 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._flt = f
         self._idx = 0 if f else -1
         self._off = 0.0
+        for s in self._th.values():
+            s.finish()
         self._th.clear()
         self._ld.clear()
         if self.get_realized() and f:
@@ -105,19 +112,20 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if self._dead or not flt:
             return False
 
-        n, cur = len(flt), self._idx
-        need = {flt[(cur + i) % n] for i in _LOAD_RNG}
+        n, cur, th = len(flt), self._idx, self._th
 
-        th = self._th
-        for k in list(th):
-            if k not in need:
-                del th[k]
-
+        needed = set()
         ld, submit, ldth = self._ld, self._ex.submit, self._ldth
-        for nm in need:
+        for i in _LOAD_RNG:
+            nm = flt[(cur + i) % n]
+            needed.add(nm)
             if nm not in th and nm not in ld:
                 ld.add(nm)
                 submit(ldth, nm)
+
+        for k in [k for k in th if k not in needed]:
+            th.pop(k).finish()
+
         return False
 
     def _ldth(self, nm):
@@ -130,6 +138,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         try:
             surf = cairo.ImageSurface.create_from_png(cp)
             if surf.get_width() != _SZ or surf.get_height() != _SZ:
+                surf.finish()
                 surf = None
         except Exception:
             pass
@@ -161,26 +170,39 @@ class WallpaperCarousel(Gtk.DrawingArea):
                     del ct, sq, raw
                     surf.write_to_png(cp)
             except Exception:
+                if surf:
+                    surf.finish()
                 surf = None
 
-        if not self._dead and surf:
+        if self._dead:
+            if surf:
+                surf.finish()
+            return
+
+        if surf:
             GLib.idle_add(self._onth, nm, surf)
 
     def _onth(self, nm, surf):
         self._ld.discard(nm)
-        if self._dead or not surf:
+        if self._dead:
+            surf.finish()
             return False
 
         flt = self._flt
         n = len(flt)
         if not n:
+            surf.finish()
             return False
 
         cur = self._idx
-        if any(flt[(cur + i) % n] == nm for i in _LOAD_RNG):
-            self._th[nm] = surf
-            if not self._bnc and not self._anim:
-                self.queue_draw()
+        for i in _LOAD_RNG:
+            if flt[(cur + i) % n] == nm:
+                self._th[nm] = surf
+                if not self._bnc and not self._anim:
+                    self.queue_draw()
+                return False
+
+        surf.finish()
         return False
 
     def _draw(self, w, cr):
@@ -211,31 +233,33 @@ class WallpaperCarousel(Gtk.DrawingArea):
         ph = self._ph
         fc = self._fast_card
 
-        if -0.01 < off < 0.01:
+        if -_EPS < off < _EPS:
             by = self._by
             for i, sc, al, yof, sel in _STATIC:
                 s = th_get(flt[(idx + i) % n], ph)
                 y = cy + yof
-                if sel and by > 0:
+                if sel and by > 0.0:
                     y -= by
                 fc(cr, s, cx + i * _SPC, y, sc, al, sel)
             return
 
         for i in _DRAW_ORDER:
             p = i + off
-            d = p if p >= 0 else -p
+            d = p if p >= 0.0 else -p
             if d > 4.2:
                 continue
             al = 1.0 - d * 0.25
             if al <= 0.05:
                 continue
+            sc = 1.0 - d * 0.15
+            if sc < 0.4:
+                sc = 0.4
             fc(
                 cr,
                 th_get(flt[(idx + i) % n], ph),
                 cx + p * _SPC,
                 cy + p * p * _ARC_K,
-                max(0.4, 1.0 - d * 0.15),
-                al,
+                sc, al,
                 d < 0.15,
             )
 
@@ -259,7 +283,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
             self.nav(-1)
         elif k == Gdk.KEY_Right:
             self.nav(1)
-        elif k in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+        elif k == Gdk.KEY_Return or k == Gdk.KEY_KP_Enter:
             self._sel()
         else:
             return False
@@ -273,7 +297,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if -_HSZ < rx < _HSZ:
             self._sel()
         else:
-            self.nav(-1 if rx < 0 else 1)
+            self.nav(-1 if rx < 0.0 else 1)
         return True
 
     def _scroll(self, _, e):
@@ -285,12 +309,13 @@ class WallpaperCarousel(Gtk.DrawingArea):
             d = 1
         elif direction == Gdk.ScrollDirection.SMOOTH:
             _, dx, dy = e.get_scroll_deltas()
-            adx, ady = abs(dx), abs(dy)
+            adx = dx if dx >= 0.0 else -dx
+            ady = dy if dy >= 0.0 else -dy
             if adx > ady:
                 if adx > 0.5:
-                    d = 1 if dx > 0 else -1
+                    d = 1 if dx > 0.0 else -1
             elif ady > 0.5:
-                d = 1 if dy > 0 else -1
+                d = 1 if dy > 0.0 else -1
         if d and not self._anim:
             self.nav(d)
         return True
@@ -302,7 +327,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if anim:
             self._off = float(dr)
             self._anim = True
-            GLib.timeout_add(16, self._slide)
+            GLib.timeout_add(_FPS, self._slide)
         else:
             self._off = 0.0
             self.queue_draw()
@@ -313,8 +338,8 @@ class WallpaperCarousel(Gtk.DrawingArea):
     def _slide(self):
         if self._dead:
             return False
-        off = self._off * 0.7
-        if -0.01 < off < 0.01:
+        off = self._off * _DECAY
+        if -_EPS < off < _EPS:
             self._off = 0.0
             self._anim = False
             self._sched()
@@ -337,7 +362,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._spl = dist + GLib.random_int_range(2, 4) * n or n * 2
         self._spt = self._spl
         self._spd = d
-        self._spi = 16
+        self._spi = _FPS
         self._spcb = cb
         self._anim = True
         self._spst()
@@ -360,7 +385,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._spl -= 1
         p = 1.0 - self._spl / self._spt
         self._spi = (
-            20 if p < 0.6 else 20 + int(((p - 0.6) * 2.5) ** 2 * 200)
+            22 if p < 0.6 else 22 + int(((p - 0.6) * 2.5) ** 2 * 200)
         )
         GLib.timeout_add(self._spi, self._spst)
         return False
@@ -371,7 +396,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._bnc = True
         self._by = 0.0
         self._bvy = 12.0
-        GLib.timeout_add(16, self._bst)
+        GLib.timeout_add(_FPS, self._bst)
         if emit and self._on_sel:
             nm = self.cur()
             if nm:
@@ -388,7 +413,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
             return False
         by = self._by + self._bvy
         bvy = self._bvy - 1.5
-        if by <= 0:
+        if by <= 0.0:
             bvy_abs = -bvy * 0.5
             if bvy_abs < 4.0:
                 self._bnc = False
@@ -412,7 +437,11 @@ class WallpaperCarousel(Gtk.DrawingArea):
     def cleanup(self):
         self._dead = True
         self._ex.shutdown(wait=False, cancel_futures=True)
+        for s in self._th.values():
+            s.finish()
         self._th.clear()
         self._ld.clear()
-        self._files = self._flt = ()
-        self._ph = None
+        self._files = self._flt = _EMPTY
+        if self._ph:
+            self._ph.finish()
+            self._ph = None
