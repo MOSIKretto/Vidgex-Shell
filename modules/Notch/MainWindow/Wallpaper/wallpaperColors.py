@@ -35,6 +35,16 @@ SCHEME_MAP = {
 
 _FALLBACK = 0xFF141318
 
+_SCHEME_CHROMA_FACTOR = {
+    "scheme-monochrome": 0.0,
+    "scheme-neutral":    0.28,
+    "scheme-tonal-spot": 1.0,
+    "scheme-content":    1.0,
+    "scheme-expressive": 1.0,
+    "scheme-fidelity":   1.0,
+    "scheme-fruit-salad":1.0,
+    "scheme-rainbow":    1.0,
+}
 
 def _rgb2argb(r, g, b):
     return 0xFF000000 | (r << 16) | (g << 8) | b
@@ -103,8 +113,22 @@ _Pal = _find_pal_class()
 
 def _hct2argb(hue, chroma, tone):
     hue = hue % 360
-    chroma = max(chroma, 0.5)
     tone = max(0, min(100, tone))
+
+    chroma = max(chroma, 0)
+
+    if chroma < 0.5:
+        t = tone / 100.0
+        if t <= 0.008856 * 903.3 / 100.0:
+            lin = t * 100.0 / 903.3
+        else:
+            lin = ((t * 100.0 + 16.0) / 116.0) ** 3
+        if lin <= 0.0031308:
+            s = lin * 12.92
+        else:
+            s = 1.055 * (lin ** (1.0 / 2.4)) - 0.055
+        v = max(0, min(255, int(s * 255 + 0.5)))
+        return _rgb2argb(v, v, v)
 
     if _Pal:
         for m in ("from_hue_and_chroma", "fromHueAndChroma"):
@@ -129,6 +153,15 @@ def _hct2argb(hue, chroma, tone):
         min(255, max(0, int(g * 255))),
         min(255, max(0, int(b * 255))),
     )
+
+def _apply_scheme_filter(hex_color, scheme_id):
+    factor = _SCHEME_CHROMA_FACTOR.get(scheme_id, 1.0)
+    if factor >= 1.0:
+        return hex_color
+    argb = 0xFF000000 | int(hex_color, 16)
+    h = _hct(argb)
+    new_chroma = h.chroma * factor
+    return _hex(_hct2argb(h.hue, new_chroma, h.tone))
 
 def _do_quantize(pixels, max_colors=128):
     try:
@@ -363,10 +396,7 @@ def _gen_customs(seed, palette, dark):
         "green": _hex(_gen_green(palette, dominant, dark, vibrancy)),
     }
 
-try:
-    _mdc = MaterialDynamicColors()
-except Exception:
-    _mdc = None
+_mdc = MaterialDynamicColors()
 
 _STD_ROLES = (
     "primary", "on_primary",
@@ -477,6 +507,9 @@ def _build(path, scheme_id, dark, contrast):
 
     p.update(_gen_customs(seed, palette, dark))
 
+    for key in list(p.keys()):
+        p[key] = _apply_scheme_filter(p[key], scheme_id)
+
     p["foreground"] = p["on_surface"]
     p["cursor"]     = p["on_surface"]
 
@@ -516,14 +549,7 @@ def _write_hypr(p, path):
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
 
-def apply_colors(
-    image_path=None,
-    scheme_id="scheme-tonal-spot",
-    css_path=None,
-    hypr_path=None,
-    dark=True,
-    contrast=0.0,
-):
+def apply_colors(image_path=None, scheme_id="scheme-tonal-spot", css_path=None, hypr_path=None, dark=True, contrast=0.0,):
     try:
         p = _build(image_path, scheme_id, dark, contrast)
         if not p:

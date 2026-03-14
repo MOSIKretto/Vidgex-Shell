@@ -4,18 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import (
-    _ARC_K,
-    _CR,
-    _DRAW_ORDER,
-    _HSZ,
-    _LOAD_RNG,
-    _NHSZ,
-    _SPC,
-    _STATIC,
-    _SUFFIX,
-    _SZ,
-    _THUMBS,
-    _WALLS,
+    _ARC_K, _CR, _DRAW_ORDER, _HSZ,
+    _LOAD_RNG, _NHSZ, _SPC, _STATIC,
+    _SUFFIX, _SZ, _THUMBS, _WALLS,
 )
 from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import _md5hex, _rpath
 

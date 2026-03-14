@@ -44,10 +44,9 @@ entry#search-entry-walls:focus {
 
 entry#search-entry-walls selection {
   background: var(--primary);
-  color: var(--on-primary);
+  color: var(--shadow);
 }
 
-/* ── Random button (1:1 mixer-section-title) ── */
 #random-wall-button {
   background-image: none;
   box-shadow: none;
@@ -200,7 +199,7 @@ entry#search-entry-walls selection {
 
 #scheme-list-item:hover label,
 #scheme-list-item:focus label {
-  color: var(--on-primary);
+  color: var(--shadow);
 }
 
 #scheme-list-item:active {
@@ -209,7 +208,7 @@ entry#search-entry-walls selection {
 }
 
 #scheme-list-item:active label {
-  color: var(--on-primary);
+  color: var(--shadow);
 }
 
 #matugen-switcher,
