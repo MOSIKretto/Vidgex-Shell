@@ -1,5 +1,4 @@
 import os
-import subprocess
 import threading
 from gi.repository import Gdk, GLib, Gtk
 
@@ -17,37 +16,38 @@ _WI = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
 _AN = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
 _ON, _OFF = "Enabled", "Disabled"
 
+def _ent(w, _):
+    if win := w.get_window():
+        if not getattr(w, '_cursor', None):
+            w._cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
+        win.set_cursor(w._cursor)
+
+def _lv(w, _):
+    if win := w.get_window():
+        win.set_cursor(None)
+
 def _hover(w):
     w.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
     w._cursor = None 
-
-    def ent(w, _):
-        win = w.get_window()
-        if win:
-            if not w._cursor:
-                w._cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
-            win.set_cursor(w._cursor)
-
-    def lv(w, _):
-        win = w.get_window()
-        if win:
-            win.set_cursor(None)
-
-    w.connect("enter-notify-event", ent)
-    w.connect("leave-notify-event", lv)
+    w.connect("enter-notify-event", _ent)
+    w.connect("leave-notify-event", _lv)
 
 
-def _chk(pat):
+def _fast_chk(pat):
+    pat_b = pat.encode()
     try:
-        r = subprocess.run(
-            ["pgrep", "-f", pat], 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
-        )
-        return r.returncode == 0
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                try:
+                    with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                        data = f.read()
+                        if pat_b in data or pat_b in data.replace(b'\x00', b' '):
+                            return True
+                except Exception:
+                    pass
     except Exception:
-        return False
-
+        pass
+    return False
 
 def _async_exec(target, callback=None):
     def worker():
@@ -56,33 +56,32 @@ def _async_exec(target, callback=None):
             GLib.idle_add(callback, res)
     threading.Thread(target=worker, daemon=True).start()
 
-
 def _dis(ws, disabled):
     m = "add_style_class" if disabled else "remove_style_class"
     for w in ws:
         getattr(w, m)("disabled")
 
-
 def _content(ic, ti, st):
     return Box(
         h_align="start", v_align="center", spacing=10,
-        children=[
+        children=(
             ic,
             Box(
                 orientation="v", h_align="start", v_align="center",
-                children=[
-                    Box(children=[ti, Box(h_expand=True)]),
-                    Box(children=[st, Box(h_expand=True)])
-                ]
+                children=(
+                    Box(children=(ti, Box(h_expand=True))),
+                    Box(children=(st, Box(h_expand=True)))
+                )
             )
-        ]
+        )
     )
 
 
 class NetworkButton(Box):
     __slots__ = ('_w', '_n', '_cl', '_aid', '_uid', '_ast', '_sw',
                  'network_icon', 'network_label', 'network_ssid',
-                 'network_status_button', 'network_menu_button', 'network_menu_label', '_last_ico')
+                 'network_status_button', 'network_menu_button', 'network_menu_label', 
+                 '_last_ico', '_en_hid', '_ssid_hid')
 
     def __init__(self, widgets=None, notch=None):
         super().__init__()
@@ -90,6 +89,7 @@ class NetworkButton(Box):
         self._aid = self._uid = None
         self._ast = 0
         self._last_ico = None
+        self._en_hid = self._ssid_hid = None
 
         self._cl = NetworkClient()
         self._build()
@@ -101,10 +101,15 @@ class NetworkButton(Box):
         self.network_label = Label(name="network-label", label="Wi-Fi", justification="left")
         self.network_ssid = Label(name="network-ssid", justification="left")
 
+        def _tog(*_):
+            if w := getattr(self._cl, "wifi_device", None):
+                if hasattr(w, "toggle_wifi"):
+                    w.toggle_wifi()
+
         self.network_status_button = Button(
             name="network-status-button", h_expand=True,
             child=_content(self.network_icon, self.network_label, self.network_ssid),
-            on_clicked=lambda *_: getattr(self._cl.wifi_device, "toggle_wifi", lambda: None)()
+            on_clicked=_tog
         )
         _hover(self.network_status_button)
 
@@ -129,9 +134,12 @@ class NetworkButton(Box):
 
     def _ready(self, *_):
         if wifi := self._cl.wifi_device:
-            wifi.connect('notify::enabled', lambda *_: self._sched())
-            wifi.connect('notify::ssid', lambda *_: self._sched())
+            self._en_hid = wifi.connect('notify::enabled', self._sched_cb)
+            self._ssid_hid = wifi.connect('notify::ssid', self._sched_cb)
             self._sched()
+
+    def _sched_cb(self, *_):
+        self._sched()
 
     def _sched(self):
         if self._uid: GLib.source_remove(self._uid)
@@ -206,6 +214,13 @@ class NetworkButton(Box):
         if self._uid:
             GLib.source_remove(self._uid)
             self._uid = None
+            
+        if self._cl and getattr(self._cl, 'wifi_device', None):
+            try:
+                if self._en_hid: self._cl.wifi_device.disconnect(self._en_hid)
+                if self._ssid_hid: self._cl.wifi_device.disconnect(self._ssid_hid)
+            except Exception: pass
+            
         self._cl = self._w = self._n = None
 
 
@@ -253,10 +268,11 @@ class BluetoothButton(Box):
         try:
             base_dir = "/sys/class/rfkill/"
             for d in os.listdir(base_dir):
-                with open(os.path.join(base_dir, d, "type"), "r") as f:
-                    if f.read().strip() == "bluetooth":
-                        with open(os.path.join(base_dir, d, "state"), "r") as sf:
-                            return sf.read().strip() == "1"
+                if os.path.exists(t_path := os.path.join(base_dir, d, "type")):
+                    with open(t_path, "r") as f:
+                        if f.read().strip() == "bluetooth":
+                            with open(os.path.join(base_dir, d, "state"), "r") as sf:
+                                return sf.read().strip() == "1"
         except Exception:
             pass
         return False
@@ -265,12 +281,12 @@ class BluetoothButton(Box):
         if self._pending: return
         self._pending = True
         
-        cmd = ["rfkill", "block" if self._en else "unblock", "bluetooth"]
-        def worker():
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            GLib.timeout_add(300, self.update_state)
-
-        threading.Thread(target=worker, daemon=True).start()
+        cmd = f"rfkill {'block' if self._en else 'unblock'} bluetooth"
+        try:
+            GLib.spawn_command_line_async(cmd)
+        except Exception: pass
+        
+        GLib.timeout_add(300, self.update_state)
 
     def _upd_ui(self, en):
         self._pending = False
@@ -318,14 +334,15 @@ class _ToggleBtn(Button):
         _async_exec(self._toggle, self._upd)
 
     def _toggle(self):
-        if _chk(self.PAT):
+        if _fast_chk(self.PAT):
             exec_shell_command_async(self.STOP)
             return False
         exec_shell_command_async(self.START)
         return True
 
     def update_state(self, *_):
-        _async_exec(lambda: _chk(self.PAT), self._upd)
+        _async_exec(lambda: _fast_chk(self.PAT), self._upd)
+        return False
 
     def _upd(self, en):
         self._st.set_label(_ON if en else _OFF)
@@ -348,30 +365,31 @@ class _ScriptToggleBtn(_ToggleBtn):
     def _toggle(self):
         if self._pid is not None:
             try:
-                os.kill(self._pid, 0)
                 os.kill(self._pid, 15)
                 self._pid = None
                 return False
             except OSError:
                 self._pid = None
 
-        if _chk(self.PAT):
+        if _fast_chk(self.PAT):
             exec_shell_command_async(self.STOP)
             self._pid = None
             return False
 
-        try:
-            pid, _, _, _ = GLib.spawn_async(
-                argv=["/bin/sh", "-c", self.START],
-                flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD
-            )
-            self._pid = pid
-            GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
-            return True
-        except Exception:
-            exec_shell_command_async(self.START)
-            self._pid = None
-            return True
+        def spawn_on_main():
+            try:
+                pid, _, _, _ = GLib.spawn_async(
+                    argv=["/bin/sh", "-c", self.START],
+                    flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD
+                )
+                self._pid = pid
+                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, self._on_exit)
+            except Exception:
+                exec_shell_command_async(self.START)
+                self._pid = None
+                
+        GLib.idle_add(spawn_on_main)
+        return True
 
     def _on_exit(self, pid, _):
         if self._pid == pid:
@@ -401,7 +419,6 @@ class AutolayoutButton(_ScriptToggleBtn):
 
     def __init__(self):
         super().__init__()
-
         self.set_tooltip_text("Auto Language")
         self.set_hexpand(False)
         
@@ -409,13 +426,7 @@ class AutolayoutButton(_ScriptToggleBtn):
             self.remove(self.get_child())
             
         self._ic = Label(name=f"{self.NAME}-icon", markup=icons.keyboard)
-        
-        custom_content = Box(
-            h_align="center", v_align="center",
-            children=[self._ic] 
-        )
-        
-        self.add(custom_content)
+        self.add(Box(h_align="center", v_align="center", children=(self._ic,)))
         self.show_all()
 
     def _upd(self, en):
@@ -436,18 +447,25 @@ class Buttons(Gtk.Grid):
         self.set_column_spacing(4)
         self.set_vexpand(False)
 
-        btns = [
+        btns = (
             NetworkButton(widgets, notch),
             BluetoothButton(widgets, notch),
             NightModeButton(),
             CaffeineButton(),
             EyesHandsButton()
-        ]
+        )
 
         for i, btn in enumerate(btns):
             self.attach(btn, i, 0, 1, 1)
 
-        self.network_button, self.bluetooth_button, self.night_mode_button, \
-        self.caffeine_button, self.eyes_hands_button = btns
+        (self.network_button, self.bluetooth_button, self.night_mode_button, 
+         self.caffeine_button, self.eyes_hands_button) = btns
 
         self.show_all()
+        
+    def cleanup(self):
+        for child in self.get_children():
+            try:
+                child.cleanup()
+            except AttributeError:
+                pass

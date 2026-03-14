@@ -1,3 +1,4 @@
+import subprocess
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import exec_shell_command_async, bulk_connect
 
@@ -135,6 +136,7 @@ class Wifi(Service):
         if s == NM.DeviceState.UNAVAILABLE: return "unavailable"
         return "unknown"
 
+
 class Ethernet(Service):
     @Signal
     def changed(self) -> None: ...
@@ -155,6 +157,7 @@ class Ethernet(Service):
     @Property(str, "readable")
     def icon_name(self) -> str:
         return "network-wired-symbolic" if self.internet == "activated" else "network-wired-disconnected-symbolic"
+
 
 class NetworkClient(Service):
     @Signal
@@ -231,3 +234,83 @@ class NetworkClient(Service):
                     c.delete()
                     return True
         return False
+
+    def disconnect_network(self) -> bool:
+        if self.wifi_device and self.wifi_device._device:
+            dev = self.wifi_device._device
+            active_conn = dev.get_active_connection()
+            if active_conn:
+                self._client.deactivate_connection(active_conn, None)
+                return True
+        return False
+
+    def get_network_password(self, ssid: str) -> str:
+        try:
+            result = subprocess.check_output(
+                ["nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", ssid],
+                stderr=subprocess.DEVNULL
+            ).decode("utf-8").strip()
+            return result
+        except Exception:
+            return ""
+
+    def get_network_details(self, ssid: str) -> dict:
+        details = {
+            "connected": False,
+            "strength": "Unknown",
+            "frequency": "Unknown",
+            "security": "Open",
+            "type": "Unknown",
+            "ip": "N/A",
+            "gateway": "N/A",
+            "dns": "N/A"
+        }
+
+        if self._client:
+            for c in self._client.get_connections():
+                s_w = c.get_setting_wireless()
+                if s_w and NM.utils_ssid_to_utf8(s_w.get_ssid().get_data()) == ssid:
+                    s_sec = c.get_setting_wireless_security()
+                    if s_sec:
+                        key_mgmt = s_sec.get_key_mgmt()
+                        details["security"] = str(key_mgmt).upper() if key_mgmt else "Secured"
+                    break
+
+        if not self.wifi_device or not self.wifi_device._device:
+            return details
+
+        dev = self.wifi_device._device
+        is_active = False
+
+        active_ap = dev.get_active_access_point()
+        if active_ap and active_ap.get_ssid():
+            active_ssid = NM.utils_ssid_to_utf8(active_ap.get_ssid().get_data())
+            if active_ssid == ssid:
+                is_active = True
+                details["connected"] = True
+
+        for ap in dev.get_access_points():
+            if ap.get_ssid() and NM.utils_ssid_to_utf8(ap.get_ssid().get_data()) == ssid:
+                details["strength"] = f"{ap.get_strength()}%"
+                freq = ap.get_frequency()
+                details["frequency"] = f"{freq/1000:.1f} GHz" if freq > 0 else "Unknown"
+                
+                if freq > 5000: details["type"] = "Wi-Fi 5 / 6"
+                elif freq > 0: details["type"] = "Wi-Fi 4"
+                break
+
+        if is_active:
+            active_conn = dev.get_active_connection()
+            if active_conn:
+                ip4 = active_conn.get_ip4_config()
+                if ip4:
+                    addrs = ip4.get_addresses()
+                    if addrs: details["ip"] = addrs[0].get_address()
+                    
+                    gw = ip4.get_gateway()
+                    details["gateway"] = gw if gw else "N/A"
+                    
+                    dns_list = ip4.get_nameservers()
+                    if dns_list: details["dns"] = ", ".join(dns_list)
+
+        return details

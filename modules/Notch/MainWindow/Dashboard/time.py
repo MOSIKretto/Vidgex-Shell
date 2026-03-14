@@ -1,85 +1,25 @@
 import datetime
 import random
+import re
 
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 from gi.repository import GLib, Pango
 
 
-_DIGIT_H = 5
-
 _GLYPHS = {
-    '0': [" /&@\\ ",
-          "|#  @|",
-          "|@  #|",
-          "|!  @|",
-          " \\@&/ "],
-
-    '1': ["  /#  ",
-          " /!@  ",
-          "   @  ",
-          "   #  ",
-          " &#@##"],
-
-    '2': [" /&@\\ ",
-          "    #|",
-          " /&@/ ",
-          "|!    ",
-          " \\@&/ "],
-
-    '3': [" /&@\\ ",
-          "    #|",
-          "  $#/ ",
-          "    @|",
-          " \\@&/ "],
-
-    '4': ["|\  #|",
-          "|!\ @|",
-          " \\@&@!",
-          "    #|",
-          "    @|"],
-
-    '5': [" /&@&!",
-          "|!    ",
-          " \\@&\\ ",
-          "    @|",
-          " \\@&/ "],
-
-    '6': [" /&@\\ ",
-          "|!    ",
-          "|@&$\\ ",
-          "|#  @|",
-          " \\@&/ "],
-
-    '7': ["|&@#@|",
-          "    #/",
-          "   $/ ",
-          "  @/  ",
-          " #/   "],
-
-    '8': [" /&@\\ ",
-          "|#  @|",
-          " \\$&/ ",
-          "|@  #|",
-          " \\@&/ "],
-
-    '9': [" /&@\\ ",
-          "|#  @|",
-          " \\@&#|",
-          "    @|",
-          " \\@&/ "],
-
-    ':': ["  ",
-          "$#",
-          "  ",
-          "#$",
-          "  "],
-
-    ':_off': ["  ",
-              "  ",
-              "  ",
-              "  ",
-              "  "],
+    '0': [" /&@\\ ", "|#  @|", "|@  #|", "|!  @|", " \\@&/ "],
+    '1': ["  /#  ", " /!@  ", "   @  ", "   #  ", " &#@##"],
+    '2': [" /&@\\ ", "    #|", " /&@/ ", "|!    ", " \\@&/ "],
+    '3': [" /&@\\ ", "    #|", "  $#/ ", "    @|", " \\@&/ "],
+    '4': ["|\\  #|", "|!\\ @|", " \\@&@!", "    #|", "    @|"],
+    '5': [" /&@&!", "|!    ", " \\@&\\ ", "    @|", " \\@&/ "],
+    '6': [" /&@\\ ", "|!    ", "|@&$\\ ", "|#  @|", " \\@&/ "],
+    '7': ["|&@#@|", "    #/", "   $/ ", "  @/  ", " #/   "],
+    '8': [" /&@\\ ", "|#  @|", " \\$&/ ", "|@  #|", " \\@&/ "],
+    '9': [" /&@\\ ", "|#  @|", " \\@&#|", "    @|", " \\@&/ "],
+    ':': ["  ", "$#", "  ", "#$", "  "],
+    ':_off': ["  ", "  ", "  ", "  ", "  "],
 }
 
 _FONT_PT = 7
@@ -95,51 +35,46 @@ _GL_SHIFT_MAX = 3
 
 _GL_RAND_MIN = 1
 _GL_RAND_MAX = 60
-
 _GL_REPEAT_CHANCE = 0.5
+
+_ESCAPE_MAP = str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;'})
+_BOLD_RE = re.compile(r'([^ ]+)')
 
 
 def _char_col_ranges(text):
     ranges = {}
     col = 0
-    first = True
     for idx, ch in enumerate(text):
         g = _GLYPHS.get(':' if ch == ':' else ch)
-        if g is None:
+        if not g:
             continue
-        if not first:
+        if idx > 0:
             col += 1
         w = len(g[0])
-        ranges[idx] = (col, col + w)
+        ranges[idx] = frozenset(range(col, col + w))
         col += w
-        first = False
     return ranges
 
-
 def _render_time(text, colon_visible=True):
-    rows = [''] * _DIGIT_H
-    first = True
-    for ch in text:
-        if ch == ':':
-            g = _GLYPHS[':' if colon_visible else ':_off']
-        else:
-            g = _GLYPHS.get(ch)
-        if g is None:
-            continue
-        for i in range(_DIGIT_H):
-            if not first:
-                rows[i] += ' '
-            rows[i] += g[i]
-        first = False
-    return rows
+    glyphs = [_GLYPHS[':' if colon_visible else ':_off'] if ch == ':' else _GLYPHS.get(ch, _GLYPHS[':']) for ch in text]
+    return [" ".join(row) for row in zip(*glyphs)]
 
+def _apply_glitch(rows, active_zones, progress):
+    inv_prog = 1.0 - progress
+    rate = _GL_CORRUPT_MAX * (inv_prog ** 1.5)
+    rate_bleed = rate * _GL_BLEED
+    flicker_prob = _GL_FLICKER * inv_prog
+    shift_prob = _GL_SHIFT_CHANCE * inv_prog
 
-def _apply_glitch(rows, changed_ranges, progress):
-    rate = _GL_CORRUPT_MAX * (1.0 - progress) ** 1.5
     result = []
+    
+    rand = random.random
+    randint = random.randint
+    choice = random.choice
+    chars_pool = _GL_CHARS
 
     for row in rows:
-        if random.random() < _GL_FLICKER * (1.0 - progress):
+        if rand() < flicker_prob:
             result.append(' ' * len(row))
             continue
 
@@ -147,16 +82,15 @@ def _apply_glitch(rows, changed_ranges, progress):
         w = len(chars)
 
         for j in range(w):
-            in_zone = any(s <= j < e for s, e in changed_ranges)
-            r = rate if in_zone else rate * _GL_BLEED
-            if random.random() < r:
-                if chars[j] != ' ' or random.random() < 0.3:
-                    chars[j] = random.choice(_GL_CHARS)
+            r = rate if j in active_zones else rate_bleed
+            if rand() < r:
+                if chars[j] != ' ' or rand() < 0.3:
+                    chars[j] = choice(chars_pool)
 
         line = ''.join(chars)
 
-        if random.random() < _GL_SHIFT_CHANCE * (1.0 - progress):
-            shift = random.randint(-_GL_SHIFT_MAX, _GL_SHIFT_MAX)
+        if rand() < shift_prob:
+            shift = randint(-_GL_SHIFT_MAX, _GL_SHIFT_MAX)
             if shift > 0:
                 line = ' ' * shift + line[:w - shift]
             elif shift < 0:
@@ -166,46 +100,26 @@ def _apply_glitch(rows, changed_ranges, progress):
 
     return result
 
-
-def _escape(text):
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-
 def _rows_to_bold_markup(rows):
-    """Каждый непробельный символ оборачивается в <b>."""
     markup_lines = []
     for row in rows:
-        parts = []
-        for ch in row:
-            esc = _escape(ch)
-            if ch != ' ':
-                parts.append(f'<b>{esc}</b>')
-            else:
-                parts.append(esc)
-        markup_lines.append(''.join(parts))
+        escaped = row.translate(_ESCAPE_MAP)
+        markup_lines.append(_BOLD_RE.sub(r'<b>\1</b>', escaped))
     return '\n'.join(markup_lines)
-
 
 class TimeWidget(Box):
     __slots__ = (
         '_time_lbl', '_date_lbl', '_tid', '_last_min', '_colon_on',
-        '_prev_time_str',
-        '_gl_active', '_gl_rem', '_gl_total', '_gl_tid', '_gl_ranges',
-        '_gl_rand_tid',
-        '_gl_is_random',
-        '_font_str',
+        '_prev_time_str', '_gl_active', '_gl_rem', '_gl_total', 
+        '_gl_tid', '_gl_active_zones', '_gl_rand_tid', 
+        '_gl_is_random', '_font_tmpl',
     )
 
     def __init__(self, **kwargs):
         super().__init__(
-            name="time-widget",
-            orientation="v",
-            spacing=1,
-            h_align="center",
-            v_align="center",
-            h_expand=False,
-            v_expand=True,
-            **kwargs,
+            name="time-widget", orientation="v", spacing=1,
+            h_align="center", v_align="center",
+            h_expand=False, v_expand=True, **kwargs,
         )
 
         self._time_lbl = Label(name="time-label", label="", h_align="center")
@@ -218,13 +132,14 @@ class TimeWidget(Box):
         self._gl_rem = 0
         self._gl_total = _GL_FRAMES
         self._gl_tid = None
-        self._gl_ranges = []
+        self._gl_active_zones = frozenset()
         self._gl_rand_tid = None
         self._gl_is_random = False
 
         font = Pango.FontDescription.from_string("monospace")
         font.set_size(_FONT_PT * Pango.SCALE)
-        self._font_str = font.to_string()
+        
+        self._font_tmpl = f'<span font_desc="{font.to_string()}">%s</span>'
 
         self.add(self._time_lbl)
         self.add(self._date_lbl)
@@ -234,10 +149,7 @@ class TimeWidget(Box):
         self._schedule_random_glitch()
 
     def _set_art(self, rows):
-        inner = _rows_to_bold_markup(rows)
-        self._time_lbl.set_markup(
-            f'<span font_desc="{self._font_str}">{inner}</span>'
-        )
+        self._time_lbl.set_markup(self._font_tmpl % _rows_to_bold_markup(rows))
 
     def _update(self):
         now = datetime.datetime.now()
@@ -288,12 +200,16 @@ class TimeWidget(Box):
 
     def _start_glitch(self, time_str, changed_indices):
         col_map = _char_col_ranges(time_str)
-        self._gl_ranges = [
-            col_map[i] for i in changed_indices if i in col_map
-        ]
-        if not self._gl_ranges:
+        
+        active_zones = set()
+        for i in changed_indices:
+            if i in col_map:
+                active_zones.update(col_map[i])
+
+        if not active_zones:
             return
 
+        self._gl_active_zones = frozenset(active_zones)
         self._gl_total = _GL_FRAMES
         self._gl_rem = _GL_FRAMES
         self._gl_active = True
@@ -303,12 +219,11 @@ class TimeWidget(Box):
         self._gl_tid = GLib.timeout_add(_GL_FRAME_MS, self._gl_tick)
 
     def _gl_tick(self):
-        now = datetime.datetime.now()
-        time_str = now.strftime("%H:%M")
+        time_str = datetime.datetime.now().strftime("%H:%M")
 
         progress = 1.0 - self._gl_rem / self._gl_total
         rows = _render_time(time_str, self._colon_on)
-        self._set_art(_apply_glitch(rows, self._gl_ranges, progress))
+        self._set_art(_apply_glitch(rows, self._gl_active_zones, progress))
 
         self._gl_rem -= 1
         if self._gl_rem <= 0:
@@ -327,8 +242,15 @@ class TimeWidget(Box):
         return True
 
     def cleanup(self):
-        for attr in ('_tid', '_gl_tid', '_gl_rand_tid'):
-            tid = getattr(self, attr, None)
-            if tid:
-                GLib.source_remove(tid)
-                setattr(self, attr, None)
+        if self._tid:
+            GLib.source_remove(self._tid)
+            self._tid = None
+        if self._gl_tid:
+            GLib.source_remove(self._gl_tid)
+            self._gl_tid = None
+        if self._gl_rand_tid:
+            GLib.source_remove(self._gl_rand_tid)
+            self._gl_rand_tid = None
+            
+        self._time_lbl = None
+        self._date_lbl = None

@@ -11,7 +11,6 @@ from gi.repository import Gdk, Gtk, GLib
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
 import services.icons as icons
 
-
 _audio = None
 
 def get_audio():
@@ -43,40 +42,34 @@ def _get_cursors(display: Gdk.Display):
     return _pointer_cursor, _default_cursor
 
 def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    if win:
-        pointer, _ = _get_cursors(win.get_display())
-        win.set_cursor(pointer)
+    if win := widget.get_window():
+        win.set_cursor(_get_cursors(win.get_display())[0])
     return False
 
 def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    if win:
-        _, default = _get_cursors(win.get_display())
-        win.set_cursor(default)
+    if win := widget.get_window():
+        win.set_cursor(_get_cursors(win.get_display())[1])
     return False
 
 def _setup_pointer_cursor(widget: Gtk.Widget):
-    widget.add_events(
-        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
-    )
+    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
     widget.connect("enter-notify-event", _on_btn_enter)
     widget.connect("leave-notify-event", _on_btn_leave)
 
 
 class _AudioScale(Scale):
-    __slots__ = ('audio', '_upd', '_s', '_hid', '_last_pct', '_type')
+    __slots__ = ('audio', '_upd', '_s', '_hid', '_audio_hid', '_last_pct', '_type')
 
     def __init__(self, stream_type, style, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.audio = get_audio()
         self._type = stream_type
         self._upd = False
-        self._s = self._hid = None
+        self._s = self._hid = self._audio_hid = None
         self._last_pct = -1
 
         self.add_style_class(style)
-        self.audio.connect(f"notify::{stream_type}", self._new_stream)
+        self._audio_hid = self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self.connect("value-changed", self._val_chg)
         self._new_stream()
 
@@ -84,6 +77,7 @@ class _AudioScale(Scale):
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
+            self._hid = None
         self._s = getattr(self.audio, self._type)
         if self._s:
             self._hid = self._s.connect("changed", self._ui)
@@ -105,7 +99,7 @@ class _AudioScale(Scale):
 
     def _val_chg(self, _):
         if self._upd or not self._s: return
-        nv = self.value * 100
+        nv = self.value * 100.0
         if abs(self._s.volume - nv) > 0.5:
             self._s.volume = nv
             pct = int(nv)
@@ -114,33 +108,37 @@ class _AudioScale(Scale):
                 self._last_pct = pct
 
     def cleanup(self):
+        if self._audio_hid and self.audio:
+            try: self.audio.disconnect(self._audio_hid)
+            except Exception: pass
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
-        self._s = self._hid = None
+        self._s = self._hid = self._audio_hid = self.audio = None
 
 
 class _AudioSmall(Box):
-    __slots__ = ('audio', '_s', '_hid', 'progress_bar', 'vol_label', '_last_vol', '_is_mic')
+    __slots__ = ('audio', '_s', '_hid', '_audio_hid', 'progress_bar', 'vol_label', '_last_vol', '_is_mic')
 
     def __init__(self, stream_type, box_name, prog_name, lbl_name, is_mic=False, **kwargs):
         super().__init__(name=box_name, **kwargs)
         self.audio = get_audio()
         self._is_mic = is_mic
-        self._s = self._hid = None
+        self._s = self._hid = self._audio_hid = None
         self._last_vol = -1
 
         self.progress_bar = CircularProgressBar(name=prog_name, size=28, line_width=2, start_angle=150, end_angle=390)
         self.vol_label = Label(name=lbl_name, markup=icons.mic if is_mic else icons.vol_high)
         self.add(Overlay(child=self.progress_bar, overlays=self.vol_label))
 
-        self.audio.connect(f"notify::{stream_type}", self._new_stream)
+        self._audio_hid = self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self._new_stream()
 
     def _new_stream(self, *_):
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
+            self._hid = None
         self._s = getattr(self.audio, "microphone" if self._is_mic else "speaker")
         if self._s:
             self._hid = self._s.connect("changed", self._ui)
@@ -165,26 +163,30 @@ class _AudioSmall(Box):
                 self.set_tooltip_text(f"Volume: {v}%" if v > 0 else "Muted")
 
     def cleanup(self):
+        if self._audio_hid and self.audio:
+            try: self.audio.disconnect(self._audio_hid)
+            except Exception: pass
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
-        self._s = self._hid = None
+        self._s = self._hid = self._audio_hid = self.audio = None
 
 
 class _AudioIcon(Box):
-    __slots__ = ('audio', '_s', '_hid', 'vol_label', 'vol_button',
-                 '_last_vol', '_is_mic',
-                 '_soft_muted', '_saved_vol', '_anim_id')
+    __slots__ = ('audio', '_s', '_hid', '_audio_hid', 'vol_label', 'vol_button',
+                 '_last_vol', '_is_mic', '_soft_muted', '_saved_vol', 
+                 '_anim_id', '_anim_start', '_anim_end', '_anim_step')
 
     def __init__(self, stream_type, box_name, lbl_name, is_mic=False, **kwargs):
         super().__init__(name=box_name, **kwargs)
         self.audio = get_audio()
         self._is_mic = is_mic
-        self._s = self._hid = None
+        self._s = self._hid = self._audio_hid = None
         self._last_vol = -1
         self._soft_muted = False
         self._saved_vol = 100.0
         self._anim_id = None
+        self._anim_start = self._anim_end = self._anim_step = 0
 
         self.vol_label = Label(name=lbl_name, markup=icons.mic if is_mic else "")
         self.vol_button = Button(on_clicked=self._tog, child=self.vol_label)
@@ -192,21 +194,21 @@ class _AudioIcon(Box):
 
         _setup_pointer_cursor(self.vol_button)
 
-        self.audio.connect(f"notify::{stream_type}", self._new_stream)
+        self._audio_hid = self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self._new_stream()
 
     def _new_stream(self, *_):
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
+            self._hid = None
         self._s = getattr(self.audio, "microphone" if self._is_mic else "speaker")
         if self._s:
             self._hid = self._s.connect("changed", self._ui)
             self._ui()
 
     def _tog(self, *_):
-        if not self._s:
-            return
+        if not self._s: return
 
         if self._anim_id is not None:
             GLib.source_remove(self._anim_id)
@@ -221,64 +223,58 @@ class _AudioIcon(Box):
             self._run_animation(to_zero=False)
 
     def _run_animation(self, to_zero: bool):
-        if not self._s:
+        if not self._s: return
+        self._anim_start = self._s.volume
+        self._anim_end = 0.0 if to_zero else self._saved_vol
+        
+        if abs(self._anim_start - self._anim_end) < 0.5:
+            self._s.volume = self._anim_end
             return
+            
+        self._anim_step = 0
+        self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, self._anim_tick)
 
-        start = self._s.volume
-        end = 0.0 if to_zero else self._saved_vol
+    def _anim_tick(self):
+        self._anim_step += 1
+        t = min(self._anim_step / float(_ANIM_STEPS), 1.0)
+        ease = 1.0 - (1.0 - t) ** 3
 
-        if abs(start - end) < 0.5:
-            self._s.volume = end
-            return
+        if self._s:
+            self._s.volume = self._anim_start + (self._anim_end - self._anim_start) * ease
 
-        step = [0]
-
-        def _tick():
-            step[0] += 1
-            t = min(step[0] / _ANIM_STEPS, 1.0)
-            ease = 1.0 - (1.0 - t) ** 3
-
-            if self._s:
-                self._s.volume = start + (end - start) * ease
-
-            if step[0] >= _ANIM_STEPS:
-                self._anim_id = None
-                return False
-            return True
-
-        self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
+        if self._anim_step >= _ANIM_STEPS:
+            self._anim_id = None
+            return False
+        return True
 
     def _ui(self, *_):
         if not self._s:
-            if not self._is_mic:
-                self.vol_label.set_markup("")
+            if not self._is_mic: self.vol_label.set_markup("")
             return
 
         v = int(self._s.volume)
-        if v == self._last_vol:
-            return
+        if v == self._last_vol: return
         self._last_vol = v
 
         if self._is_mic:
             self.vol_label.set_markup(icons.mic if v >= 1 else icons.mic_mute)
             self.set_tooltip_text(f"Microphone: {v}%" if v > 0 else "Microphone off")
         else:
-            is_bt = "bluetooth" in getattr(self._s, "icon_name", "")
-            im = _IB if is_bt else _IS
-            self.vol_label.set_markup(
-                im["high"] if v > 74 else (im["medium"] if v > 0 else im["off"])
-            )
+            im = _IB if "bluetooth" in getattr(self._s, "icon_name", "") else _IS
+            self.vol_label.set_markup(im["high"] if v > 74 else (im["medium"] if v > 0 else im["off"]))
             self.set_tooltip_text(f"Volume: {v}%" if v > 0 else "Muted")
 
     def cleanup(self):
         if self._anim_id is not None:
             GLib.source_remove(self._anim_id)
             self._anim_id = None
+        if self._audio_hid and self.audio:
+            try: self.audio.disconnect(self._audio_hid)
+            except Exception: pass
         if self._s and self._hid:
             try: self._s.disconnect(self._hid)
             except Exception: pass
-        self._s = self._hid = None
-
+        self._s = self._hid = self._audio_hid = self.audio = None
 
 class VolumeSlider(_AudioScale):
     def __init__(self, **kwargs): super().__init__("speaker", "vol", **kwargs)
@@ -300,13 +296,13 @@ class MicIcon(_AudioIcon):
 
 
 class BrightnessSlider(Scale):
-    __slots__ = ('client', '_upd', '_tid', '_target', '_last_pct')
+    __slots__ = ('client', '_upd', '_tid', '_target', '_last_pct', '_br_hid')
 
     def __init__(self, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
         self.client = Brightness.get_initial()
         self._upd = False
-        self._tid = None
+        self._tid = self._br_hid = None
         self._target = self._last_pct = -1
 
         if self.client.max_screen <= 0:
@@ -316,7 +312,7 @@ class BrightnessSlider(Scale):
 
         self.add_style_class("brightness")
         self.connect("value-changed", self._val_chg)
-        self.client.connect("screen", self._br_chg)
+        self._br_hid = self.client.connect("screen", self._br_chg)
         self._br_chg(None, self.client.screen_brightness)
 
     def _val_chg(self, _):
@@ -359,15 +355,20 @@ class BrightnessSlider(Scale):
         if self._tid:
             GLib.source_remove(self._tid)
             self._tid = None
+        if self._br_hid and self.client:
+            try: self.client.disconnect(self._br_hid)
+            except Exception: pass
+        self.client = self._br_hid = None
 
 
 class BrightnessSmall(Box):
-    __slots__ = ('brightness', 'progress_bar', 'brightness_label', '_last_pct')
+    __slots__ = ('brightness', 'progress_bar', 'brightness_label', '_last_pct', '_br_hid')
 
     def __init__(self, **kwargs):
         super().__init__(name="button-bar-brightness", **kwargs)
         self.brightness = Brightness.get_initial()
         self._last_pct = -1
+        self._br_hid = None
 
         if self.brightness.screen_brightness == -1: return
 
@@ -375,7 +376,7 @@ class BrightnessSmall(Box):
         self.brightness_label = Label(name="brightness-label", markup=icons.brightness_high)
         self.add(Overlay(child=self.progress_bar, overlays=self.brightness_label))
 
-        self.brightness.connect("screen", self._chg)
+        self._br_hid = self.brightness.connect("screen", self._chg)
         self._chg()
 
     def _chg(self, *_):
@@ -391,10 +392,17 @@ class BrightnessSmall(Box):
                 self.set_tooltip_text(f"Brightness: {p}%")
                 self._last_pct = p
 
+    def cleanup(self):
+        if self._br_hid and self.brightness:
+            try: self.brightness.disconnect(self._br_hid)
+            except Exception: pass
+        self.brightness = self._br_hid = None
+
 
 class BrightnessIcon(Box):
     __slots__ = ('brightness', 'brightness_label', '_btn', '_last_pct',
-                 '_soft_muted', '_saved_brightness', '_anim_id')
+                 '_soft_muted', '_saved_brightness', '_anim_id', '_br_hid',
+                 '_anim_start', '_anim_end', '_anim_step')
 
     def __init__(self, **kwargs):
         super().__init__(name="brightness-icon", **kwargs)
@@ -402,7 +410,8 @@ class BrightnessIcon(Box):
         self._last_pct = -1
         self._soft_muted = False
         self._saved_brightness = 0
-        self._anim_id = None
+        self._anim_id = self._br_hid = None
+        self._anim_start = self._anim_end = self._anim_step = 0
 
         if self.brightness.screen_brightness == -1: return
 
@@ -412,13 +421,11 @@ class BrightnessIcon(Box):
 
         _setup_pointer_cursor(self._btn)
 
-        self.brightness.connect("screen", self._chg)
+        self._br_hid = self.brightness.connect("screen", self._chg)
         self._chg()
 
     def _tog(self, *_):
-        mx = self.brightness.max_screen
-        if mx <= 0:
-            return
+        if self.brightness.max_screen <= 0: return
 
         if self._anim_id is not None:
             GLib.source_remove(self._anim_id)
@@ -433,32 +440,27 @@ class BrightnessIcon(Box):
             self._run_animation(to_zero=False)
 
     def _run_animation(self, to_zero: bool):
-        mx = self.brightness.max_screen
-        if mx <= 0:
+        self._anim_start = float(self.brightness.screen_brightness)
+        self._anim_end = 0.0 if to_zero else float(self._saved_brightness)
+
+        if abs(self._anim_start - self._anim_end) < 1:
+            self.brightness.screen_brightness = int(self._anim_end)
             return
 
-        start = float(self.brightness.screen_brightness)
-        end = 0.0 if to_zero else float(self._saved_brightness)
+        self._anim_step = 0
+        self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, self._anim_tick)
 
-        if abs(start - end) < 1:
-            self.brightness.screen_brightness = int(end)
-            return
+    def _anim_tick(self):
+        self._anim_step += 1
+        t = min(self._anim_step / float(_ANIM_STEPS), 1.0)
+        ease = 1.0 - (1.0 - t) ** 3
 
-        step = [0]
+        self.brightness.screen_brightness = int(self._anim_start + (self._anim_end - self._anim_start) * ease)
 
-        def _tick():
-            step[0] += 1
-            t = min(step[0] / _ANIM_STEPS, 1.0)
-            ease = 1.0 - (1.0 - t) ** 3
-
-            self.brightness.screen_brightness = int(start + (end - start) * ease)
-
-            if step[0] >= _ANIM_STEPS:
-                self._anim_id = None
-                return False
-            return True
-
-        self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
+        if self._anim_step >= _ANIM_STEPS:
+            self._anim_id = None
+            return False
+        return True
 
     def _chg(self, *_):
         mx = self.brightness.max_screen
@@ -474,6 +476,10 @@ class BrightnessIcon(Box):
         if self._anim_id is not None:
             GLib.source_remove(self._anim_id)
             self._anim_id = None
+        if self._br_hid and self.brightness:
+            try: self.brightness.disconnect(self._br_hid)
+            except Exception: pass
+        self.brightness = self._br_hid = None
 
 
 class ControlSliders(Box):
@@ -501,7 +507,8 @@ class ControlSliders(Box):
         boxes = (self._vol, self._mic, self._br) if self._br else (self._vol, self._mic)
         for box in boxes:
             for c in box.get_children():
-                if hasattr(c, 'cleanup'): c.cleanup()
+                try: c.cleanup()
+                except AttributeError: pass
 
 
 class ControlSmall(Box):
@@ -517,5 +524,6 @@ class ControlSmall(Box):
 
     def cleanup(self):
         for w in self._widgets:
-            if hasattr(w, 'cleanup'): w.cleanup()
+            try: w.cleanup()
+            except AttributeError: pass
         self._widgets = ()

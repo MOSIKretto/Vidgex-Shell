@@ -160,15 +160,13 @@ close: str = "&#xeb55;"
 add: str = "&#xeb0b;"
 plus: str = "&#xeb0b;"
 minus: str = "&#xeaf2;"
-check: str = "&#xea5e;"
-x: str = "&#xeb55;"
 search: str = "&#xeb1c;"
 filter: str = "&#xeabd;"
 edit: str = "&#xea98;"
 copy: str = "&#xea7a;"
 cut: str = "&#xea7c;"
 paste: str = "&#xeaf5;"
-save: str = "&#xeb49;"
+save: str = "&#xfdb0;"
 undo: str = "&#xeb45;"
 redo: str = "&#xeb0e;"
 send: str = "&#xeb1b;"
@@ -392,6 +390,8 @@ pinned_off: str = "&#xed61;"
 bookmark: str = "&#xea3a;"
 bookmark_off: str = "&#xecf2;"
 bookmarks: str = "&#xed08;"
+eye_closed: str = "&#xecf0;"
+eye_check: str = "&#xea9a;"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIRM / STATUS
@@ -410,7 +410,6 @@ exclamation_mark: str = "&#xefb3;"
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIG / SETTINGS
 # ══════════════════════════════════════════════════════════════════════════════
-config: str = "&#xeb20;"
 settings: str = "&#xeb20;"
 settings_off: str = "&#xf3c0;"
 tool: str = "&#xeb40;"
@@ -508,21 +507,6 @@ compass: str = "&#xea77;"
 navigation: str = "&#xeaff;"
 current_location: str = "&#xea81;"
 globe: str = "&#xeb54;"
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  WEATHER
-# ══════════════════════════════════════════════════════════════════════════════
-cloud_rain: str = "&#xea76;"
-cloud_snow: str = "&#xea77;"
-cloud_storm: str = "&#xea78;"
-snowflake: str = "&#xef56;"
-tornado: str = "&#xf580;"
-wind: str = "&#xeb53;"
-temperature: str = "&#xeb38;"
-thermometer: str = "&#xeb3c;"
-umbrella: str = "&#xeb44;"
-droplet: str = "&#xea97;"
-rainbow: str = "&#xedbc;"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SHAPES / DECORATIVE

@@ -21,31 +21,29 @@ def _get_cursors(display: Gdk.Display):
 
 
 def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    if win:
-        pointer, _ = _get_cursors(win.get_display())
-        win.set_cursor(pointer)
+    if win := widget.get_window():
+        win.set_cursor(_get_cursors(win.get_display())[0])
     return False
 
 
 def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    if win:
-        _, default = _get_cursors(win.get_display())
-        win.set_cursor(default)
+    if win := widget.get_window():
+        win.set_cursor(_get_cursors(win.get_display())[1])
     return False
 
 
 def _setup_pointer_cursor(widget: Gtk.Widget):
-    widget.add_events(
-        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
-    )
+    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
     widget.connect("enter-notify-event", _on_btn_enter)
     widget.connect("leave-notify-event", _on_btn_leave)
 
 
 class Calendar(Gtk.Box):
-    __slots__ = ('view_mode', 'first_weekday', 'ty', 'tm', 'td', 'sy', 'sm', 'sd', '_pb', '_nb', '_ml', '_hdr', '_wr', 'stack', '_page_counter')
+    __slots__ = (
+        'view_mode', 'first_weekday', 'ty', 'tm', 'td', 'sy', 'sm', 'sd',
+        '_pb', '_nb', '_ml', '_hdr', '_wr', 'stack', 
+        '_active_page', '_grids', '_labels'
+    )
 
     _M = (
         "January", "February", "March", "April",
@@ -59,7 +57,10 @@ class Calendar(Gtk.Box):
 
         self.view_mode = view_mode
         self.first_weekday = first_weekday
-        self._page_counter = 0
+        
+        self._active_page = 0
+        self._grids = []
+        self._labels = [[], []]
 
         if view_mode == "month":
             self.set_halign(Gtk.Align.CENTER)
@@ -82,16 +83,12 @@ class Calendar(Gtk.Box):
         self._pb.connect("clicked", self._prev)
         self._nb.connect("clicked", self._next)
 
-        # ── pointer cursor on nav buttons ──
         _setup_pointer_cursor(self._pb)
         _setup_pointer_cursor(self._nb)
 
         self._hdr = CenterBox(
-            spacing=4,
-            name="header",
-            start_children=(self._pb,),
-            center_children=(self._ml,),
-            end_children=(self._nb,)
+            spacing=4, name="header",
+            start_children=(self._pb,), center_children=(self._ml,), end_children=(self._nb,)
         )
         self.add(self._hdr)
 
@@ -106,8 +103,22 @@ class Calendar(Gtk.Box):
         self.stack.set_transition_duration(300)
         self.pack_start(self.stack, True, True, 0)
 
-        self._upd(transition=Gtk.StackTransitionType.NONE)
+        rows = 6 if self.view_mode == "month" else 1
+        grid_name = "calendar-grid" if self.view_mode == "month" else "calendar-grid-week-view"
+        
+        for i in range(2):
+            grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name=grid_name)
+            for r in range(rows):
+                for c in range(7):
+                    lbl = Gtk.Label(name="day-label", valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
+                    grid.attach(lbl, c, r, 1, 1)
+                    self._labels[i].append(lbl)
+            self.stack.add_named(grid, f"page_{i}")
+            self._grids.append(grid)
+
         self.show_all()
+        
+        self._upd(transition=Gtk.StackTransitionType.NONE)
 
     def _rst(self):
         if self.view_mode == "month":
@@ -121,39 +132,21 @@ class Calendar(Gtk.Box):
     def _upd(self, transition=Gtk.StackTransitionType.NONE):
         self._ml.set_text(f"{self._M[self.sm - 1]} {self.sy}")
 
-        visible_child = self.stack.get_visible_child()
-        for child in self.stack.get_children():
-            if child != visible_child:
-                self.stack.remove(child)
-                child.destroy()
-
-        new_grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False)
-        new_grid.set_name("calendar-grid" if self.view_mode == "month" else "calendar-grid-week-view")
-
-        rows = 6 if self.view_mode == "month" else 1
-        labels = []
-        for r in range(rows):
-            for c in range(7):
-                lbl = Gtk.Label(name="day-label", valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
-                new_grid.attach(lbl, c, r, 1, 1)
-                labels.append(lbl)
+        target_page = 0 if transition == Gtk.StackTransitionType.NONE else 1 - self._active_page
+        target_labels = self._labels[target_page]
 
         if self.view_mode == "month":
-            self._um(labels)
+            self._um(target_labels)
         else:
-            self._uw(labels)
+            self._uw(target_labels)
 
-        new_grid.show_all()
-
-        self._page_counter += 1
-        page_name = f"page_{self._page_counter}"
-
-        self.stack.add_named(new_grid, page_name)
-
+        page_name = f"page_{target_page}"
         if transition != Gtk.StackTransitionType.NONE:
             self.stack.set_visible_child_full(page_name, transition)
         else:
             self.stack.set_visible_child_name(page_name)
+            
+        self._active_page = target_page
 
     def _um(self, labels):
         f_wd, mdays = calendar.monthrange(self.sy, self.sm)
@@ -166,7 +159,8 @@ class Calendar(Gtk.Box):
 
         for i, lbl in enumerate(labels):
             ctx = lbl.get_style_context()
-            if ctx.has_class("current-day"): ctx.remove_class("current-day")
+            if ctx.has_class("current-day"): 
+                ctx.remove_class("current-day")
 
             day = i - off + 1
 
@@ -228,5 +222,12 @@ class Calendar(Gtk.Box):
         self._upd(transition=Gtk.StackTransitionType.SLIDE_LEFT)
 
     def cleanup(self):
+        if self.stack:
+            self.stack.destroy()
+        
         self._pb = self._nb = self._ml = None
         self._hdr = self._wr = self.stack = None
+        
+        self._grids.clear()
+        self._labels[0].clear()
+        self._labels[1].clear()

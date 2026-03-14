@@ -1,7 +1,11 @@
+/* =========================================================
+   DASHBOARD BUTTONS & TOGGLES 
+   ========================================================= */
 #bluetooth-scan,
 #bluetooth-back,
 #network-scan,
 #network-back,
+#network-saved,
 #bluetooth-connect,
 #wifi-connect,
 #wifi-delete,
@@ -37,6 +41,7 @@
 #network-back-label,
 #bluetooth-scan-label,
 #network-scan-label,
+#network-saved-label,
 #wifi-delete-label,
 #bluetooth-delete-label,
 #bluetooth-connection {
@@ -48,6 +53,7 @@
 #bluetooth-back:hover,
 #network-scan:hover,
 #network-back:hover,
+#network-saved:hover,
 #bluetooth-connect:hover,
 #wifi-connect:hover {
   background-color: var(--surface-bright);
@@ -57,7 +63,8 @@
 #bluetooth-text,
 #network-text,
 #bluetooth-section,
-#network-section {
+#network-section,
+.header-title {
   font-weight: bold;
 }
 
@@ -94,13 +101,173 @@
   color: var(--primary);
 }
 
-/* --- SCANNING ANIMATION --- */
+/* --- PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) --- */
+#bluetooth-scan.pressed, #bluetooth-back.pressed,
+#network-scan.pressed, #network-back.pressed, #network-saved.pressed,
+#bluetooth-connect.pressed, #wifi-connect.pressed,
+#bluetooth-scan:active, #bluetooth-back:active,
+#network-scan:active, #network-back:active, #network-saved:active,
+#bluetooth-connect:active, #wifi-connect:active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+#bluetooth-scan.pressed *, #bluetooth-scan.pressed label,
+#bluetooth-back.pressed *, #bluetooth-back.pressed label,
+#network-scan.pressed *,   #network-scan.pressed label,
+#network-back.pressed *,   #network-back.pressed label,
+#network-saved.pressed *,  #network-saved.pressed label,
+#bluetooth-connect.pressed *, #bluetooth-connect.pressed label,
+#wifi-connect.pressed *,   #wifi-connect.pressed label,
+#bluetooth-scan:active *,  #bluetooth-scan:active label,
+#bluetooth-back:active *,  #bluetooth-back:active label,
+#network-scan:active *,    #network-scan:active label,
+#network-back:active *,    #network-back:active label,
+#network-saved:active *,   #network-saved:active label,
+#bluetooth-connect:active *, #bluetooth-connect:active label,
+#wifi-connect:active *,    #wifi-connect:active label {
+  color: var(--on-primary);
+}
+
+/* --- RED BACKGROUND STATE (DELETE BUTTONS) --- */
+#wifi-delete.pressed, #bluetooth-delete.pressed,
+#wifi-delete:active, #bluetooth-delete:active,
+#wifi-delete:hover, #bluetooth-delete:hover {
+  background-color: var(--error);
+  border-color: var(--error);
+  color: var(--on-primary);
+}
+
+#wifi-delete.pressed *, #wifi-delete.pressed label, #wifi-delete.pressed #wifi-delete-label,
+#bluetooth-delete.pressed *, #bluetooth-delete.pressed label, #bluetooth-delete.pressed #bluetooth-delete-label,
+#wifi-delete:active *, #wifi-delete:active label, #wifi-delete:active #wifi-delete-label,
+#bluetooth-delete:active *, #bluetooth-delete:active label, #bluetooth-delete:active #bluetooth-delete-label,
+#wifi-delete:hover *, #wifi-delete:hover label, #wifi-delete:hover #wifi-delete-label,
+#bluetooth-delete:hover *, #bluetooth-delete:hover label, #bluetooth-delete:hover #bluetooth-delete-label {
+  color: var(--on-primary);
+}
+
+#bluetooth-connect.connected.pressed,
+#bluetooth-connect.connected:active {
+  background-color: var(--shadow);
+  border-color: var(--shadow);
+  color: var(--cursor);
+}
+
+#bluetooth-connect.connected.pressed *,
+#bluetooth-connect.connected:active * {
+  color: var(--cursor);
+}
+
+/* =========================================================
+   PIXEL UI: СТИЛИ ДЛЯ BLUETOOTH И WI-FI АППЛЕТОВ
+   ========================================================= */
+
+.section-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--outline);
+  margin-left: 12px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+#dim-label {
+  color: var(--outline);
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.pixel-icon-button {
+  background-color: transparent;
+  color: var(--outline);
+  border-radius: 100px;
+  padding: 8px;
+  border: none;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+.pixel-icon-button label {
+  font-size: 20px;
+}
+
+.pixel-icon-button:hover {
+  background-color: var(--surface-bright);
+  color: var(--primary);
+}
+
+.pixel-icon-button:active {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.pixel-icon-button:active label {
+  color: var(--on-primary);
+}
+
+.pixel-primary-btn {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: 20px;
+  padding: 10px 28px;
+  font-weight: bold;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.pixel-primary-btn:hover {
+  background-color: var(--surface-bright);
+  color: var(--primary);
+}
+
+.pixel-primary-btn:active {
+  background-color: var(--primary);
+  opacity: 0.8;
+}
+
+.pixel-slot {
+  border-radius: 16px;
+  background-color: transparent;
+  padding: 8px 12px;
+  transition: background-color 0.2s ease;
+}
+
+.pixel-slot:hover {
+  background-color: var(--surface);
+}
+
+.active-slot:hover {
+  background-color: var(--surface);
+}
+
+.active-icon {
+  color: var(--primary);
+}
+
+.pixel-icon-button.active-settings-btn,
+.pixel-icon-button.active-settings-btn label {
+  color: var(--primary);
+}
+
+.pixel-icon-button.active-settings-btn:active,
+.pixel-icon-button.active-settings-btn:active label {
+  color: var(--on-primary);
+}
+
+.lock-icon {
+  color: var(--foreground);
+  font-size: 20px;
+}
+
+/* =========================================================
+   SCANNING ANIMATIONS
+   ========================================================= */
 #bluetooth-scan.scanning,
 #network-scan.scanning {
-  background: linear-gradient(90deg, 
-    var(--surface) 25%, 
-    var(--surface-bright) 50%, 
-    var(--surface) 75%);
+  color: var(--primary);
+  background: linear-gradient(90deg, transparent 25%, var(--surface-bright) 50%, transparent 75%);
   background-size: 200% 100%;
   border-color: var(--primary);
   animation-name: scanning-shine;
@@ -116,163 +283,242 @@
 }
 
 /* =========================================================
-   PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) 
+   PASSWORD ENTRY CONTAINER (PIXEL PILL DESIGN)
    ========================================================= */
-#bluetooth-scan.pressed,
-#bluetooth-back.pressed,
-#network-scan.pressed,
-#network-back.pressed,
-#bluetooth-connect.pressed,
-#wifi-connect.pressed,
-#bluetooth-scan:active,
-#bluetooth-back:active,
-#network-scan:active,
-#network-back:active,
-#bluetooth-connect:active,
-#wifi-connect:active {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: var(--on-primary);
-}
 
-#bluetooth-scan.pressed *, #bluetooth-scan.pressed label,
-#bluetooth-back.pressed *, #bluetooth-back.pressed label,
-#network-scan.pressed *,   #network-scan.pressed label,
-#network-back.pressed *,   #network-back.pressed label,
-#bluetooth-connect.pressed *, #bluetooth-connect.pressed label,
-#wifi-connect.pressed *,   #wifi-connect.pressed label,
-#bluetooth-scan:active *,  #bluetooth-scan:active label,
-#bluetooth-back:active *,  #bluetooth-back:active label,
-#network-scan:active *,    #network-scan:active label,
-#network-back:active *,    #network-back:active label,
-#bluetooth-connect:active *, #bluetooth-connect:active label,
-#wifi-connect:active *,    #wifi-connect:active label {
-  color: var(--on-primary);
-}
-
-/* =========================================================
-   RED BACKGROUND STATE (DELETE BUTTONS)
-   ========================================================= */
-#wifi-delete.pressed,
-#bluetooth-delete.pressed,
-#wifi-delete:active,
-#bluetooth-delete:active,
-#wifi-delete:hover,
-#bluetooth-delete:hover {
-  background-color: var(--error);
-  border-color: var(--error);
-  color: var(--on-primary);
-}
-
-/* Красим иконки мусорки в --on-primary (явно обращаемся к их ID) */
-#wifi-delete.pressed *, #wifi-delete.pressed label, #wifi-delete.pressed #wifi-delete-label,
-#bluetooth-delete.pressed *, #bluetooth-delete.pressed label, #bluetooth-delete.pressed #bluetooth-delete-label,
-#wifi-delete:active *, #wifi-delete:active label, #wifi-delete:active #wifi-delete-label,
-#bluetooth-delete:active *, #bluetooth-delete:active label, #bluetooth-delete:active #bluetooth-delete-label,
-#wifi-delete:hover *, #wifi-delete:hover label, #wifi-delete:hover #wifi-delete-label,
-#bluetooth-delete:hover *, #bluetooth-delete:hover label, #bluetooth-delete:hover #bluetooth-delete-label {
-  color: var(--on-primary);
-}
-
-/* --- CONNECTED + PRESSED OVERRIDE --- */
-#bluetooth-connect.connected.pressed,
-#bluetooth-connect.connected:active {
-  background-color: var(--shadow);
-  border-color: var(--shadow);
-  color: var(--cursor);
-}
-
-#bluetooth-connect.connected.pressed *,
-#bluetooth-connect.connected:active * {
-  color: var(--cursor);
-}
-
-/* =========================================================
-   PASSWORD ENTRY CONTAINER
-   ========================================================= */
-#password-entry-container {
-  background-color: var(--surface);
-  border-radius: 12px;
-  padding: 16px;
-  margin: 8px;
-  border: 1px solid var(--surface-bright);
-}
-
-#password-entry-container entry {
-  background-color: var(--surface);
-  border: 1px solid var(--surface-bright);
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-
-#password-entry-container entry:focus {
-  border-color: var(--primary);
-  border-width: 1px;
-}
-
-#password-entry-container button {
-  background-color: var(--surface);
-  border-radius: 8px; 
-  padding: 8px;
-  margin: 2px;
-  border: 1px solid var(--surface-bright);
-  transition: all 0.1s ease;
-  font-weight: bold;
-}
-
-/* Кнопка Cancel (первая) */
-#password-entry-container button:first-child {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-#password-entry-container button:first-child:hover {
-  background-color: var(--surface-bright);
-  border-color: var(--error);
-}
-
-#password-entry-container button:first-child:active {
-  background-color: var(--error);
-  border-color: var(--error);
-  color: var(--on-primary); /* Исправлено с --cursor на --on-primary */
-}
-
-#password-entry-container button:first-child:active *,
-#password-entry-container button:first-child:active label {
-  color: var(--on-primary); 
-}
-
-#password-entry-container button:last-child {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-#password-entry-container button:last-child:hover {
-  background-color: var(--surface-bright);
-  border-color: var(--primary);
-}
-
-#password-entry-container button:last-child:disabled {
+#pw-wrapper {
   background-color: transparent;
-  border-color: var(--surface-bright);
+  padding: 0;
+  margin: 2px 12px 12px 40px; 
+}
+
+#pw-pill {
+  background-color: var(--surface-bright);
+  border: 1px solid transparent;
+  border-radius: 100px;
+  padding: 2px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+#pw-pill:focus-within {
+  background-color: var(--surface);
+  border: 1px solid var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05); 
+}
+
+.pw-entry-naked {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--fg);
+  font-size: 14px;
+  min-height: 34px; 
+  padding: 0 4px;
+}
+
+.pw-entry-naked:focus {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.pw-reveal-btn {
+  background-color: transparent;
+  border-radius: 100px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: none;
+  box-shadow: none;
   color: var(--outline);
+  transition: all 0.2s ease;
+}
+
+.pw-reveal-btn label {
+  font-size: 16px;
+  transition: color 0.2s ease;
+}
+
+.pw-reveal-btn:hover {
+  background-color: var(--surface);
+  color: var(--primary);
+}
+
+#pw-pill:focus-within .pw-reveal-btn {
+  color: var(--primary);
+}
+
+.pw-submit-btn {
+  border-radius: 100px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pw-submit-btn label {
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.pw-submit-btn:disabled,
+.pw-submit-btn:disabled:hover,
+.pw-submit-btn:disabled:active {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.pw-submit-btn:disabled label {
+  color: var(--outline);
+  opacity: 0.5;
+}
+
+.pw-submit-btn:not(:disabled) {
+  background-color: var(--primary);
+}
+
+.pw-submit-btn:not(:disabled) label {
+  color: var(--on-primary);
+  opacity: 1;
+}
+
+.pw-submit-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.pw-submit-btn:active:not(:disabled) {
+  background-color: var(--primary);
   opacity: 0.6;
 }
 
-#password-entry-container button:last-child:active {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: var(--on-primary);
-}
-
-#password-entry-container button:last-child:active *,
-#password-entry-container button:last-child:active label {
-  color: var(--on-primary);
-}
-
-#bluetooth-devices-scroll,
-#bluetooth-devices-scroll viewport {
+/* =========================================================
+   SCROLL FIXES
+   ========================================================= */
+#bluetooth-devices,
+#bluetooth-devices viewport {
   background: transparent;
+}
+
+scrollbar, scrollbar trough {
+  background: transparent;
+  border: none;
+  min-width: 4px; 
+}
+
+scrollbar slider {
+  background-color: rgba(128, 128, 128, 0.3);
+  border-radius: 100px;
+  margin: 2px;
+}
+
+scrollbar slider:hover {
+  background-color: rgba(128, 128, 128, 0.6);
+}
+
+scrollbar slider:active {
+  background-color: var(--primary);
+}
+
+/* =========================================================
+   NETWORK SETTINGS PAGE (SEAMLESS PIXEL UI)
+   ========================================================= */
+
+/* Убираем грубую внешнюю рамку, делаем список прозрачным и воздушным */
+.net-info-group {
+  background-color: transparent;
+  padding: 0;
+  margin: 8px 0;
+}
+
+/* Каждая информационная строка выглядит в точности как слот Wi-Fi сети в списке */
+.net-info-row {
+  border-radius: 16px;
+  background-color: transparent;
+  padding: 10px 12px;
+  transition: background-color 0.2s ease;
+}
+
+.net-info-row:hover {
+  background-color: var(--surface);
+}
+
+/* Кнопки действий (Удалить, Отключить, Поделиться) сделаны "таблетками" под стать pw-pill */
+.net-action-btn {
+  background-color: var(--surface-bright);
+  border-radius: 100px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  font-weight: bold;
+  color: var(--fg);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: none;
+}
+
+.net-action-btn label {
+  font-size: 13px;
+}
+
+.net-action-btn:hover {
+  background-color: var(--surface);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+}
+
+.net-action-btn:active,
+.net-action-btn.active {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.net-action-btn.active label {
+  color: var(--on-primary);
+}
+
+/* Специальный стиль для кнопки Forget */
+.net-action-btn.net-forget:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.net-action-btn.net-forget:active {
+  background-color: var(--error);
+  color: var(--on-primary);
+}
+
+/* Отключенная кнопка (например, Disconnect) */
+.net-action-btn:disabled {
+  background-color: transparent;
+  color: var(--outline);
+  border: 1px solid var(--surface-bright);
+  opacity: 0.5;
+}
+
+/* --- QR Code Share Section --- */
+.qr-container {
+  background-color: transparent;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+/* Белый фон обязателен для QR-кода, чтобы камеры легко его считывали */
+.qr-img {
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+/* Стиль моноширинного шрифта для пароля - форма таблетки как у поля ввода */
+.qr-password-text {
+  font-family: monospace;
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--fg);
+  background-color: var(--surface-bright);
+  padding: 10px 24px;
+  border-radius: 100px;
+  margin-top: 16px;
 }

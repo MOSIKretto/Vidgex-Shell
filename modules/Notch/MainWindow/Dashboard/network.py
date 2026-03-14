@@ -1,117 +1,183 @@
+import os
+import subprocess
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
+from fabric.widgets.stack import Stack
 
-from gi.repository import Gtk, NM, GLib
+from gi.repository import Gtk, NM, GLib, Gdk
 
 import services.icons as icons
 from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 
 
 class WifiSlot(Gtk.Box):
-    __slots__ = ('nc', 'parent_list', 'rcb', 'ssid', 'saved', 'conn',
-                 'icon', 'name_lbl', 'str_lbl', 'act_box',
-                 'lbl_conn', 'btn_conn', 'btn_del', 'btn_unavail',
-                 'pw_rev', 'pw_entry', 'btn_pw_ok', '_anim_id', '_target_height')
+    __slots__ = (
+        'nc', 'parent_net', 'ssid', 'saved', 'conn',
+        'click_area', 'main_box', 'icon', 'name_lbl', 'status_lbl', 
+        'end_box', 'btn_settings', 'lock_icon',
+        'pw_rev', 'pw_pill', 'btn_pw_reveal', 'pw_entry', 'btn_pw_ok', 
+        '_anim_id', '_target_height', '_cached_vadj', '_cached_scroll_h'
+    )
     
     _active_pw_slot = None
 
-    def __init__(self, nc, parent_list, rcb):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, name="wifi-network-slot")
+    def __init__(self, nc, parent_net):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
         
         self.nc = nc
-        self.parent_list = parent_list
-        self.rcb = rcb
+        self.parent_net = parent_net
+        
         self.ssid = None
-        self.saved = self.conn = False
+        self.saved = False
+        self.conn = False
         self._anim_id = None
         self._target_height = 0
+        self._cached_vadj = None
+        self._cached_scroll_h = 0
+
+        self.click_area = Gtk.EventBox()
+        self.click_area.connect("button-press-event", self._on_click)
+        self._setup_hover()
+
+        self.main_box = CenterBox()
+        self.main_box.get_style_context().add_class("pixel-slot")
 
         self.icon = Image(size=16)
         self.name_lbl = Label(h_expand=True, h_align="start", ellipsization="end")
-        self.str_lbl = Label()
+        self.status_lbl = Label(label="", h_expand=True, h_align="start", name="dim-label")
 
-        start_box = Box(spacing=8, h_expand=True, h_align="fill", children=(self.icon, self.name_lbl, self.str_lbl))
-        self.act_box = Box(orientation="horizontal", spacing=4)
+        text_box = Box(orientation="v", children=(self.name_lbl, self.status_lbl))
+        start_box = Box(spacing=12, v_align="center", children=(self.icon, text_box))
 
-        self.lbl_conn = Label(label="Connected", name="wifi-connected-label")
-        
-        self.btn_conn = Button(name="wifi-connect", label="Connect")
-        self.btn_conn.connect("clicked", self._on_conn)
-        
-        self.btn_del = Button(name="wifi-delete", child=Label(name="wifi-delete-label", markup=icons.trash), tooltip_text="Delete network")
-        self.btn_del.connect("clicked", self._on_del)
-        
-        self.btn_unavail = Button(name="wifi-unavailable", label="Unavailable", sensitive=False, can_focus=False)
-        self.btn_unavail.get_style_context().add_class("unavailable-network")
+        self.end_box = Box(orientation="horizontal", v_align="center")
 
-        self.act_box.pack_start(self.lbl_conn, False, False, 0)
-        self.act_box.pack_start(self.btn_conn, False, False, 0)
-        self.act_box.pack_start(self.btn_unavail, False, False, 0)
-        self.act_box.pack_start(self.btn_del, False, False, 0)
+        self.btn_settings = Button(
+            child=Label(markup=icons.settings),
+            tooltip_text="Network Settings",
+            on_clicked=self._on_settings
+        )
+        self.btn_settings.get_style_context().add_class("pixel-icon-button")
+        self.btn_settings.get_style_context().add_class("settings-btn")
 
-        main_row = CenterBox(start_children=start_box, end_children=self.act_box)
-        self.pack_start(main_row, True, True, 0)
+        self.lock_icon = Label(markup=icons.lock)
+        self.lock_icon.get_style_context().add_class("lock-icon")
+        self.lock_icon.set_margin_end(8)
+
+        self.end_box.add(self.btn_settings)
+        self.end_box.add(self.lock_icon)
+
+        self.main_box.add_start(start_box)
+        self.main_box.add_end(self.end_box)
+        self.click_area.add(self.main_box)
+        self.pack_start(self.click_area, False, False, 0)
 
         self.pw_rev = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN)
         self.pw_rev.set_transition_duration(300)
         
-        pw_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, name="password-entry-container")
-        pw_box.set_margin_top(4); pw_box.set_margin_bottom(12)
-        pw_box.set_margin_start(10); pw_box.set_margin_end(10)
-
+        pw_wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, name="pw-wrapper")
+        self.pw_pill = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0, name="pw-pill")
+        
+        self.btn_pw_reveal = Button(
+            child=Label(markup=icons.eye_closed),
+            on_clicked=self._on_reveal_clicked
+        )
+        self.btn_pw_reveal.get_style_context().add_class("pw-reveal-btn")
+        
         self.pw_entry = Gtk.Entry(visibility=False, invisible_char='•', placeholder_text="Password...")
+        self.pw_entry.set_hexpand(True)
+        self.pw_entry.get_style_context().add_class("pw-entry-naked")
         
-        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        btn_pw_cancel = Gtk.Button(label="Cancel")
-        self.btn_pw_ok = Gtk.Button(label="OK", sensitive=False)
+        self.btn_pw_ok = Button(
+            child=Label(markup=icons.accept), 
+            on_clicked=self._on_pw_submit
+        )
+        self.btn_pw_ok.set_sensitive(False)
+        self.btn_pw_ok.get_style_context().add_class("pw-submit-btn")
 
-        btn_pw_cancel.connect("clicked", lambda _: self._close_pw())
-        self.btn_pw_ok.connect("clicked", lambda _: self._submit(self.pw_entry.get_text()))
-        self.pw_entry.connect("changed", lambda e: self.btn_pw_ok.set_sensitive(bool(e.get_text())))
-        self.pw_entry.connect("activate", lambda e: self.btn_pw_ok.get_sensitive() and self.btn_pw_ok.clicked())
+        self.pw_entry.connect("changed", self._on_pw_change)
+        self.pw_entry.connect("activate", self._on_pw_activate)
 
-        btns.pack_start(btn_pw_cancel, True, True, 0)
-        btns.pack_start(self.btn_pw_ok, True, True, 0)
-        pw_box.pack_start(self.pw_entry, False, False, 0)
-        pw_box.pack_start(btns, False, False, 0)
+        self.pw_pill.pack_start(self.btn_pw_reveal, False, False, 2)
+        self.pw_pill.pack_start(self.pw_entry, True, True, 4)
+        self.pw_pill.pack_end(self.btn_pw_ok, False, False, 2)
         
-        self.pw_rev.add(pw_box)
+        pw_wrapper.pack_start(self.pw_pill, True, True, 0)
+        self.pw_rev.add(pw_wrapper)
+        
         self.pack_start(self.pw_rev, False, False, 0)
-        
         self.show_all()
         self.pw_rev.set_reveal_child(False)
+
+    def _setup_hover(self):
+        self.click_area.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        def _ent(w, _):
+            if win := w.get_window(): win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+        def _lv(w, _):
+            if win := w.get_window(): win.set_cursor(None)
+        self.click_area.connect("enter-notify-event", _ent)
+        self.click_area.connect("leave-notify-event", _lv)
+
+    def _on_reveal_clicked(self, btn):
+        is_visible = self.pw_entry.get_visibility()
+        new_visibility = not is_visible
+        self.pw_entry.set_visibility(new_visibility)
+        icon_markup = icons.eye_check if new_visibility else icons.eye_closed
+        btn.get_child().set_markup(icon_markup)
+
+    def _on_pw_change(self, e): 
+        self.btn_pw_ok.set_sensitive(len(e.get_text()) > 0)
+
+    def _on_pw_submit(self, _):
+        pwd = self.pw_entry.get_text()
+        if not pwd: return
+        self._submit(pwd)
+
+    def _on_pw_activate(self, _):
+        pwd = self.pw_entry.get_text()
+        if pwd: self._submit(pwd)
 
     def update(self, data, saved=False, conn=False):
         self.ssid = data.get("ssid", "Unknown")
         self.saved, self.conn = saved, conn
+        is_secured = data.get("is_secured", True)
 
         self.icon.set_from_icon_name(data.get("icon-name", "network-wireless-signal-none-symbolic"), 24)
         self.name_lbl.set_label(self.ssid)
-        self.str_lbl.set_label(f"{data.get('strength', 0)}%")
 
-        avail = hasattr(self.nc, 'is_network_available') and self.ssid and self.nc.is_network_available(self.ssid)
+        try: avail = self.nc.is_network_available(self.ssid) if self.ssid and self.nc else False
+        except AttributeError: avail = False
 
-        self.lbl_conn.set_visible(conn)
-        self.btn_del.set_visible(conn or saved)
-        
-        show_conn = not conn and avail
-        self.btn_conn.set_visible(show_conn)
-        self.btn_unavail.set_visible(not conn and not avail)
-        
-        if show_conn:
-            self.btn_conn.set_label("Connect")
-            self.btn_conn.set_sensitive(True)
+        if conn or saved:
+            self.btn_settings.set_visible(True)
+            self.lock_icon.set_visible(False)
+        else:
+            self.btn_settings.set_visible(False)
+            self.lock_icon.set_visible(is_secured)
+
+        if conn:
+            self.status_lbl.set_label("Connected")
+            self.main_box.get_style_context().add_class("active-slot")
+            self.icon.get_style_context().add_class("active-icon")
+            self.btn_settings.get_style_context().add_class("active-settings-btn")
+        else:
+            self.main_box.get_style_context().remove_class("active-slot")
+            self.icon.get_style_context().remove_class("active-icon")
+            self.btn_settings.get_style_context().remove_class("active-settings-btn")
+            
+            if not avail: self.status_lbl.set_label("Out of range")
+            elif saved: self.status_lbl.set_label("Saved")
+            else: self.status_lbl.set_label("Secured" if is_secured else "Open")
 
         return self
 
-    def _on_conn(self, btn):
-        if self.saved:
-            btn.set_sensitive(False)
-            btn.set_label("Connecting...")
+    def _on_click(self, widget, event):
+        if self.conn: return 
+        if self.saved and self.nc:
+            self.status_lbl.set_label("Connecting...")
             self.nc.connect_to_saved_network(self.ssid, self._ok, self._err)
         else:
             self._tog_pw()
@@ -124,24 +190,25 @@ class WifiSlot(Gtk.Box):
             self._close_pw()
         else:
             WifiSlot._active_pw_slot = self
-            
             base_h = self.get_allocated_height()
             _, child_h = self.pw_rev.get_child().get_preferred_height()
             self._target_height = base_h + child_h
 
             self.pw_rev.set_reveal_child(True)
             self.pw_entry.set_text("")
+            self.pw_entry.set_visibility(False)
+            self.btn_pw_reveal.get_child().set_markup(icons.eye_closed)
+            self.btn_pw_ok.set_sensitive(False)
             
             self._start_scroll_anim()
 
     def _start_scroll_anim(self):
-        if self._anim_id:
-            GLib.source_remove(self._anim_id)
-            
+        if self._anim_id: GLib.source_remove(self._anim_id)
         scroll = self.get_ancestor(Gtk.ScrolledWindow)
-        if not scroll:
-            return
+        if not scroll: return
             
+        self._cached_vadj = scroll.get_vadjustment()
+        self._cached_scroll_h = scroll.get_allocated_height()
         self._anim_id = GLib.timeout_add(16, self._scroll_tick, scroll)
 
     def _scroll_tick(self, scroll):
@@ -150,17 +217,12 @@ class WifiSlot(Gtk.Box):
             self._anim_id = None
             return False
 
-        vadj = scroll.get_vadjustment()
+        vadj = self._cached_vadj
         current_scroll = vadj.get_value()
         absolute_y = current_scroll + coords[1]
-        scroll_h = scroll.get_allocated_height()
 
-        if self.pw_rev.get_child_revealed():
-            target_h = self.get_allocated_height()
-        else:
-            target_h = self._target_height
-        
-        target_y = absolute_y - (scroll_h / 2) + (target_h / 2)
+        target_h = self.get_allocated_height() if self.pw_rev.get_child_revealed() else self._target_height
+        target_y = absolute_y - (self._cached_scroll_h / 2.0) + (target_h / 2.0)
         
         lower_limit = vadj.get_lower()
         upper_limit = max(lower_limit, vadj.get_upper() - vadj.get_page_size())
@@ -188,137 +250,344 @@ class WifiSlot(Gtk.Box):
 
     def _submit(self, pwd):
         self._close_pw()
-        self.btn_conn.set_sensitive(False)
-        self.btn_conn.set_label("Connecting...")
-        self.nc.connect_to_new_network(self.ssid, pwd, self._ok, self._err)
+        self.status_lbl.set_label("Connecting...")
+        if self.nc:
+            self.nc.connect_to_new_network(self.ssid, pwd, self._ok, self._err)
 
     def _ok(self, ssid):
-        if self.rcb: GLib.timeout_add(500, self.rcb)
+        if self.parent_net: GLib.timeout_add(500, self.parent_net._req_ref)
 
     def _err(self, *_):
-        self.btn_conn.set_label("Error")
-        self.btn_conn.set_sensitive(False)
+        self.status_lbl.set_label("Failed to connect")
         GLib.timeout_add(3000, self._restore)
 
     def _restore(self):
-        self.btn_conn.set_label("Connect")
-        self.btn_conn.set_sensitive(True)
+        if not self.conn: self.status_lbl.set_label("Saved" if self.saved else "Secured")
         return False
 
-    def _on_del(self, _):
-        if self.ssid:
-            self.nc.delete_saved_network(self.ssid)
-            if self.rcb: GLib.timeout_add(300, self.rcb)
+    def _on_settings(self, _):
+        if self.parent_net:
+            self.parent_net.open_settings(self.ssid)
 
     def destroy(self):
-        if self._anim_id:
-            GLib.source_remove(self._anim_id)
+        if self._anim_id: GLib.source_remove(self._anim_id)
+        self.parent_net = None
+        self.nc = None
         super().destroy()
 
 
 class NetworkConnections(Box):
-    __slots__ = ('widgets', '_rid', '_scan', '_slots', '_lio', 'nc',
-                 'dl_lbl', 'ul_lbl', 'scan_lbl', 'scan_btn', 'saved_box', 'avail_box', 'scroll')
-
-    _U = ((1048576.0, "MB/s"), (1024.0, "KB/s"), (1.0, "B/s"))
+    __slots__ = ('widgets', '_btns', '_rid', '_scan', '_slots', 'nc',
+                 'stack', 'lists_stack', 'scan_lbl', 'scan_btn', 'saved_lbl', 'saved_btn',
+                 'connected_box', 'avail_box', 'avail_section', 'saved_box', 'saved_section', 
+                 'main_scroll', 'saved_scroll', 'header_title',
+                 'settings_scroll', 'current_settings_ssid', '_previous_page',
+                 'btn_net_forget', 'btn_net_disconnect', 'btn_net_share',
+                 'qr_revealer', 'qr_image', 'qr_password_lbl',
+                 'lbl_sig', 'lbl_freq', 'lbl_sec', 'lbl_type', 'lbl_ip', 'lbl_gw')
 
     def __init__(self, **kwargs):
         self.widgets = kwargs.pop("widgets", None)
-        super().__init__(name="network-connections", spacing=4, orientation="vertical", **kwargs)
+        super().__init__(
+            name="network-connections", spacing=4, orientation="vertical",
+            h_expand=True, v_expand=True, v_align="fill", **kwargs
+        )
 
+        self._btns = getattr(self.widgets.buttons, "network_button", None) if self.widgets else None
         self._rid = None
         self._scan = False
-        self._slots = {"saved": [], "avail": []}
-        self._lio = self._rio()
+        self.current_settings_ssid = None
+        self._previous_page = "main"
+        self._slots = {"connected": [], "avail": [], "saved": []}
 
-        try:
-            self.nc = NetworkClient()
-        except Exception:
-            self.nc = None
+        try: self.nc = NetworkClient()
+        except Exception: self.nc = None
 
         self._build()
-        GLib.timeout_add(1000, self._uspd)
 
         if self.nc:
             try:
                 self.nc.connect("device-ready", self._rdy)
                 self.nc.connect("connection-error", self._cerr)
             except Exception: pass
-
             if getattr(self.nc, 'wifi_device', None):
                 GLib.idle_add(self._rdy)
 
-    def _rio(self):
-        recv = sent = 0
-        try:
-            with open("/proc/net/dev", "rb") as f:
-                next(f); next(f)
-                for line in f:
-                    parts = line.split()
-                    if not parts or parts[0].startswith(b'lo:'): continue
-                    if len(parts) >= 10:
-                        recv += int(parts[1])
-                        sent += int(parts[9])
-        except Exception: pass
-        return recv, sent
-
     def _build(self):
-        self.dl_lbl = Label(name="download-label", markup="0 B/s")
-        self.ul_lbl = Label(name="upload-label", markup="0 B/s")
+        self.scan_lbl = Label(markup=icons.radar, name="network-scan-label")
+        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan Wi-Fi", on_clicked=self._on_scan)
 
-        self.scan_lbl = Label(name="network-scan-label", markup=icons.radar)
-        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan Wi-Fi Networks")
-        self.scan_btn.connect("clicked", self._on_scan)
-
-        back = Button(name="network-back", child=Label(name="network-back-label", markup=icons.chevron_left))
-        back.connect("clicked", lambda *_: self.widgets.show_notif())
-
-        self.saved_box = Box(name="saved-box", spacing=2, orientation="vertical")
-        self.avail_box = Box(name="available-box", spacing=2, orientation="vertical")
-
-        content = Box(
-            spacing=4, orientation="vertical", 
-            children=(
-                Label(name="network-section", label="Saved Networks"),
-                self.saved_box,
-                Label(name="network-section", label="Available Networks"),
-                self.avail_box
-            )
+        self.saved_lbl = Label(markup=icons.save, name="network-saved-label")
+        self.saved_btn = Button(
+            name="network-saved", 
+            child=self.saved_lbl, 
+            tooltip_text="Saved Networks",
+            on_clicked=self._on_saved_toggle
         )
 
-        center = Box(
-            orientation="horizontal", spacing=12, h_align="center",
-            children=(
-                Box(orientation="horizontal", spacing=4, v_align="center", children=(self.ul_lbl, Label(name="upload-icon-label", markup=icons.upload))),
-                Label(name="network-text", label="Wi-Fi", v_align="center"),
-                Box(orientation="horizontal", spacing=4, v_align="center", children=(Label(name="download-icon-label", markup=icons.download), self.dl_lbl)),
-            )
+        back = Button(name="network-back", child=Label(markup=icons.chevron_left, name="network-back-label"))
+        back.connect("clicked", self._on_back_click)
+
+        self.header_title = Label(label="Wi-Fi", v_align="center", name="header-title")
+
+        header_end_box = Box(spacing=4, orientation="horizontal", children=(self.saved_btn, self.scan_btn))
+
+        header = CenterBox(
+            start_children=(back,), 
+            center_children=(self.header_title,), 
+            end_children=(header_end_box,)
         )
+        header.set_margin_bottom(8)
+        self.add(header)
 
-        self.scroll = ScrolledWindow(
-            name="bluetooth-devices", min_content_size=(-1, -1),
-            child=content, v_expand=True, propagate_width=False, propagate_height=False
+        self.stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True, v_align="fill")
+        self.add(self.stack)
+
+        off_box = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
+        off_box.add(Label(markup=f"<span size='xx-large'>{icons.wifi_off}</span>", name="dim-label"))
+        off_box.add(Label(label="Wi-Fi is disabled", name="dim-label"))
+        btn_turn_on = Button(label="Turn On", on_clicked=self._turn_on_wifi)
+        btn_turn_on.get_style_context().add_class("pixel-primary-btn")
+        off_box.add(btn_turn_on)
+        
+        self.stack.add_named(off_box, "off")
+        self.lists_stack = Stack(transition_type="slide-left-right", h_expand=True, v_expand=True, v_align="fill")
+
+        # --- MAIN LIST ---
+        self.connected_box = Box(spacing=2, orientation="vertical")
+        self.avail_box = Box(spacing=2, orientation="vertical")
+        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Networks", h_align="start", name="section-title"), self.avail_box))
+
+        self.main_scroll = ScrolledWindow(
+            name="bluetooth-devices",
+            min_content_size=(-1, -1),
+            child=Box(spacing=4, orientation="vertical", children=[self.connected_box, self.avail_section]),
+            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
         )
+        self.main_scroll.set_overlay_scrolling(False)
 
-        self.add(CenterBox(name="network-header", start_children=(back,), center_children=(center,), end_children=(self.scan_btn,)))
-        self.add(self.scroll)
+        # --- SAVED LIST ---
+        self.saved_box = Box(spacing=2, orientation="vertical")
+        self.saved_section = Box(orientation="v", spacing=4, children=(Label(label="Saved Networks", h_align="start", name="section-title"), self.saved_box))
 
-    def _fmt(self, s):
-        for th, u in self._U:
-            if s >= th:
-                return f"{s / th:.1f} {u}" if th > 1.0 else f"{int(s)} {u}"
-        return "0 B/s"
+        self.saved_scroll = ScrolledWindow(
+            name="bluetooth-devices",
+            min_content_size=(-1, -1),
+            child=Box(spacing=4, orientation="vertical", children=[self.saved_section]),
+            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
+        )
+        self.saved_scroll.set_overlay_scrolling(False)
 
-    def _uspd(self):
-        c = self._rio()
-        self.dl_lbl.set_markup(self._fmt(max(0, c[0] - self._lio[0])))
-        self.ul_lbl.set_markup(self._fmt(max(0, c[1] - self._lio[1])))
-        self._lio = c
-        return True
+        # --- SETTINGS PAGE ---
+        self.settings_scroll = self._build_settings_page()
+
+        self.lists_stack.add_named(self.main_scroll, "main")
+        self.lists_stack.add_named(self.saved_scroll, "saved")
+        self.lists_stack.add_named(self.settings_scroll, "settings")
+
+        self.stack.add_named(self.lists_stack, "on")
+
+    def _build_settings_page(self):
+        settings_box = Box(orientation="vertical", spacing=8, h_expand=True)
+        settings_box.set_margin_start(12)
+        settings_box.set_margin_end(12)
+
+        # 1. Action Buttons (Используем новые иконки через f-строки)
+        actions_box = Box(orientation="horizontal", spacing=8, h_align="center", h_expand=True)
+        
+        self.btn_net_forget = Button(child=Label(markup=f"<span size='large'>{icons.trash}</span> Удалить"), on_clicked=self._do_forget)
+        self.btn_net_forget.get_style_context().add_class("net-action-btn")
+        self.btn_net_forget.get_style_context().add_class("net-forget")
+
+        self.btn_net_disconnect = Button(child=Label(markup=f"<span size='large'>{icons.cancel}</span> Отключить"), on_clicked=self._do_disconnect)
+        self.btn_net_disconnect.get_style_context().add_class("net-action-btn")
+
+        self.btn_net_share = Button(child=Label(markup=f"<span size='large'>{icons.scan}</span> Поделиться"), on_clicked=self._do_share)
+        self.btn_net_share.get_style_context().add_class("net-action-btn")
+
+        actions_box.add(self.btn_net_forget)
+        actions_box.add(self.btn_net_disconnect)
+        actions_box.add(self.btn_net_share)
+        actions_box.set_margin_bottom(12)
+        settings_box.add(actions_box)
+
+        # 1.5 Share/QR Revealer
+        self.qr_revealer = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN)
+        qr_container = Box(orientation="vertical", spacing=8, h_align="center")
+        qr_container.get_style_context().add_class("qr-container")
+        
+        self.qr_image = Image()
+        self.qr_image.get_style_context().add_class("qr-img")
+        
+        self.qr_password_lbl = Label(selectable=True)
+        self.qr_password_lbl.get_style_context().add_class("qr-password-text")
+
+        qr_container.add(self.qr_image)
+        qr_container.add(self.qr_password_lbl)
+        self.qr_revealer.add(qr_container)
+        settings_box.add(self.qr_revealer)
+
+        # 2-7. Network Info Details (Slot design)
+        self.lbl_sig = Label(label="-", h_align="end")
+        self.lbl_freq = Label(label="-", h_align="end")
+        self.lbl_sec = Label(label="-", h_align="end")
+        self.lbl_type = Label(label="-", h_align="end")
+        self.lbl_ip = Label(label="-", h_align="end", selectable=True)
+        self.lbl_gw = Label(label="-", h_align="end", selectable=True)
+
+        info_group = Box(orientation="vertical", spacing=2)
+        info_group.get_style_context().add_class("net-info-group")
+
+        def add_row(title, val_widget):
+            row = Box(orientation="horizontal")
+            row.get_style_context().add_class("net-info-row")
+            row.pack_start(Label(label=title, h_align="start", name="dim-label"), True, True, 0)
+            row.pack_end(val_widget, False, False, 0)
+            info_group.add(row)
+
+        add_row("Оценка уровня сигнала", self.lbl_sig)
+        add_row("Частота", self.lbl_freq)
+        add_row("Защита", self.lbl_sec)
+        add_row("Тип", self.lbl_type)
+        add_row("IP-адрес", self.lbl_ip)
+        add_row("Шлюз, DNS", self.lbl_gw)
+
+        settings_box.add(info_group)
+
+        scroll = ScrolledWindow(
+            name="bluetooth-devices", 
+            min_content_size=(-1, -1),
+            child=settings_box,
+            h_expand=True, v_expand=True,
+            propagate_width=False, propagate_height=False,
+        )
+        scroll.set_overlay_scrolling(False)
+        return scroll
+
+    def open_settings(self, ssid):
+        self._previous_page = self.lists_stack.get_visible_child_name()
+        
+        self.current_settings_ssid = ssid
+        self.header_title.set_label(ssid)
+        self.qr_revealer.set_reveal_child(False)
+        self.btn_net_share.get_style_context().remove_class("active")
+        
+        details = self.nc.get_network_details(ssid) if self.nc else {}
+
+        self.btn_net_disconnect.set_sensitive(details.get("connected", False))
+
+        self.lbl_sig.set_label(details.get("strength", "Unknown"))
+        self.lbl_freq.set_label(details.get("frequency", "Unknown"))
+        self.lbl_sec.set_label(details.get("security", "Unknown"))
+        self.lbl_type.set_label(details.get("type", "Unknown"))
+        self.lbl_ip.set_label(details.get("ip", "N/A"))
+        
+        gw = details.get("gateway", "N/A")
+        dns = details.get("dns", "N/A")
+        self.lbl_gw.set_label(f"{gw} / {dns}" if gw != "N/A" else "N/A")
+
+        self.scan_btn.set_visible(False)
+        self.saved_btn.set_visible(False)
+
+        self.lists_stack.set_visible_child_name("settings")
+
+    def _do_forget(self, _):
+        if self.current_settings_ssid and self.nc:
+            self.nc.delete_saved_network(self.current_settings_ssid)
+            self._on_back_click(None)
+            GLib.timeout_add(300, self._req_ref)
+
+    def _do_disconnect(self, _):
+        if self.nc:
+            self.nc.disconnect_network()
+            self._on_back_click(None)
+            GLib.timeout_add(300, self._req_ref)
+
+    def _do_share(self, btn):
+        if self.qr_revealer.get_reveal_child():
+            self.qr_revealer.set_reveal_child(False)
+            btn.get_style_context().remove_class("active")
+            return
+
+        ssid = self.current_settings_ssid
+        if not ssid or not self.nc: return
+
+        password = self.nc.get_network_password(ssid)
+        sec_raw = self.lbl_sec.get_label().upper()
+        
+        sec_type = "WPA" if "WPA" in sec_raw else "WEP" if "WEP" in sec_raw else "nopass"
+
+        qr_string = f"WIFI:S:{ssid};"
+        if password: qr_string += f"T:{sec_type};P:{password};;"
+        else: qr_string += "T:nopass;;"
+
+        qr_path = f"/tmp/wifi_qr_{ssid}.png"
+        generated = False
+
+        try:
+            import qrcode
+            qr = qrcode.QRCode(version=1, box_size=5, border=1)
+            qr.add_data(qr_string)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            img.save(qr_path)
+            generated = True
+        except ImportError:
+            try:
+                subprocess.run(["qrencode", "-o", qr_path, qr_string], check=True)
+                generated = True
+            except Exception:
+                pass
+
+        if generated and os.path.exists(qr_path):
+            self.qr_image.set_from_file(qr_path)
+            self.qr_password_lbl.set_label(f"Пароль: {password}" if password else "Открытая сеть")
+            self.qr_revealer.set_reveal_child(True)
+            btn.get_style_context().add_class("active")
+        else:
+            self.qr_password_lbl.set_label("Установите 'python3-qrcode' для QR кода")
+            self.qr_revealer.set_reveal_child(True)
+
+    def _on_back_click(self, btn):
+        curr = self.lists_stack.get_visible_child_name()
+        
+        if curr == "settings":
+            self.lists_stack.set_visible_child_name(self._previous_page)
+            self.header_title.set_label("Wi-Fi")
+            self.scan_btn.set_visible(True)
+            self.saved_btn.set_visible(True)
+            
+            if self._previous_page == "saved":
+                self.saved_btn.add_style_class("pressed")
+            else:
+                self.saved_btn.remove_style_class("pressed")
+                
+        elif curr == "saved":
+            self.lists_stack.set_visible_child_name("main")
+            self.saved_btn.remove_style_class("pressed")
+            
+        else:
+            if self.widgets: self.widgets.show_notif()
+
+    def _on_saved_toggle(self, btn):
+        if self.lists_stack.get_visible_child_name() == "main":
+            self.lists_stack.set_visible_child_name("saved")
+            btn.add_style_class("pressed")
+        else:
+            self.lists_stack.set_visible_child_name("main")
+            btn.remove_style_class("pressed")
+
+    def _turn_on_wifi(self, *_):
+        if self._btns and hasattr(self._btns, 'network_status_button'):
+            self._btns.network_status_button.clicked()
+        else:
+            if dev := getattr(self.nc, 'wifi_device', None):
+                if hasattr(dev, "toggle_wifi"): dev.toggle_wifi()
+        GLib.timeout_add(400, self._req_ref)
 
     def _rdy(self, client=None):
-        if dev := getattr(self.nc, 'wifi_device', None):
-            try: dev.connect("changed", self._sched)
+        if getattr(self.nc, 'wifi_device', None):
+            try: self.nc.wifi_device.connect("changed", self._sched)
             except Exception: pass
             self._sched()
 
@@ -330,63 +599,71 @@ class NetworkConnections(Box):
                     return
 
     def _sched(self, *_):
-        if not self._rid:
-            self._rid = GLib.timeout_add(500, self._ref)
+        if not self._rid: self._rid = GLib.timeout_add(500, self._ref)
+
+    def _req_ref(self):
+        self._ref()
+        return False
 
     def _ref(self):
         self._rid = None
-        if getattr(WifiSlot, "_active_pw_slot", None):
-            return False
+        if getattr(WifiSlot, "_active_pw_slot", None): return False
 
         nc = self.nc
         dev = getattr(nc, 'wifi_device', None)
         en = bool(dev and getattr(dev, 'enabled', False))
 
-        cur = self._gcur()
-        saved = self._gsaved()
-        avail = dev.access_points if en and dev else []
-        avail_d = {ap.get("ssid"): ap for ap in avail if ap.get("ssid")}
+        self.stack.set_visible_child_name("on" if en else "off")
+        if not en: return False
 
-        saved_s = set(saved)
-        tl = self.get_toplevel()
-        rcb = lambda: (self._ref(), False)[1]
+        cur = self._gcur()
+        saved = self._gsaved() 
+        avail = dev.access_points if dev else []
+        
+        avail_d = {ap.get("ssid"): ap for ap in avail if ap.get("ssid")}
+        saved_s = frozenset(saved)
 
         dap = {"strength": 0, "is_secured": True, "icon-name": "network-wireless-signal-none-symbolic"}
-        sd, ad = [], []
+        cd, ad, sd = [], [], []
 
-        if cur and cur in saved:
-            sd.append((avail_d.get(cur, {"ssid": cur, **dap, "icon-name": "network-wireless-signal-excellent-symbolic"}), True, True))
-
-        for ssid in saved:
-            if ssid != cur:
-                sd.append((avail_d.get(ssid, {"ssid": ssid, **dap}), True, False))
+        if cur:
+            is_cur_saved = cur in saved_s
+            cd.append((avail_d.get(cur, {"ssid": cur, **dap, "icon-name": "network-wireless-signal-excellent-symbolic"}), is_cur_saved, True))
 
         for ap in avail:
-            if (s := ap.get("ssid")) and s not in saved_s and s != cur:
-                ad.append((ap, False, False))
+            s = ap.get("ssid")
+            if s and s != cur:
+                ad.append((ap, s in saved_s, False))
 
-        self._ubox(self.saved_box, self._slots["saved"], sd, tl, rcb)
-        self._ubox(self.avail_box, self._slots["avail"], ad, tl, rcb)
+        for s in saved:
+            ap_data = avail_d.get(s, {"ssid": s, **dap})
+            sd.append((ap_data, True, s == cur))
+
+        self._ubox(self.connected_box, self._slots["connected"], cd)
+        self._ubox(self.avail_box, self._slots["avail"], ad)
+        self._ubox(self.saved_box, self._slots["saved"], sd)
+
+        self.connected_box.set_visible(len(cd) > 0)
+        self.avail_section.set_visible(True)
 
         st = getattr(dev, 'strength', 0) if dev else 0
         txt = "Off" if not en else (cur or "Disconnected")
 
-        if hasattr(self.widgets, 'update_network_display'):
+        if self.widgets and hasattr(self.widgets, 'update_network_display'):
             self.widgets.update_network_display(txt, st, en)
+        if self._btns and hasattr(self._btns, 'update_state'):
+            GLib.idle_add(self._btns.update_state)
 
         return False
 
-    def _ubox(self, box, pool, data, tl, rcb):
+    def _ubox(self, box, pool, data):
         n, e = len(data), len(pool)
-
         while len(pool) < n:
-            slot = WifiSlot(self.nc, tl, rcb)
+            slot = WifiSlot(self.nc, self)
             pool.append(slot)
             box.add(slot)
-
         for i in range(n, e):
             pool[i].hide()
-
         for i, (ap, saved, conn) in enumerate(data):
             pool[i].update(ap, saved, conn)
             pool[i].show()
@@ -403,44 +680,41 @@ class NetworkConnections(Box):
             try:
                 for conn in client.get_connections():
                     if conn.get_connection_type() == '802-11-wireless':
-                        if (s := conn.get_setting_wireless()) and (sd := s.get_ssid()) and (ssid := NM.utils_ssid_to_utf8(sd.get_data())) not in saved:
-                            saved.append(ssid)
+                        s = conn.get_setting_wireless()
+                        c_set = conn.get_setting_connection()
+                        if s and (sd := s.get_ssid()):
+                            ssid = NM.utils_ssid_to_utf8(sd.get_data())
+                            ts = c_set.get_timestamp() if c_set else 0
+                            if not any(x[0] == ssid for x in saved):
+                                saved.append((ssid, ts))
             except Exception: pass
-        return saved
+        saved.sort(key=lambda x: x[1], reverse=True)
+        return [x[0] for x in saved]
 
     def _on_scan(self, btn):
         if self._scan: return
         self._scan = True
-
         self.scan_lbl.get_style_context().add_class("scanning")
-        btn.get_style_context().add_class("scanning")
-        btn.set_tooltip_text("Scanning...")
-        btn.set_sensitive(False)
-
+        self.scan_btn.get_style_context().add_class("scanning")
         if dev := getattr(self.nc, 'wifi_device', None):
             if getattr(dev, 'enabled', False):
-                try: dev.scan()
-                except Exception: pass
-
-        GLib.timeout_add(3000, self._rscan)
+                try: dev.scan() 
+                except Exception: 
+                    if hasattr(dev, "request_scan"):
+                        try: dev.request_scan()
+                        except Exception: pass
+        GLib.timeout_add(3500, self._rscan)
 
     def _rscan(self):
         self.scan_lbl.get_style_context().remove_class("scanning")
         self.scan_btn.get_style_context().remove_class("scanning")
-        self.scan_btn.set_tooltip_text("Scan Wi-Fi Networks")
-        self.scan_btn.set_sensitive(True)
         self._scan = False
         return False
 
     def cleanup(self):
-        if self._rid:
-            GLib.source_remove(self._rid)
-            self._rid = None
-
+        if self._rid: GLib.source_remove(self._rid); self._rid = None
         WifiSlot._active_pw_slot = None
-
         for pool in self._slots.values():
             for slot in pool: slot.destroy()
             pool.clear()
-
-        self.nc = self.widgets = None
+        self.nc = self.widgets = self._btns = None

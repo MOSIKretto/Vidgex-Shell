@@ -34,34 +34,6 @@
   transition: all 0.1s ease;
 }
 
-#download-label {
-  color: var(--green);
-  font-size: 14px;
-  font-weight: bold;
-  padding: 4px;
-  border-radius: 12px;
-  transition: all 0.1s ease;
-}
-
-#download-icon-label {
-  color: var(--green);
-  font-size: 16px;
-}
-
-#upload-icon-label {
-  color: var(--yellow);
-  font-size: 16px;
-}
-
-#upload-label {
-  color: var(--yellow);
-  font-size: 14px;
-  font-weight: bold;
-  padding: 4px;
-  border-radius: 12px;
-  transition: all 0.1s ease;
-}
-
 #battery-container {
   background-color: var(--shadow);
   padding: 4px;

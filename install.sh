@@ -79,6 +79,7 @@ PACKAGES=(
   python-evdev
   python-mutagen
   python-materialyoucolor
+  python-qrcode
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
