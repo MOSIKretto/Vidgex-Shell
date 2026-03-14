@@ -8,7 +8,7 @@ import services.icons as icons
 from services.listNavigation import HorizontalNavigationMixin
 
 
-class Toolbox(HorizontalNavigationMixin, Box):
+class ToolBox(HorizontalNavigationMixin, Box):
     __slots__ = ('notch', '_nav_items', '_nav_idx', '_path', 'btn_rec', 'btn_game',
                  '_hand', '_default')
 

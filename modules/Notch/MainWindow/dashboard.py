@@ -13,7 +13,6 @@ from modules.Notch.MainWindow.Dashboard.buttons import Buttons
 from modules.Notch.MainWindow.Dashboard.controls import ControlSliders
 from modules.Bar.metrics import Metrics
 
-# ИЗМЕНЕНИЕ: импортируем функцию get_shared_history вместо самого класса
 from modules.Notifications.history import get_shared_history
 
 

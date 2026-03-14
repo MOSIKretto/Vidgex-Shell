@@ -1,22 +1,26 @@
 import os
 import random
 
-from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
+from fabric.utils.helpers import exec_shell_command_async
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import (
     _AGL_FRAME_MS, _AGL_FRAMES, _AGL_RAND_MAX,
-    _AGL_RAND_MIN, _ARR_LINES, _CURRENT,
-    _DICE, _EXT, _SCH, _SCH_K, _SCH_LEN,
-    _SCHEME_F, _SFXL, _SUFFIX, _THUMBS, _WALLS,
+    _AGL_RAND_MIN, _ARR_LINES, _CSS_OUT,
+    _CURRENT, _DICE, _EXT, _HYPR_OUT,
+    _SCH, _SCH_K, _SCH_LEN, _SCHEME_F,
+    _SFXL, _SUFFIX, _THUMBS, _WALLS,
 )
-from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import  _arr_glitch_lines, _arr_set_art, _md5hex, _setup_pointer_cursor
+from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import (
+    _arr_glitch_lines, _arr_set_art, _md5hex, _setup_pointer_cursor,
+)
 from modules.Notch.MainWindow.Wallpaper.wallpaperCarousel import WallpaperCarousel
+from modules.Notch.MainWindow.Wallpaper.wallpaperColors import apply_colors
 
 
 class WallpaperSelector(Box):
@@ -162,6 +166,8 @@ class WallpaperSelector(Box):
         self._scan()
         self._watch()
 
+    # ── realize / arrows (без изменений) ──────────────────────
+
     def _on_realize_full(self, *_):
         self._arr_render(0)
         self._arr_render(1)
@@ -172,9 +178,9 @@ class WallpaperSelector(Box):
     def _arr_render(self, idx):
         _arr_set_art(self._agl_lbls[idx], _ARR_LINES[idx])
 
-    def _on_nav(self, direction):
+    def _on_nav(self, direction=None):
         self._ulbl()
-        if not self._car._spl:
+        if not self._car._spl and direction is not None:
             self._arr_glitch(0 if direction < 0 else 1)
 
     def _arr_glitch(self, idx):
@@ -219,6 +225,8 @@ class WallpaperSelector(Box):
         self._arr_schedule_rand()
         return False
 
+    # ── search / keys (без изменений) ─────────────────────────
+
     def _on_search_changed(self, entry, _):
         self._deb("s", 300, self._srch, entry.get_text())
 
@@ -233,11 +241,16 @@ class WallpaperSelector(Box):
             Gdk.KEY_Left, Gdk.KEY_Right,
             Gdk.KEY_Return, Gdk.KEY_KP_Enter,
         ):
-            return self._car._key(self._car, e)
+            r = self._car._key(self._car, e)
+            if k == Gdk.KEY_Left or k == Gdk.KEY_Right:
+                GLib.timeout_add(50, self._ulbl)
+            return r
         if k == Gdk.KEY_Escape:
             self._ent.set_text("")
             return True
         return False
+
+    # ── scheme dropdown (без изменений кроме _set_scheme) ─────
 
     def _on_sch_btn_clicked(self, *_):
         revealed = not self._sch_rev.get_reveal_child()
@@ -261,19 +274,31 @@ class WallpaperSelector(Box):
             self._set_scheme(self._sch_idx + 1)
         return True
 
+    # ══════════════════════════════════════════════════════════
+    #  ИЗМЕНЕНО: _set_scheme — чистый Python вместо matugen
+    # ══════════════════════════════════════════════════════════
     def _set_scheme(self, idx):
         self._sch_idx = idx % _SCH_LEN
         sch_id, sch_name = _SCH[self._sch_idx]
         self._sch_btn.set_label(sch_name)
+
         try:
             with open(_SCHEME_F, "w") as f:
                 f.write(sch_id)
-            if os.path.exists(_CURRENT):
-                exec_shell_command_async(
-                    f'matugen image "{_CURRENT}" -t {sch_id}',
-                )
         except OSError:
             pass
+
+        # определяем путь к текущему изображению
+        nm = self._car.cur()
+        if nm and nm in self._files:
+            p = _WALLS + nm
+        elif os.path.exists(_CURRENT):
+            p = os.path.realpath(_CURRENT)
+        else:
+            return
+
+        # генерация цветов в фоновом потоке
+        self._car._ex.submit(self._gen_colors, p, sch_id)
 
     def _ldsch(self):
         try:
@@ -284,6 +309,8 @@ class WallpaperSelector(Box):
         except OSError:
             pass
         return "scheme-tonal-spot"
+
+    # ── scan / thumbs / watch (без изменений) ─────────────────
 
     def _scan(self):
         try:
@@ -333,6 +360,9 @@ class WallpaperSelector(Box):
         except GLib.Error:
             pass
 
+    # ══════════════════════════════════════════════════════════
+    #  ИЗМЕНЕНО: _apply — чистый Python вместо matugen
+    # ══════════════════════════════════════════════════════════
     def _on_sel(self, nm):
         self._apply(nm)
         self._ulbl()
@@ -342,8 +372,9 @@ class WallpaperSelector(Box):
             return False
 
         p = _WALLS + nm
-        sch = _SCH[self._sch_idx][0]
+        sch_id = _SCH[self._sch_idx][0]
 
+        # обновляем симлинк
         try:
             if os.path.lexists(_CURRENT):
                 os.remove(_CURRENT)
@@ -351,17 +382,46 @@ class WallpaperSelector(Box):
         except OSError:
             return False
 
+        # ставим обои через awww
         exec_shell_command_async(
-            f'awww img "{p}" --type outer --transition-duration 0.5'
-            f" --transition-step 255 --transition-fps 60"
+            f'awww img "{p}" -t fade'
+            f' --transition-duration 0.5'
+            f' --transition-step 255'
+            f' --transition-fps 60'
         )
-        exec_shell_command_async(f'matugen image "{p}" --type {sch}')
+
+        # генерация цветов — в фоновом потоке
+        self._car._ex.submit(self._gen_colors, p, sch_id)
+
         if notify:
             exec_shell_command_async(
                 f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨'"
                 f" -a 'Vidgex-Shell' -i '{p}' -e"
             )
         return True
+
+    # ══════════════════════════════════════════════════════════
+    #  НОВОЕ: генерация цветов + перезагрузка CSS
+    # ══════════════════════════════════════════════════════════
+    def _gen_colors(self, image_path, scheme_id):
+        """Фоновый поток: генерирует CSS + Hyprland, потом reload."""
+        if self._dead:
+            return
+        try:
+            apply_colors(image_path, scheme_id, _CSS_OUT, _HYPR_OUT)
+            GLib.idle_add(self._reload_css)
+        except Exception as e:
+            print(f"[WallpaperSelector] color gen failed: {e}")
+
+    @staticmethod
+    def _reload_css():
+        """Главный поток: перезагрузка CSS."""
+        exec_shell_command_async(
+            "fabric-cli exec vidgex-shell 'app.set_css()'"
+        )
+        return False
+
+    # ── random / label / debounce (без изменений) ─────────────
 
     def _roll(self):
         self._rb.get_child().set_markup(_DICE[GLib.random_int_range(0, 6)])
@@ -380,7 +440,7 @@ class WallpaperSelector(Box):
         self._roll()
         self._ulbl()
 
-    def _ulbl(self):
+    def _ulbl(self, *_):
         nm = self._car.cur()
         if nm:
             nm = nm.rsplit(".", 1)[0]

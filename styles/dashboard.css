@@ -20,28 +20,18 @@
 
 /* --- ЦВЕТА ШКАЛ И ПОЛЗУНКОВ --- */
 #net-usage trough highlight,
-#net-usage slider {
-  background-color: var(--green);
-}
+#net-usage slider,
 #gpu-usage trough highlight,
-#gpu-usage slider {
-  background-color: var(--primary);
-}
+#gpu-usage slider,
 #cpu-usage trough highlight,
-#cpu-usage slider {
-  background-color: var(--blue);
-}
+#cpu-usage slider,
 #ram-usage trough highlight,
-#ram-usage slider {
-  background-color: var(--yellow);
-}
+#ram-usage slider,
 #disk-usage trough highlight,
-#disk-usage slider {
-  background-color: var(--magenta);
-}
+#disk-usage slider,
 #temp-usage trough highlight,
 #temp-usage slider {
-  background-color: var(--red);
+  background-color: var(--primary);
 }
 
 /* --- ОБЩИЕ СТИЛИ ПОЛЗУНКА --- */
@@ -61,12 +51,14 @@
 }
 
 /* --- ЦВЕТА ИКОНОК (ПОДПИСЕЙ) --- */
-#net-label { color: var(--green); }
-#gpu-label { color: var(--primary); }
-#cpu-label { color: var(--blue); }
-#ram-label { color: var(--yellow); }
-#disk-label { color: var(--magenta); }
-#temp-label { color: var(--red); }
+#net-label,
+#cpu-label,
+#ram-label,
+#disk-label,
+#temp-label,
+#gpu-label { 
+  color: var(--primary); 
+}
 
 #box-1,
 #box-2,

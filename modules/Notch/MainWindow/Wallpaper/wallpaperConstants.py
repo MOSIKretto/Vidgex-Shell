@@ -1,6 +1,7 @@
 import services.icons as icons
 from gi.repository import GLib, Pango
 
+
 _HOME = GLib.get_home_dir()
 _WALLS = _HOME + "/.config/Vidgex-Shell/wallpapers/"
 _CURRENT = _HOME + "/.current.wall"
@@ -73,7 +74,7 @@ _ARR_R = [
 _ARR_FONT_PT = 8
 _ARR_LINES = (_ARR_L, _ARR_R)
 
-_AGL_CHARS = "░▒▓█▀▄▌���@#$%&!?*=~/\\|"
+_AGL_CHARS = "░▒▓█▀▄▌▐@#$%&!?*=~"
 _AGL_FRAMES = 12
 _AGL_FRAME_MS = 35
 _AGL_CORRUPT = 0.85
@@ -86,3 +87,7 @@ _AGL_RAND_MAX = 20
 _ARR_FONT = Pango.FontDescription.from_string("monospace")
 _ARR_FONT.set_size(_ARR_FONT_PT * Pango.SCALE)
 _ARR_FONT_STR = _ARR_FONT.to_string()
+
+# Добавить в конец файла:
+_CSS_OUT = _HOME + "/.config/Vidgex-Shell/styles/colors.css"
+_HYPR_OUT = _HOME + "/.config/Vidgex-Shell/vidgex-shell-conf/colors.conf"

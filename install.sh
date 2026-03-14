@@ -29,15 +29,12 @@ INSTALL_DIR="$HOME/.config/Vidgex-Shell"
 REPO_URL="https://github.com/MOSIKretto/Vidgex-Shell.git"
 REPO_BRANCH="develop"
 HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-MATUGEN_SRC="$INSTALL_DIR/helper-folder/matugen"
-MATUGEN_DST="$HOME/.config/matugen"
 LANG_CHOICE="EN"
 
 AUTOLAYOUT_SCRIPT="$INSTALL_DIR/autolayout.py"
 AUTOLAYOUT_SERVICE="$HOME/.config/systemd/user/autolayout.service"
 
 PACKAGES=(
-  # Hyprland и основные компоненты
   hyprland
   hypridle
   hyprpicker
@@ -54,12 +51,10 @@ PACKAGES=(
   vte3
 
   # Утилиты
-  kitty
   awww-git
   brightnessctl
   cliphist
   libnotify
-  matugen
   swappy
   gpu-screen-recorder
   tesseract
@@ -83,6 +78,7 @@ PACKAGES=(
   python-dbus
   python-evdev
   python-mutagen
+  python-materialyoucolor
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -112,9 +108,6 @@ declare -A MSG_RU=(
   ["fonts_exist"]="Шрифты уже установлены. Пропуск."
   ["copying_local_fonts"]="Копирование локальных шрифтов..."
   ["local_fonts_exist"]="Локальные шрифты уже установлены. Пропуск."
-  ["copying_matugen"]="Копирование конфигурации matugen..."
-  ["matugen_exists"]="Конфигурация matugen уже существует."
-  ["matugen_copied"]="Конфигурация matugen скопирована!"
   ["config_network"]="Настройка сетевых сервисов..."
   ["disabling_iwd"]="Отключение iwd..."
   ["iwd_disabled"]="iwd уже отключён."
@@ -198,9 +191,6 @@ declare -A MSG_EN=(
   ["fonts_exist"]="Fonts already installed. Skipping."
   ["copying_local_fonts"]="Copying local fonts..."
   ["local_fonts_exist"]="Local fonts already installed. Skipping."
-  ["copying_matugen"]="Copying matugen configuration..."
-  ["matugen_exists"]="Matugen configuration already exists."
-  ["matugen_copied"]="Matugen configuration copied!"
   ["config_network"]="Configuring network services..."
   ["disabling_iwd"]="Disabling iwd..."
   ["iwd_disabled"]="iwd is already disabled."
@@ -441,26 +431,6 @@ select_language() {
   echo ""
   echo -ne "${GRAY}$(msg "press_continue")${NC}"
   read -r
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# КОПИРОВАНИЕ MATUGEN
-# ═══════════════════════════════════════════════════════════════════════════════
-copy_matugen_config() {
-  print_step "$(msg "copying_matugen")"
-
-  if [ -d "$MATUGEN_DST" ]; then
-    print_success "$(msg "matugen_exists")"
-    echo -e "         ${GRAY}→ $MATUGEN_DST${NC}"
-  else
-    if [ -d "$MATUGEN_SRC" ]; then
-      cp -r "$MATUGEN_SRC" "$MATUGEN_DST"
-      print_success "$(msg "matugen_copied")"
-      echo -e "         ${GRAY}→ $MATUGEN_DST${NC}"
-    else
-      print_warning "matugen source not found in helper-folder"
-    fi
-  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -931,7 +901,7 @@ fi
 # УСТАНОВКА ПАКЕТОВ (включая python-evdev)
 # ═══════════════════════════════════════════════════════════════════════════════
 print_step "$(msg "installing_packages")"
-echo -e "         ${GRAY}hyprland, fabric, matugen, tesseract, python-evdev...${NC}"
+echo -e "         ${GRAY}hyprland, fabric, tesseract, python-evdev...${NC}"
 $aur_helper -Syy --needed --noconfirm "${PACKAGES[@]}" || true
 print_success "$(msg "installing_packages")"
 
@@ -982,11 +952,6 @@ else
 fi
 
 fc-cache -fv >/dev/null 2>&1 || true
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# КОПИРОВАНИЕ MATUGEN КОНФИГА
-# ═══════════════════════════════════════════════════════════════════════════════
-copy_matugen_config
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # НАСТРОЙКА СЕТИ
@@ -1049,7 +1014,6 @@ echo -e "${GRAY}╔════════════════════�
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Matugen cfg:${NC}  ${CYAN}~/.config/matugen${NC}                               ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Autolayout:${NC}   ${CYAN}systemctl --user status autolayout${NC}              ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}develop${NC}                                         ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"

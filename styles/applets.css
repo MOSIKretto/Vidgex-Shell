@@ -69,7 +69,6 @@
   margin: 4px 0;
 }
 
-/* --- CONNECTED STATE (GREEN) --- */
 #wifi-connect.connected,
 #bluetooth-connect.connected {
   background-color: var(--green);
@@ -160,8 +159,8 @@
 #bluetooth-delete:active,
 #wifi-delete:hover,
 #bluetooth-delete:hover {
-  background-color: var(--red);
-  border-color: var(--red);
+  background-color: var(--error);
+  border-color: var(--error);
   color: var(--on-primary);
 }
 
@@ -203,7 +202,6 @@
   background-color: var(--surface);
   border: 1px solid var(--surface-bright);
   border-radius: 8px;
-  color: var(--text);
   padding: 12px;
   font-size: 14px;
   margin-bottom: 12px;
@@ -226,27 +224,26 @@
 
 /* Кнопка Cancel (первая) */
 #password-entry-container button:first-child {
-  color: var(--red);
-  border-color: var(--red);
+  color: var(--error);
+  border-color: var(--error);
 }
 
 #password-entry-container button:first-child:hover {
   background-color: var(--surface-bright);
-  border-color: var(--red);
+  border-color: var(--error);
 }
 
 #password-entry-container button:first-child:active {
-  background-color: var(--red);
-  border-color: var(--red);
+  background-color: var(--error);
+  border-color: var(--error);
   color: var(--on-primary); /* Исправлено с --cursor на --on-primary */
 }
 
 #password-entry-container button:first-child:active *,
 #password-entry-container button:first-child:active label {
-  color: var(--on-primary); /* Исправлено с --cursor на --on-primary */
+  color: var(--on-primary); 
 }
 
-/* Кнопка OK (последняя) */
 #password-entry-container button:last-child {
   color: var(--primary);
   border-color: var(--primary);

@@ -65,7 +65,7 @@ window.popup decoration {
 }
 
 #explorer-search-placeholder {
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     opacity: 0.6;
     font-size: 14px;
     font-family: monospace;
@@ -88,7 +88,7 @@ window.popup decoration {
 }
 
 #explorer-search-entry image {
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     opacity: 0.6;
     margin: 0 4px;
 }
@@ -186,7 +186,7 @@ window.popup decoration {
 }
 
 #explorer-path-separator {
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     opacity: 0.5;
     margin: 0 2px;
     font-size: 12px;
@@ -295,7 +295,7 @@ window.popup decoration {
 #explorer-app-list row:hover #explorer-file-date { opacity: 1; }
 
 #explorer-file-icon {
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     min-width: 24px;
     transition: all 150ms ease-out;
 }
@@ -332,7 +332,7 @@ window.popup decoration {
 
 #explorer-file-row.unmounted {
     opacity: 0.7;
-    border: 1px dashed var(--on-surface-variant);
+    border: 1px dashed var(--on-surface);
     background-color: transparent;
 }
 
@@ -416,7 +416,7 @@ window.popup decoration {
 }
 
 #explorer-dnd-indicator.copy { color: var(--primary); border: 1px solid var(--primary); }
-#explorer-dnd-indicator.move { color: var(--on-surface); border: 1px solid var(--on-surface-variant); }
+#explorer-dnd-indicator.move { color: var(--on-surface); border: 1px solid var(--on-surface); }
 
 #explorer-file-view {
     background-color: var(--shadow);
@@ -426,12 +426,12 @@ window.popup decoration {
 }
 
 #explorer-content { min-height: 400px; }
-#explorer-status-label { font-size: 11px; color: var(--on-surface-variant); opacity: 0.8; }
-#explorer-size-label { font-size: 11px; color: var(--on-surface-variant); font-family: monospace; opacity: 0.8; }
+#explorer-status-label { font-size: 11px; color: var(--on-surface); opacity: 0.8; }
+#explorer-size-label { font-size: 11px; color: var(--on-surface); font-family: monospace; opacity: 0.8; }
 
 #explorer-empty-state { padding: 60px 20px; }
-#explorer-empty-icon { color: var(--on-surface-variant); opacity: 0.4; margin-bottom: 16px; }
-#explorer-empty-label { font-size: 14px; color: var(--on-surface-variant); opacity: 0.6; }
+#explorer-empty-icon { color: var(--on-surface); opacity: 0.4; margin-bottom: 16px; }
+#explorer-empty-label { font-size: 14px; color: var(--on-surface); opacity: 0.6; }
 
 scrollbar {
     background: var(--surface);
@@ -571,7 +571,7 @@ menu separator {
 }
 
 #explorer-app-search:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 1px alpha(var(--primary), 0.3); }
-#explorer-app-search image { color: var(--on-surface-variant); opacity: 0.6; margin: 0 4px; }
+#explorer-app-search image { color: var(--on-surface); opacity: 0.6; margin: 0 4px; }
 #explorer-app-search:focus image { color: var(--primary); opacity: 1; }
 
 #explorer-app-list #explorer-sidebar-header { margin-top: 4px; padding: 6px 8px 2px 8px; }

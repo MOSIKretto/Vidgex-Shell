@@ -9,7 +9,7 @@
 .terminal-tab-btn {
     border-radius: 8px;
     background-color: transparent;
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     opacity: 0.6; 
     transition: all 200ms ease-in-out;
     margin-right: 4px;
@@ -68,7 +68,7 @@
     border-radius: 8px;
     background-color: transparent;
     border: 1px solid transparent;
-    color: var(--on-surface-variant);
+    color: var(--on-surface);
     transition: all 150ms ease-in-out;
     margin-left: 4px;
 }

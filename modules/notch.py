@@ -9,11 +9,11 @@ from fabric.widgets.stack import Stack
 from gi.repository import Gdk, GLib, Gtk
 
 from modules.Notch.mainWindow import MainWindow
-from modules.Notch.cliphist import ClipHistory
-from modules.Notch.launcher import AppLauncher
+from modules.Notch.clipHist import ClipHistory
+from modules.Notch.appLauncher import AppLauncher
 from modules.Notch.overview import Overview
-from modules.Notch.power import PowerMenu
-from modules.Notch.tools import Toolbox
+from modules.Notch.powerMenu import PowerMenu
+from modules.Notch.toolBox import ToolBox
 from modules.Notch.sessionManager import SessionManagerUI
 
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
@@ -87,7 +87,7 @@ class Notch(Window):
     @property
     def cliphist(self): return self._get_or_create('cliphist', ClipHistory, 480, 244)
     @property
-    def tools(self): return self._get_or_create('tools', Toolbox)
+    def tools(self): return self._get_or_create('tools', ToolBox)
     @property
     def sessions(self): return self._get_or_create('sessions', SessionManagerUI, 480, 244)
 
