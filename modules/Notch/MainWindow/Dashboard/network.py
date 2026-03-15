@@ -14,6 +14,19 @@ import services.icons as icons
 from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 
 
+# Глобальная функция для установки курсора-пальца при наведении на любой виджет
+def set_pointer_cursor(widget):
+    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+    def _ent(w, _):
+        if win := w.get_window(): 
+            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+    def _lv(w, _):
+        if win := w.get_window(): 
+            win.set_cursor(None)
+    widget.connect("enter-notify-event", _ent)
+    widget.connect("leave-notify-event", _lv)
+
+
 class WifiSlot(Gtk.Box):
     __slots__ = (
         'nc', 'parent_net', 'ssid', 'saved', 'conn',
@@ -41,7 +54,7 @@ class WifiSlot(Gtk.Box):
 
         self.click_area = Gtk.EventBox()
         self.click_area.connect("button-press-event", self._on_click)
-        self._setup_hover()
+        set_pointer_cursor(self.click_area) 
 
         self.main_box = CenterBox()
         self.main_box.get_style_context().add_class("pixel-slot")
@@ -62,6 +75,7 @@ class WifiSlot(Gtk.Box):
         )
         self.btn_settings.get_style_context().add_class("pixel-icon-button")
         self.btn_settings.get_style_context().add_class("settings-btn")
+        set_pointer_cursor(self.btn_settings) 
 
         self.lock_icon = Label(markup=icons.lock)
         self.lock_icon.get_style_context().add_class("lock-icon")
@@ -86,6 +100,7 @@ class WifiSlot(Gtk.Box):
             on_clicked=self._on_reveal_clicked
         )
         self.btn_pw_reveal.get_style_context().add_class("pw-reveal-btn")
+        set_pointer_cursor(self.btn_pw_reveal) 
         
         self.pw_entry = Gtk.Entry(visibility=False, invisible_char='•', placeholder_text="Password...")
         self.pw_entry.set_hexpand(True)
@@ -97,6 +112,7 @@ class WifiSlot(Gtk.Box):
         )
         self.btn_pw_ok.set_sensitive(False)
         self.btn_pw_ok.get_style_context().add_class("pw-submit-btn")
+        set_pointer_cursor(self.btn_pw_ok) 
 
         self.pw_entry.connect("changed", self._on_pw_change)
         self.pw_entry.connect("activate", self._on_pw_activate)
@@ -111,15 +127,6 @@ class WifiSlot(Gtk.Box):
         self.pack_start(self.pw_rev, False, False, 0)
         self.show_all()
         self.pw_rev.set_reveal_child(False)
-
-    def _setup_hover(self):
-        self.click_area.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        def _ent(w, _):
-            if win := w.get_window(): win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
-        def _lv(w, _):
-            if win := w.get_window(): win.set_cursor(None)
-        self.click_area.connect("enter-notify-event", _ent)
-        self.click_area.connect("leave-notify-event", _lv)
 
     def _on_reveal_clicked(self, btn):
         is_visible = self.pw_entry.get_visibility()
@@ -283,6 +290,7 @@ class NetworkConnections(Box):
                  'main_scroll', 'saved_scroll', 'header_title',
                  'settings_scroll', 'current_settings_ssid', '_previous_page',
                  'btn_net_forget', 'btn_net_disconnect', 'btn_net_share',
+                 'lbl_net_forget', 'lbl_net_disconnect', '_is_current_connected',
                  'qr_revealer', 'qr_image', 'qr_password_lbl',
                  'lbl_sig', 'lbl_freq', 'lbl_sec', 'lbl_type', 'lbl_ip', 'lbl_gw')
 
@@ -299,6 +307,7 @@ class NetworkConnections(Box):
         self.current_settings_ssid = None
         self._previous_page = "main"
         self._slots = {"connected": [], "avail": [], "saved": []}
+        self._is_current_connected = False
 
         try: self.nc = NetworkClient()
         except Exception: self.nc = None
@@ -316,6 +325,7 @@ class NetworkConnections(Box):
     def _build(self):
         self.scan_lbl = Label(markup=icons.radar, name="network-scan-label")
         self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan Wi-Fi", on_clicked=self._on_scan)
+        set_pointer_cursor(self.scan_btn) 
 
         self.saved_lbl = Label(markup=icons.save, name="network-saved-label")
         self.saved_btn = Button(
@@ -324,9 +334,11 @@ class NetworkConnections(Box):
             tooltip_text="Saved Networks",
             on_clicked=self._on_saved_toggle
         )
+        set_pointer_cursor(self.saved_btn) 
 
         back = Button(name="network-back", child=Label(markup=icons.chevron_left, name="network-back-label"))
         back.connect("clicked", self._on_back_click)
+        set_pointer_cursor(back) 
 
         self.header_title = Label(label="Wi-Fi", v_align="center", name="header-title")
 
@@ -344,16 +356,23 @@ class NetworkConnections(Box):
         self.add(self.stack)
 
         off_box = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
-        off_box.add(Label(markup=f"<span size='xx-large'>{icons.wifi_off}</span>", name="dim-label"))
-        off_box.add(Label(label="Wi-Fi is disabled", name="dim-label"))
+        
+        off_icon = Label(markup=f"<span size='32768'>{icons.wifi_off}</span>")
+        off_icon.get_style_context().add_class("wifi-off-icon")
+        off_box.add(off_icon)
+        
+        off_label = Label(label="Wi-Fi is disabled")
+        off_label.get_style_context().add_class("wifi-off-label")
+        off_box.add(off_label)
+        
         btn_turn_on = Button(label="Turn On", on_clicked=self._turn_on_wifi)
-        btn_turn_on.get_style_context().add_class("pixel-primary-btn")
+        btn_turn_on.get_style_context().add_class("wifi-turn-on-btn")
+        set_pointer_cursor(btn_turn_on) 
         off_box.add(btn_turn_on)
         
         self.stack.add_named(off_box, "off")
         self.lists_stack = Stack(transition_type="slide-left-right", h_expand=True, v_expand=True, v_align="fill")
 
-        # --- MAIN LIST ---
         self.connected_box = Box(spacing=2, orientation="vertical")
         self.avail_box = Box(spacing=2, orientation="vertical")
         self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Networks", h_align="start", name="section-title"), self.avail_box))
@@ -366,7 +385,6 @@ class NetworkConnections(Box):
         )
         self.main_scroll.set_overlay_scrolling(False)
 
-        # --- SAVED LIST ---
         self.saved_box = Box(spacing=2, orientation="vertical")
         self.saved_section = Box(orientation="v", spacing=4, children=(Label(label="Saved Networks", h_align="start", name="section-title"), self.saved_box))
 
@@ -378,7 +396,6 @@ class NetworkConnections(Box):
         )
         self.saved_scroll.set_overlay_scrolling(False)
 
-        # --- SETTINGS PAGE ---
         self.settings_scroll = self._build_settings_page()
 
         self.lists_stack.add_named(self.main_scroll, "main")
@@ -392,18 +409,22 @@ class NetworkConnections(Box):
         settings_box.set_margin_start(12)
         settings_box.set_margin_end(12)
 
-        # 1. Action Buttons (Используем новые иконки через f-строки)
         actions_box = Box(orientation="horizontal", spacing=8, h_align="center", h_expand=True)
         
-        self.btn_net_forget = Button(child=Label(markup=f"<span size='large'>{icons.trash}</span> Удалить"), on_clicked=self._do_forget)
+        self.lbl_net_forget = Label(markup=f"<span size='large'>{icons.trash}</span> Удалить")
+        self.btn_net_forget = Button(child=self.lbl_net_forget, on_clicked=self._do_forget)
         self.btn_net_forget.get_style_context().add_class("net-action-btn")
         self.btn_net_forget.get_style_context().add_class("net-forget")
+        set_pointer_cursor(self.btn_net_forget) 
 
-        self.btn_net_disconnect = Button(child=Label(markup=f"<span size='large'>{icons.cancel}</span> Отключить"), on_clicked=self._do_disconnect)
+        self.lbl_net_disconnect = Label(markup=f"<span size='large'>{icons.cancel}</span> Отключить")
+        self.btn_net_disconnect = Button(child=self.lbl_net_disconnect, on_clicked=self._do_disconnect_or_connect)
         self.btn_net_disconnect.get_style_context().add_class("net-action-btn")
+        set_pointer_cursor(self.btn_net_disconnect) 
 
         self.btn_net_share = Button(child=Label(markup=f"<span size='large'>{icons.scan}</span> Поделиться"), on_clicked=self._do_share)
         self.btn_net_share.get_style_context().add_class("net-action-btn")
+        set_pointer_cursor(self.btn_net_share) 
 
         actions_box.add(self.btn_net_forget)
         actions_box.add(self.btn_net_disconnect)
@@ -411,7 +432,6 @@ class NetworkConnections(Box):
         actions_box.set_margin_bottom(12)
         settings_box.add(actions_box)
 
-        # 1.5 Share/QR Revealer
         self.qr_revealer = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN)
         qr_container = Box(orientation="vertical", spacing=8, h_align="center")
         qr_container.get_style_context().add_class("qr-container")
@@ -427,7 +447,6 @@ class NetworkConnections(Box):
         self.qr_revealer.add(qr_container)
         settings_box.add(self.qr_revealer)
 
-        # 2-7. Network Info Details (Slot design)
         self.lbl_sig = Label(label="-", h_align="end")
         self.lbl_freq = Label(label="-", h_align="end")
         self.lbl_sec = Label(label="-", h_align="end")
@@ -474,7 +493,26 @@ class NetworkConnections(Box):
         
         details = self.nc.get_network_details(ssid) if self.nc else {}
 
-        self.btn_net_disconnect.set_sensitive(details.get("connected", False))
+        self._is_current_connected = details.get("connected", False)
+        
+        is_available = False
+        try:
+            if self.nc:
+                if hasattr(self.nc, 'is_network_available'):
+                    is_available = self.nc.is_network_available(ssid)
+                elif hasattr(self.nc, 'wifi_device') and self.nc.wifi_device:
+                    for ap in getattr(self.nc.wifi_device, 'access_points', []):
+                        if ap.get("ssid") == ssid:
+                            is_available = True
+                            break
+        except Exception: pass
+
+        if self._is_current_connected:
+            self.lbl_net_disconnect.set_markup(f"<span size='large'>{icons.cancel}</span> Отключить")
+            self.btn_net_disconnect.set_sensitive(True)
+        else:
+            self.lbl_net_disconnect.set_markup(f"<span size='large'>{icons.accept}</span> Подключить")
+            self.btn_net_disconnect.set_sensitive(is_available)
 
         self.lbl_sig.set_label(details.get("strength", "Unknown"))
         self.lbl_freq.set_label(details.get("frequency", "Unknown"))
@@ -497,11 +535,20 @@ class NetworkConnections(Box):
             self._on_back_click(None)
             GLib.timeout_add(300, self._req_ref)
 
-    def _do_disconnect(self, _):
-        if self.nc:
+    def _do_disconnect_or_connect(self, _):
+        if not self.nc or not self.current_settings_ssid: return
+
+        if self._is_current_connected:
             self.nc.disconnect_network()
-            self._on_back_click(None)
-            GLib.timeout_add(300, self._req_ref)
+        else:
+            def on_success(*args):
+                GLib.timeout_add(500, self._req_ref)
+            def on_error(*args): pass
+            
+            self.nc.connect_to_saved_network(self.current_settings_ssid, on_success, on_error)
+
+        self._on_back_click(None)
+        GLib.timeout_add(300, self._req_ref)
 
     def _do_share(self, btn):
         if self.qr_revealer.get_reveal_child():

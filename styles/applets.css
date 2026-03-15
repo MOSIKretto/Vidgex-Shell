@@ -1,22 +1,50 @@
 /* =========================================================
    DASHBOARD BUTTONS & TOGGLES 
    ========================================================= */
+
+/* --- КРУГЛЫЕ КНОПКИ В ШАПКЕ (Сканировать, Назад, Сохранённые) --- */
 #bluetooth-scan,
 #bluetooth-back,
 #network-scan,
 #network-back,
-#network-saved,
+#network-saved {
+  background-color: var(--surface);
+  border-radius: 24px; 
+  padding: 8px;
+  margin: 2px;
+  border: 1px solid var(--surface-bright);
+  /* Очень плавная кривая анимации без эффекта пружины */
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  font-weight: bold;
+}
+
+#bluetooth-scan:active,
+#bluetooth-back:active,
+#network-scan:active,
+#network-back:active,
+#network-saved:active {
+  border-radius: 12px;
+}
+
+/* --- ОСТАЛЬНЫЕ ШИРОКИЕ КНОПКИ --- */
 #bluetooth-connect,
 #wifi-connect,
 #wifi-delete,
 #bluetooth-delete {
   background-color: var(--surface);
-  border-radius: 8px; 
+  border-radius: 24px; 
   padding: 8px;
   margin: 2px;
   border: 1px solid var(--surface-bright);
-  transition: all 0.1s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   font-weight: bold;
+}
+
+#bluetooth-connect:active,
+#wifi-connect:active,
+#wifi-delete:active,
+#bluetooth-delete:active {
+  border-radius: 12px;
 }
 
 #wifi-unavailable,
@@ -104,7 +132,13 @@
 /* --- PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) --- */
 #bluetooth-scan.pressed, #bluetooth-back.pressed,
 #network-scan.pressed, #network-back.pressed, #network-saved.pressed,
-#bluetooth-connect.pressed, #wifi-connect.pressed,
+#bluetooth-connect.pressed, #wifi-connect.pressed {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: 12px;
+}
+
 #bluetooth-scan:active, #bluetooth-back:active,
 #network-scan:active, #network-back:active, #network-saved:active,
 #bluetooth-connect:active, #wifi-connect:active {
@@ -179,14 +213,15 @@
   font-weight: normal;
 }
 
+/* --- КРУГЛАЯ КНОПКА НАСТРОЕК СЕТИ --- */
 .pixel-icon-button {
   background-color: transparent;
   color: var(--outline);
-  border-radius: 100px;
+  border-radius: 24px;
   padding: 8px;
   border: none;
   box-shadow: none;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .pixel-icon-button label {
@@ -201,6 +236,7 @@
 .pixel-icon-button:active {
   background-color: var(--primary);
   color: var(--on-primary);
+  border-radius: 12px;
 }
 
 .pixel-icon-button:active label {
@@ -210,11 +246,11 @@
 .pixel-primary-btn {
   background-color: var(--primary);
   color: var(--on-primary);
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 10px 28px;
   font-weight: bold;
   border: none;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .pixel-primary-btn:hover {
@@ -224,6 +260,7 @@
 
 .pixel-primary-btn:active {
   background-color: var(--primary);
+  border-radius: 12px;
   opacity: 0.8;
 }
 
@@ -324,16 +361,17 @@
   box-shadow: none;
 }
 
+/* --- КРУГЛЫЕ КНОПКИ ГЛАЗА И ГАЛОЧКИ ДЛЯ ПАРОЛЯ --- */
 .pw-reveal-btn {
   background-color: transparent;
-  border-radius: 100px;
+  border-radius: 24px;
   min-width: 34px;
   min-height: 34px;
   padding: 0;
   border: none;
   box-shadow: none;
   color: var(--outline);
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .pw-reveal-btn label {
@@ -346,18 +384,22 @@
   color: var(--primary);
 }
 
+.pw-reveal-btn:active {
+  border-radius: 12px;
+}
+
 #pw-pill:focus-within .pw-reveal-btn {
   color: var(--primary);
 }
 
 .pw-submit-btn {
-  border-radius: 100px;
+  border-radius: 24px;
   min-width: 34px;
   min-height: 34px;
   padding: 0;
   border: none;
   box-shadow: none;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .pw-submit-btn label {
@@ -393,6 +435,7 @@
 .pw-submit-btn:active:not(:disabled) {
   background-color: var(--primary);
   opacity: 0.6;
+  border-radius: 12px;
 }
 
 /* =========================================================
@@ -427,14 +470,12 @@ scrollbar slider:active {
    NETWORK SETTINGS PAGE (SEAMLESS PIXEL UI)
    ========================================================= */
 
-/* Убираем грубую внешнюю рамку, делаем список прозрачным и воздушным */
 .net-info-group {
   background-color: transparent;
   padding: 0;
   margin: 8px 0;
 }
 
-/* Каждая информационная строка выглядит в точности как слот Wi-Fi сети в списке */
 .net-info-row {
   border-radius: 16px;
   background-color: transparent;
@@ -446,20 +487,20 @@ scrollbar slider:active {
   background-color: var(--surface);
 }
 
-/* Кнопки действий (Удалить, Отключить, Поделиться) сделаны "таблетками" под стать pw-pill */
 .net-action-btn {
   background-color: var(--surface-bright);
-  border-radius: 100px;
+  border-radius: 24px;
   padding: 10px 16px;
   border: 1px solid transparent;
   font-weight: bold;
   color: var(--fg);
-  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   box-shadow: none;
 }
 
 .net-action-btn label {
   font-size: 13px;
+  transition: color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .net-action-btn:hover {
@@ -468,33 +509,53 @@ scrollbar slider:active {
   color: var(--primary);
 }
 
-.net-action-btn:active,
+.net-action-btn:hover label {
+  color: var(--primary);
+}
+
+/* Состояния при КЛИКЕ (:active) */
+.net-action-btn:active:not(:disabled),
 .net-action-btn.active {
   background-color: var(--primary);
   color: var(--on-primary);
+  border-radius: 12px;
 }
 
+.net-action-btn:active:not(:disabled) label,
 .net-action-btn.active label {
   color: var(--on-primary);
 }
 
-/* Специальный стиль для кнопки Forget */
+/* Отдельные стили для кнопки УДАЛИТЬ (красные тона) */
 .net-action-btn.net-forget:hover {
   border-color: var(--error);
   color: var(--error);
 }
 
-.net-action-btn.net-forget:active {
+.net-action-btn.net-forget:hover label {
+  color: var(--error);
+}
+
+.net-action-btn.net-forget:active:not(:disabled) {
   background-color: var(--error);
+  border-color: var(--error);
+  color: var(--on-primary);
+  border-radius: 12px;
+}
+
+.net-action-btn.net-forget:active:not(:disabled) label {
   color: var(--on-primary);
 }
 
-/* Отключенная кнопка (например, Disconnect) */
 .net-action-btn:disabled {
   background-color: transparent;
   color: var(--outline);
   border: 1px solid var(--surface-bright);
   opacity: 0.5;
+}
+
+.net-action-btn:disabled label {
+  color: var(--outline);
 }
 
 /* --- QR Code Share Section --- */
@@ -504,21 +565,65 @@ scrollbar slider:active {
   margin-bottom: 12px;
 }
 
-/* Белый фон обязателен для QR-кода, чтобы камеры легко его считывали */
 .qr-img {
   background-color: #ffffff;
   border-radius: 16px;
   padding: 16px;
 }
 
-/* Стиль моноширинного шрифта для пароля - форма таблетки как у поля ввода */
 .qr-password-text {
   font-family: monospace;
   font-size: 15px;
   font-weight: bold;
-  color: var(--fg);
+  color: var(--foreground);
   background-color: var(--surface-bright);
   padding: 10px 24px;
   border-radius: 100px;
   margin-top: 16px;
+}
+
+/* =========================================================
+   WI-FI OFF STATE (DISABLED SCREEN)
+   ========================================================= */
+
+.wifi-off-icon {
+  color: var(--outline);
+  opacity: 0.7;
+}
+
+.wifi-off-label {
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--outline);
+}
+
+.wifi-turn-on-btn {
+  background-color: var(--primary);
+  color: var(--shadow);
+  border-radius: 24px;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: bold;
+  border: none;
+  margin-top: 4px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.wifi-turn-on-btn label {
+  color: var(--shadow);
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.wifi-turn-on-btn:hover {
+  background-color: var(--surface-bright);
+}
+
+.wifi-turn-on-btn:hover label {
+  color: var(--foreground);
+}
+
+.wifi-turn-on-btn:active {
+  opacity: 0.6;
+  border-radius: 12px;
 }
