@@ -99,6 +99,7 @@ class NotificationHistory(Box):
             name="notifications-list", orientation="vertical", spacing=4
         )
         self.notifications_list.set_size_request(NOTIFICATION_WIDTH, -1)
+        self.notifications_list.set_no_show_all(True)
 
         self.no_notifications_box = Box(
             name="no-notifications-box",
@@ -114,6 +115,7 @@ class NotificationHistory(Box):
                 ),
             ],
         )
+        self.no_notifications_box.set_no_show_all(True)
 
         self.scroll = ScrolledWindow(
             name="bluetooth-devices",
@@ -134,7 +136,12 @@ class NotificationHistory(Box):
         self.do_not_disturb_enabled = switch.get_active()
 
     def _update_empty_state(self):
-        has_items = bool(self.containers)
+        has_items = (
+            len(self.containers) > 0 or 
+            len(self.persistent_notifications) > 0 or 
+            self._loading
+        )
+
         self.no_notifications_box.set_visible(not has_items)
         self.notifications_list.set_visible(has_items)
 
@@ -451,6 +458,7 @@ class NotificationHistory(Box):
     def _start_loading(self):
         if not self._loading:
             self._loading = True
+            self._update_empty_state()
             submit_io_task(self._load_from_file)
         return GLib.SOURCE_REMOVE
 
