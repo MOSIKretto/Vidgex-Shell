@@ -1,5 +1,4 @@
 import os
-import hashlib
 import random
 import re
 import threading
@@ -35,8 +34,6 @@ _MUSIC_DIR = (
     GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC)
     or os.path.join(GLib.get_home_dir(), "Music")
 )
-
-_COVER_DIR = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell", "covers")
 
 _TrackRow = namedtuple(
     "_TrackRow",
@@ -80,45 +77,8 @@ def _artist_group_key(artist: str) -> str:
     return primary
 
 
-def _extract_cover(audio, filepath):
-    if not audio:
-        return ""
-
-    md5 = hashlib.md5(filepath.encode()).hexdigest()
-    cpath = os.path.join(_COVER_DIR, f"loc_{md5}.png")
-    if _fex(cpath):
-        return GLib.filename_to_uri(cpath, None)
-
-    art_data = None
-    try:
-        tags = getattr(audio, "tags", None)
-        if tags:
-            for key in tags:
-                if key.startswith("APIC"):
-                    art_data = tags[key].data
-                    break
-
-        if not art_data:
-            pictures = getattr(audio, "pictures", None)
-            if pictures:
-                art_data = pictures[0].data
-
-        if not art_data and tags:
-            covr = tags.get("covr")
-            if covr:
-                art_data = covr[0]
-
-        if art_data:
-            with open(cpath, "wb") as f:
-                f.write(art_data)
-            return GLib.filename_to_uri(cpath, None)
-    except Exception:
-        pass
-    return ""
-
-
 def _get_metadata(filepath, filename):
-    artist = title = album = art_url = ""
+    artist = title = album = ""
     secs = 0
 
     try:
@@ -127,7 +87,6 @@ def _get_metadata(filepath, filename):
             info = getattr(audio, "info", None)
             if info:
                 secs = int(getattr(info, "length", 0))
-            art_url = _extract_cover(audio, filepath)
             tags = getattr(audio, "tags", None) or {}
             artist = _get_tag_text(tags, _TAG_ARTIST)
             title = _get_tag_text(tags, _TAG_TITLE)
@@ -137,16 +96,22 @@ def _get_metadata(filepath, filename):
 
     if not artist or not title:
         clean = _TRACK_NUM_RE.sub("", filename).strip()
+        
+        if not clean:
+            clean = filename
+            
         if " - " in clean:
             fa, ft = clean.split(" - ", 1)
         elif "-" in clean:
             fa, ft = clean.split("-", 1)
         else:
             fa, ft = "Unknown", clean
+            
         if not artist:
             artist = fa.strip()
         if not title:
             title = ft.strip()
+            
     if not title:
         title = filename
 
@@ -156,7 +121,7 @@ def _get_metadata(filepath, filename):
     else:
         duration_str = "--:--"
 
-    return artist, title, album, duration_str, secs * 1_000_000, art_url
+    return artist, title, album, duration_str, secs * 1_000_000, ""
 
 
 class ArtistGroup(Box):
@@ -437,7 +402,6 @@ class TrackList(Box):
 
     def _on_search(self, entry):
         query = entry.get_text().lower().strip()
-        # [OPT] Пропуск если запрос не изменился
         if query == self._last_query:
             return
         self._last_query = query
@@ -660,9 +624,10 @@ class TrackList(Box):
 
         lp = self.local_player
 
-        if lp.loop_status == "Track":
-            target = current_idx if current_idx != -1 else (0 if direction > 0 else -1)
-        elif lp.shuffle:
+        # Убрана блокировка при lp.loop_status == "Track".
+        # Теперь принудительное переключение (скролл в конец / начало / кнопки)
+        # всегда переключает трек как при плейлисте
+        if lp.shuffle:
             target = random.randrange(len(vis))
         elif current_idx != -1:
             target = current_idx + direction
