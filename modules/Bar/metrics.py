@@ -252,29 +252,25 @@ class SingularMetricSmall:
 
 
 class NetworkMetricSmall:
-    __slots__ = ('nm', 'ic', 'icon', 'circle', 'dl_level', 'dl_rev', 'box', '_lv', '_ldl')
+    __slots__ = ('nm', 'ic', 'icon', 'circle', 'sig_level', 'sig_rev', 'box', '_lv', '_lsig')
 
     def __init__(self):
         self.nm = "Disconnected"
         self.ic = icons.world_off
         self._lv = -1
-        self._ldl = ""
+        self._lsig = ""
         
         self.icon = Label(name='metrics-icon', markup=self.ic)
         self.circle = CircularProgressBar(name='metrics-circle', value=0, size=28, line_width=2, start_angle=150, end_angle=390, style_classes='net', child=self.icon)
         
-        self.dl_level = Label(name='metrics-level', style_classes='net', label='0 B/s')
+        self.sig_level = Label(name='metrics-level', style_classes='net', label='0%')
         
-        dl_box = Box(orientation='h', spacing=2, children=[
-            Label(name='download-icon-label', markup=icons.download, style="margin-left: 2px;"), 
-            self.dl_level
-        ])
+        # Убрана иконка из sig_box, чтобы не было дублирования с иконкой внутри круга
+        self.sig_rev = Revealer(name='metrics-net-sig-revealer', transition_duration=250, transition_type='slide-right', child=self.sig_level, child_revealed=False)
         
-        self.dl_rev = Revealer(name='metrics-net-dl-revealer', transition_duration=250, transition_type='slide-right', child=dl_box, child_revealed=False)
-        
-        self.box = Box(name='metrics-net-box', orientation='h', spacing=0, children=[self.circle, self.dl_rev])
+        self.box = Box(name='metrics-net-box', orientation='h', spacing=0, children=[self.circle, self.sig_rev])
 
-    def update(self, val, ssid, icon_markup, dl_str):
+    def update(self, val, ssid, icon_markup, sig_str):
         self.nm = ssid
         self.ic = icon_markup
         
@@ -284,9 +280,9 @@ class NetworkMetricSmall:
             
         self.icon.set_markup(icon_markup)
             
-        if self._ldl != dl_str:
-            self.dl_level.set_markup(dl_str)
-            self._ldl = dl_str
+        if self._lsig != sig_str:
+            self.sig_level.set_label(sig_str)
+            self._lsig = sig_str
 
     def markup(self):
         return f'{self.ic} {self.nm}'
@@ -380,11 +376,13 @@ class MetricsSmall(Button):
         net_icon = icons.world_off
         net_val = 0.0
         ssid_name = "Disconnected"
+        signal_str = "0%"
 
         if ed and ed.internet in ('activated', 'activating'):
             net_icon = icons.world
             net_val = 1.0
             ssid_name = "Ethernet"
+            signal_str = "100%"
         elif wd and getattr(wd, 'enabled', False):
             ssid = getattr(wd, 'ssid', None)
             if ssid and ssid not in ('Disconnected', 'Выключено', 'Не подключено'):
@@ -392,10 +390,9 @@ class MetricsSmall(Button):
                 net_icon = icons.wifi_3 if s >= 75 else icons.wifi_2 if s >= 50 else icons.wifi_1 if s >= 25 else icons.wifi_0
                 net_val = s * 0.01
                 ssid_name = ssid
+                signal_str = f"{int(s)}%"
 
-        dl_str = format_bytes(_prov.net_dl) if _prov.net_dl > 0 else "0 B/s"
-        
-        self.net.update(net_val, ssid_name, net_icon, dl_str)
+        self.net.update(net_val, ssid_name, net_icon, signal_str)
 
         self.temp.update(min(_prov.temp * 0.00666667, 1.0), f'{int(_prov.temp + 0.5)}°C')
         self.cpu.update(_prov.cpu * 0.01, f'{int(_prov.cpu)}%')
@@ -414,8 +411,8 @@ class MetricsSmall(Button):
             GLib.source_remove(self.htim)
             self.htim = None
         for m in self._all:
-            if hasattr(m, 'dl_rev'):
-                m.dl_rev.set_reveal_child(True)
+            if hasattr(m, 'sig_rev'):
+                m.sig_rev.set_reveal_child(True)
             else:
                 m.rev.set_reveal_child(True)
         return False
@@ -429,8 +426,8 @@ class MetricsSmall(Button):
 
     def _hide(self):
         for m in self._all:
-            if hasattr(m, 'dl_rev'):
-                m.dl_rev.set_reveal_child(False)
+            if hasattr(m, 'sig_rev'):
+                m.sig_rev.set_reveal_child(False)
             else:
                 m.rev.set_reveal_child(False)
         self.htim = None
