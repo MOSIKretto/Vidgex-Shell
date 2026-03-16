@@ -11,6 +11,7 @@ from gi.repository import Gdk, Gtk, GLib
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
 import services.icons as icons
 
+
 _audio = None
 
 def get_audio():
@@ -30,6 +31,9 @@ _IB = {"high": icons.bluetooth_connected, "medium": icons.bluetooth, "mute": ico
 
 _ANIM_STEPS = 25
 _ANIM_INTERVAL_MS = 16
+
+_CLICK_STEPS = 20
+_CLICK_MS = 14
 
 _pointer_cursor: Gdk.Cursor | None = None
 _default_cursor: Gdk.Cursor | None = None
@@ -57,8 +61,20 @@ def _setup_pointer_cursor(widget: Gtk.Widget):
     widget.connect("leave-notify-event", _on_btn_leave)
 
 
+def _ease_out_cubic(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
+
+
+def _val_from_x(scale: Gtk.Widget, x: float) -> float:
+    w = scale.get_allocation().width
+    if w <= 0:
+        return 0.0
+    return max(0.0, min(1.0, x / w))
+
+
 class _AudioScale(Scale):
-    __slots__ = ('audio', '_upd', '_s', '_hid', '_audio_hid', '_last_pct', '_type')
+    __slots__ = ('audio', '_upd', '_s', '_hid', '_audio_hid', '_last_pct', '_type',
+                 '_canim_id', '_canim_s', '_canim_e', '_canim_n', '_pressed')
 
     def __init__(self, stream_type, style, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
@@ -68,10 +84,60 @@ class _AudioScale(Scale):
         self._s = self._hid = self._audio_hid = None
         self._last_pct = -1
 
+        self._canim_id = None
+        self._canim_s = self._canim_e = 0.0
+        self._canim_n = 0
+        self._pressed = False
+
         self.add_style_class(style)
         self._audio_hid = self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self.connect("value-changed", self._val_chg)
+        self.connect("button-press-event", self._on_click_press)
+        self.connect("button-release-event", self._on_click_release)
+        self.connect("motion-notify-event", self._on_click_motion)
         self._new_stream()
+
+    def _on_click_press(self, _, event):
+        if event.button != 1:
+            return False
+        target = _val_from_x(self, event.x)
+        current = self.value
+        if abs(target - current) < 0.03:
+            return False
+        self._pressed = True
+        self._cancel_canim()
+        self._canim_s = current
+        self._canim_e = target
+        self._canim_n = 0
+        self._canim_id = GLib.timeout_add(_CLICK_MS, self._canim_tick)
+        return True
+
+    def _on_click_release(self, _, event):
+        if not self._pressed:
+            return False
+        self._pressed = False
+        return True
+
+    def _on_click_motion(self, _, event):
+        if not self._pressed:
+            return False
+        self._cancel_canim()
+        self.value = _val_from_x(self, event.x)
+        return True
+
+    def _canim_tick(self):
+        self._canim_n += 1
+        t = min(self._canim_n / float(_CLICK_STEPS), 1.0)
+        self.value = self._canim_s + (self._canim_e - self._canim_s) * _ease_out_cubic(t)
+        if self._canim_n >= _CLICK_STEPS:
+            self._canim_id = None
+            return False
+        return True
+
+    def _cancel_canim(self):
+        if self._canim_id is not None:
+            GLib.source_remove(self._canim_id)
+            self._canim_id = None
 
     def _new_stream(self, *_):
         if self._s and self._hid:
@@ -85,6 +151,8 @@ class _AudioScale(Scale):
 
     def _ui(self, *_):
         if not self._s: return
+        if self._canim_id is not None or self._pressed: return
+
         self._upd = True
 
         nv = self._s.volume * 0.01
@@ -108,6 +176,7 @@ class _AudioScale(Scale):
                 self._last_pct = pct
 
     def cleanup(self):
+        self._cancel_canim()
         if self._audio_hid and self.audio:
             try: self.audio.disconnect(self._audio_hid)
             except Exception: pass
@@ -174,7 +243,7 @@ class _AudioSmall(Box):
 
 class _AudioIcon(Box):
     __slots__ = ('audio', '_s', '_hid', '_audio_hid', 'vol_label', 'vol_button',
-                 '_last_vol', '_is_mic', '_soft_muted', '_saved_vol', 
+                 '_last_vol', '_is_mic', '_soft_muted', '_saved_vol',
                  '_anim_id', '_anim_start', '_anim_end', '_anim_step')
 
     def __init__(self, stream_type, box_name, lbl_name, is_mic=False, **kwargs):
@@ -226,18 +295,18 @@ class _AudioIcon(Box):
         if not self._s: return
         self._anim_start = self._s.volume
         self._anim_end = 0.0 if to_zero else self._saved_vol
-        
+
         if abs(self._anim_start - self._anim_end) < 0.5:
             self._s.volume = self._anim_end
             return
-            
+
         self._anim_step = 0
         self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, self._anim_tick)
 
     def _anim_tick(self):
         self._anim_step += 1
         t = min(self._anim_step / float(_ANIM_STEPS), 1.0)
-        ease = 1.0 - (1.0 - t) ** 3
+        ease = _ease_out_cubic(t)
 
         if self._s:
             self._s.volume = self._anim_start + (self._anim_end - self._anim_start) * ease
@@ -296,7 +365,8 @@ class MicIcon(_AudioIcon):
 
 
 class BrightnessSlider(Scale):
-    __slots__ = ('client', '_upd', '_tid', '_target', '_last_pct', '_br_hid')
+    __slots__ = ('client', '_upd', '_tid', '_target', '_last_pct', '_br_hid',
+                 '_canim_id', '_canim_s', '_canim_e', '_canim_n', '_pressed')
 
     def __init__(self, **kwargs):
         super().__init__(name="control-slider", orientation="h", h_expand=True, h_align="fill", has_origin=True, increments=(0.01, 0.1), **kwargs)
@@ -305,6 +375,11 @@ class BrightnessSlider(Scale):
         self._tid = self._br_hid = None
         self._target = self._last_pct = -1
 
+        self._canim_id = None
+        self._canim_s = self._canim_e = 0.0
+        self._canim_n = 0
+        self._pressed = False
+
         if self.client.max_screen <= 0:
             self.set_no_show_all(True)
             self.hide()
@@ -312,8 +387,53 @@ class BrightnessSlider(Scale):
 
         self.add_style_class("brightness")
         self.connect("value-changed", self._val_chg)
+        self.connect("button-press-event", self._on_click_press)
+        self.connect("button-release-event", self._on_click_release)
+        self.connect("motion-notify-event", self._on_click_motion)
         self._br_hid = self.client.connect("screen", self._br_chg)
         self._br_chg(None, self.client.screen_brightness)
+
+    def _on_click_press(self, _, event):
+        if event.button != 1:
+            return False
+        target = _val_from_x(self, event.x)
+        current = self.get_value()
+        if abs(target - current) < 0.03:
+            return False
+        self._pressed = True
+        self._cancel_canim()
+        self._canim_s = current
+        self._canim_e = target
+        self._canim_n = 0
+        self._canim_id = GLib.timeout_add(_CLICK_MS, self._canim_tick)
+        return True
+
+    def _on_click_release(self, _, event):
+        if not self._pressed:
+            return False
+        self._pressed = False
+        return True
+
+    def _on_click_motion(self, _, event):
+        if not self._pressed:
+            return False
+        self._cancel_canim()
+        self.set_value(_val_from_x(self, event.x))
+        return True
+
+    def _canim_tick(self):
+        self._canim_n += 1
+        t = min(self._canim_n / float(_CLICK_STEPS), 1.0)
+        self.set_value(self._canim_s + (self._canim_e - self._canim_s) * _ease_out_cubic(t))
+        if self._canim_n >= _CLICK_STEPS:
+            self._canim_id = None
+            return False
+        return True
+
+    def _cancel_canim(self):
+        if self._canim_id is not None:
+            GLib.source_remove(self._canim_id)
+            self._canim_id = None
 
     def _val_chg(self, _):
         if self._upd: return
@@ -326,8 +446,12 @@ class BrightnessSlider(Scale):
 
         self._target = int(val * self.client.max_screen)
 
-        if self._tid: GLib.source_remove(self._tid)
-        self._tid = GLib.timeout_add(30, self._apply)
+        if self._canim_id is not None:
+            if not self._tid:
+                self._tid = GLib.timeout_add(30, self._apply)
+        else:
+            if self._tid: GLib.source_remove(self._tid)
+            self._tid = GLib.timeout_add(30, self._apply)
 
     def _apply(self):
         self._tid = None
@@ -337,6 +461,7 @@ class BrightnessSlider(Scale):
 
     def _br_chg(self, _, cur):
         if self._tid or not getattr(self.client, '_valid', True) or self.client.max_screen <= 0: return
+        if self._canim_id is not None or self._pressed: return
 
         n = cur / self.client.max_screen
         if abs(self.get_value() - n) < 0.008: return
@@ -352,6 +477,7 @@ class BrightnessSlider(Scale):
         self._upd = False
 
     def cleanup(self):
+        self._cancel_canim()
         if self._tid:
             GLib.source_remove(self._tid)
             self._tid = None
@@ -453,7 +579,7 @@ class BrightnessIcon(Box):
     def _anim_tick(self):
         self._anim_step += 1
         t = min(self._anim_step / float(_ANIM_STEPS), 1.0)
-        ease = 1.0 - (1.0 - t) ** 3
+        ease = _ease_out_cubic(t)
 
         self.brightness.screen_brightness = int(self._anim_start + (self._anim_end - self._anim_start) * ease)
 

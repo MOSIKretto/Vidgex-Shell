@@ -33,7 +33,6 @@ def _hover(w):
     w.connect("enter-notify-event", _ent)
     w.connect("leave-notify-event", _lv)
 
-
 def _fast_chk(pat):
     pat_b = pat.encode()
     try:
@@ -275,7 +274,6 @@ class BluetoothButton(Box):
         )
 
     def _get_pwr(self):
-        # Строгая системная проверка через rfkill (защита от рассинхрона)
         try:
             base_dir = "/sys/class/rfkill/"
             for d in os.listdir(base_dir):
@@ -294,7 +292,6 @@ class BluetoothButton(Box):
         
         en = self._get_pwr()
         
-        # Гарантированно блокируем/разблокируем и адаптер, и rfkill
         if en:
             cmd = "bluetoothctl power off ; rfkill block bluetooth"
         else:
