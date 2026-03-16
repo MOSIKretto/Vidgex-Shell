@@ -34,22 +34,15 @@ def _run_bt_cmd(cmd_str, callback=None):
         if callback: GLib.idle_add(callback)
 
 def _get_dev_name(dev):
-    """
-    Умное получение имени устройства.
-    Возвращает None, если имени нет, оно пустое или является просто MAC-адресом.
-    """
     addr = getattr(dev, "address", "").upper()
-    # Сначала пытаемся получить alias, затем обычное name
     name = getattr(dev, "alias", None) or getattr(dev, "name", None)
     
     if not name or str(name).strip() in ("", "Unknown", "unknown"):
         return None
         
-    # Убираем двоеточия и тире для сравнения MAC-адреса с именем
     clean_name = str(name).replace(":", "").replace("-", "").strip().upper()
     clean_addr = addr.replace(":", "").replace("-", "").strip().upper()
     
-    # Если имя устройства идентично его MAC-адресу — отсеиваем его
     if clean_name == clean_addr:
         return None
         
@@ -148,6 +141,7 @@ class BTSlot(Gtk.EventBox):
 class BluetoothConnections(Box):
     __slots__ = ('_w', '_btns', '_cl', 'stack', '_slots', '_rid',
                  'lists_stack', 'connected_box', 'avail_box', 'saved_box',
+                 'avail_stack', 'avail_empty',
                  'avail_section', 'saved_section', 'main_scroll', 'saved_scroll',
                  'settings_scroll', 'header_title', 'saved_btn', '_sc_btn', '_sc_lbl',
                  'current_settings_dev', '_previous_page',
@@ -221,7 +215,30 @@ class BluetoothConnections(Box):
 
         self.connected_box = Box(spacing=2, orientation="vertical")
         self.avail_box = Box(spacing=2, orientation="vertical")
-        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Devices", h_align="start", name="section-title"), self.avail_box))
+        
+        # --- Пустое состояние для поиска ---
+        self.avail_empty = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
+        self.avail_empty.set_margin_top(24)
+        self.avail_empty.set_margin_bottom(24)
+        
+        empty_icon = Label(markup=f"<span size='32768'>{icons.radar}</span>")
+        empty_icon.get_style_context().add_class("bluetooth-off-icon")
+        self.avail_empty.add(empty_icon)
+        
+        empty_lbl = Label(label="No devices found")
+        empty_lbl.get_style_context().add_class("bluetooth-off-label")
+        self.avail_empty.add(empty_lbl)
+        
+        btn_scan = Button(label="Scan", h_align="center", on_clicked=self._on_scan_toggle)
+        btn_scan.get_style_context().add_class("bluetooth-turn-on-btn")
+        set_pointer_cursor(btn_scan)
+        self.avail_empty.add(btn_scan)
+        
+        self.avail_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
+        self.avail_stack.add_named(self.avail_box, "list")
+        self.avail_stack.add_named(self.avail_empty, "empty")
+        
+        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Devices", h_align="start", name="section-title"), self.avail_stack))
 
         self.main_scroll = ScrolledWindow(
             name="bluetooth-devices", min_content_size=(-1, -1),
@@ -372,7 +389,6 @@ class BluetoothConnections(Box):
     def _attach_dev_signals(self, dev):
         if not hasattr(dev, "_signals_attached"):
             dev._signals_attached = []
-            # Добавили прослушивание 'alias' для моментальной реакции на смену имени
             for sig in ("notify::connected", "notify::paired", "notify::trusted", "notify::name", "notify::alias"):
                 try: dev._signals_attached.append(dev.connect(sig, self._sched))
                 except TypeError: pass
@@ -398,8 +414,6 @@ class BluetoothConnections(Box):
         
         for dev in dev_list:
             real_name = _get_dev_name(dev)
-            
-            # Если имя отфильтровалось (его нет или это просто MAC) — полностью пропускаем устройство
             if not real_name:
                 continue
                 
@@ -412,7 +426,6 @@ class BluetoothConnections(Box):
             if known: sd.append(dev)
             if not c and not known: ad.append(dev)
 
-        # Сортируем списки по алфавиту для красоты
         cd.sort(key=lambda d: (_get_dev_name(d) or "").lower())
         sd.sort(key=lambda d: (not getattr(d, 'connected', False), (_get_dev_name(d) or "").lower()))
         ad.sort(key=lambda d: (_get_dev_name(d) or "").lower())
@@ -441,8 +454,13 @@ class BluetoothConnections(Box):
         def count_vis(box): return sum(1 for child in box.get_children() if child.get_visible())
         
         self.connected_box.set_visible(count_vis(self.connected_box) > 0)
-        # Заголовок Available Devices теперь виден всегда, даже если устройств (в box) 0
         self.avail_section.set_visible(True)
+        
+        # --- Переключаем список на пустое состояние если нет устройств ---
+        if count_vis(self.avail_box) > 0:
+            self.avail_stack.set_visible_child_name("list")
+        else:
+            self.avail_stack.set_visible_child_name("empty")
 
     def _get_pwr(self):
         if self._btns and hasattr(self._btns, '_get_pwr'): return self._btns._get_pwr()

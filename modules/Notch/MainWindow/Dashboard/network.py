@@ -14,7 +14,6 @@ import services.icons as icons
 from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 
 
-# Глобальная функция для установки курсора-пальца при наведении на любой виджет
 def set_pointer_cursor(widget):
     widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
     def _ent(w, _):
@@ -287,6 +286,7 @@ class NetworkConnections(Box):
     __slots__ = ('widgets', '_btns', '_rid', '_scan', '_slots', 'nc',
                  'stack', 'lists_stack', 'scan_lbl', 'scan_btn', 'saved_lbl', 'saved_btn',
                  'connected_box', 'avail_box', 'avail_section', 'saved_box', 'saved_section', 
+                 'avail_stack', 'avail_empty',
                  'main_scroll', 'saved_scroll', 'header_title',
                  'settings_scroll', 'current_settings_ssid', '_previous_page',
                  'btn_net_forget', 'btn_net_disconnect', 'btn_net_share',
@@ -324,7 +324,7 @@ class NetworkConnections(Box):
 
     def _build(self):
         self.scan_lbl = Label(markup=icons.radar, name="network-scan-label")
-        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan", on_clicked=self._on_scan)
+        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan Wi-Fi", on_clicked=self._on_scan)
         set_pointer_cursor(self.scan_btn) 
 
         self.saved_lbl = Label(markup=icons.save, name="network-saved-label")
@@ -375,7 +375,30 @@ class NetworkConnections(Box):
 
         self.connected_box = Box(spacing=2, orientation="vertical")
         self.avail_box = Box(spacing=2, orientation="vertical")
-        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Networks", h_align="start", name="section-title"), self.avail_box))
+        
+        # --- Пустое состояние для поиска ---
+        self.avail_empty = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
+        self.avail_empty.set_margin_top(24)
+        self.avail_empty.set_margin_bottom(24)
+        
+        empty_icon = Label(markup=f"<span size='32768'>{icons.radar}</span>")
+        empty_icon.get_style_context().add_class("wifi-off-icon")
+        self.avail_empty.add(empty_icon)
+        
+        empty_lbl = Label(label="No networks found")
+        empty_lbl.get_style_context().add_class("wifi-off-label")
+        self.avail_empty.add(empty_lbl)
+        
+        btn_scan = Button(label="Scan", h_align="center", on_clicked=self._on_scan)
+        btn_scan.get_style_context().add_class("wifi-turn-on-btn")
+        set_pointer_cursor(btn_scan)
+        self.avail_empty.add(btn_scan)
+        
+        self.avail_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
+        self.avail_stack.add_named(self.avail_box, "list")
+        self.avail_stack.add_named(self.avail_empty, "empty")
+        
+        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Networks", h_align="start", name="section-title"), self.avail_stack))
 
         self.main_scroll = ScrolledWindow(
             name="bluetooth-devices",
@@ -692,6 +715,12 @@ class NetworkConnections(Box):
 
         self.connected_box.set_visible(len(cd) > 0)
         self.avail_section.set_visible(True)
+        
+        # --- Переключаем список на пустое состояние если нет сетей ---
+        if len(ad) > 0:
+            self.avail_stack.set_visible_child_name("list")
+        else:
+            self.avail_stack.set_visible_child_name("empty")
 
         st = getattr(dev, 'strength', 0) if dev else 0
         txt = "Off" if not en else (cur or "Disconnected")
