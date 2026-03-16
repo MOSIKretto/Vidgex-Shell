@@ -511,8 +511,8 @@ class NotificationHistory(Box):
 
     def _finish_loading(self):
         if not self._is_destroyed:
-            self._rebuild_with_groups()
             self._loading = False
+            self._rebuild_with_groups()
         return GLib.SOURCE_REMOVE
 
     def _schedule_save(self):
