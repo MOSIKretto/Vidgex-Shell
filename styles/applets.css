@@ -5,6 +5,7 @@
 /* --- КРУГЛЫЕ КНОПКИ В ШАПКЕ (Сканировать, Назад, Сохранённые) --- */
 #bluetooth-scan,
 #bluetooth-back,
+#bluetooth-saved,
 #network-scan,
 #network-back,
 #network-saved {
@@ -20,6 +21,7 @@
 
 #bluetooth-scan:active,
 #bluetooth-back:active,
+#bluetooth-saved:active,
 #network-scan:active,
 #network-back:active,
 #network-saved:active {
@@ -69,6 +71,7 @@
 #network-back-label,
 #bluetooth-scan-label,
 #network-scan-label,
+#bluetooth-saved-label,
 #network-saved-label,
 #wifi-delete-label,
 #bluetooth-delete-label,
@@ -79,6 +82,7 @@
 /* --- HOVER STATES --- */
 #bluetooth-scan:hover,
 #bluetooth-back:hover,
+#bluetooth-saved:hover,
 #network-scan:hover,
 #network-back:hover,
 #network-saved:hover,
@@ -130,7 +134,7 @@
 }
 
 /* --- PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) --- */
-#bluetooth-scan.pressed, #bluetooth-back.pressed,
+#bluetooth-scan.pressed, #bluetooth-back.pressed, #bluetooth-saved.pressed,
 #network-scan.pressed, #network-back.pressed, #network-saved.pressed,
 #bluetooth-connect.pressed, #wifi-connect.pressed {
   background-color: var(--primary);
@@ -139,7 +143,7 @@
   border-radius: 12px;
 }
 
-#bluetooth-scan:active, #bluetooth-back:active,
+#bluetooth-scan:active, #bluetooth-back:active, #bluetooth-saved:active,
 #network-scan:active, #network-back:active, #network-saved:active,
 #bluetooth-connect:active, #wifi-connect:active {
   background-color: var(--primary);
@@ -149,6 +153,7 @@
 
 #bluetooth-scan.pressed *, #bluetooth-scan.pressed label,
 #bluetooth-back.pressed *, #bluetooth-back.pressed label,
+#bluetooth-saved.pressed *, #bluetooth-saved.pressed label,
 #network-scan.pressed *,   #network-scan.pressed label,
 #network-back.pressed *,   #network-back.pressed label,
 #network-saved.pressed *,  #network-saved.pressed label,
@@ -156,6 +161,7 @@
 #wifi-connect.pressed *,   #wifi-connect.pressed label,
 #bluetooth-scan:active *,  #bluetooth-scan:active label,
 #bluetooth-back:active *,  #bluetooth-back:active label,
+#bluetooth-saved:active *, #bluetooth-saved:active label,
 #network-scan:active *,    #network-scan:active label,
 #network-back:active *,    #network-back:active label,
 #network-saved:active *,   #network-saved:active label,
@@ -583,21 +589,24 @@ scrollbar slider:active {
 }
 
 /* =========================================================
-   WI-FI OFF STATE (DISABLED SCREEN)
+   OFF STATE (DISABLED SCREEN) FOR WI-FI & BLUETOOTH
    ========================================================= */
 
-.wifi-off-icon {
+.wifi-off-icon,
+.bluetooth-off-icon {
   color: var(--outline);
   opacity: 0.7;
 }
 
-.wifi-off-label {
+.wifi-off-label,
+.bluetooth-off-label {
   font-size: 15px;
   font-weight: bold;
   color: var(--outline);
 }
 
-.wifi-turn-on-btn {
+.wifi-turn-on-btn,
+.bluetooth-turn-on-btn {
   background-color: var(--primary);
   color: var(--shadow);
   border-radius: 24px;
@@ -609,21 +618,25 @@ scrollbar slider:active {
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.wifi-turn-on-btn label {
+.wifi-turn-on-btn label,
+.bluetooth-turn-on-btn label {
   color: var(--shadow);
   font-weight: bold;
   font-size: 14px;
 }
 
-.wifi-turn-on-btn:hover {
+.wifi-turn-on-btn:hover,
+.bluetooth-turn-on-btn:hover {
   background-color: var(--surface-bright);
 }
 
-.wifi-turn-on-btn:hover label {
+.wifi-turn-on-btn:hover label,
+.bluetooth-turn-on-btn:hover label {
   color: var(--foreground);
 }
 
-.wifi-turn-on-btn:active {
+.wifi-turn-on-btn:active,
+.bluetooth-turn-on-btn:active {
   opacity: 0.6;
   border-radius: 12px;
 }

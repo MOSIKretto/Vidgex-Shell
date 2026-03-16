@@ -324,7 +324,7 @@ class NetworkConnections(Box):
 
     def _build(self):
         self.scan_lbl = Label(markup=icons.radar, name="network-scan-label")
-        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan Wi-Fi", on_clicked=self._on_scan)
+        self.scan_btn = Button(name="network-scan", child=self.scan_lbl, tooltip_text="Scan", on_clicked=self._on_scan)
         set_pointer_cursor(self.scan_btn) 
 
         self.saved_lbl = Label(markup=icons.save, name="network-saved-label")
@@ -365,7 +365,7 @@ class NetworkConnections(Box):
         off_label.get_style_context().add_class("wifi-off-label")
         off_box.add(off_label)
         
-        btn_turn_on = Button(label="Turn On", on_clicked=self._turn_on_wifi)
+        btn_turn_on = Button(label="Turn On", h_align="center", on_clicked=self._turn_on_wifi)
         btn_turn_on.get_style_context().add_class("wifi-turn-on-btn")
         set_pointer_cursor(btn_turn_on) 
         off_box.add(btn_turn_on)
