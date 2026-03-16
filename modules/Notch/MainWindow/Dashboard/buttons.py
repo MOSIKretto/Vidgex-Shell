@@ -6,6 +6,7 @@ from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
+from fabric.bluetooth import BluetoothClient
 
 import services.icons as icons
 from modules.Notch.MainWindow.Dashboard.network import NetworkClient
@@ -225,7 +226,7 @@ class NetworkButton(Box):
 
 
 class BluetoothButton(Box):
-    __slots__ = ('_w', '_n', '_en', '_sw', '_pending',
+    __slots__ = ('_w', '_n', '_en', '_cl', '_sw', '_pending',
                  'bluetooth_icon', 'bluetooth_label', 'bluetooth_status_text',
                  'bluetooth_status_button', 'bluetooth_menu_button', 'bluetooth_menu_label')
 
@@ -233,9 +234,18 @@ class BluetoothButton(Box):
         super().__init__()
         self._w, self._n = widgets, notch
         self._en = self._pending = False
+        
+        try:
+            self._cl = BluetoothClient()
+        except Exception:
+            self._cl = None
 
         self._build()
-        self.update_state()
+        
+        if self._cl:
+            self._cl.connect("notify::enabled", self.update_state)
+            
+        GLib.idle_add(self.update_state)
 
     def _build(self):
         self.bluetooth_icon = Label(name="bluetooth-icon", markup=icons.bluetooth_off)
@@ -265,6 +275,7 @@ class BluetoothButton(Box):
         )
 
     def _get_pwr(self):
+        # Строгая системная проверка через rfkill (защита от рассинхрона)
         try:
             base_dir = "/sys/class/rfkill/"
             for d in os.listdir(base_dir):
@@ -281,25 +292,36 @@ class BluetoothButton(Box):
         if self._pending: return
         self._pending = True
         
-        cmd = f"rfkill {'block' if self._en else 'unblock'} bluetooth"
+        en = self._get_pwr()
+        
+        # Гарантированно блокируем/разблокируем и адаптер, и rfkill
+        if en:
+            cmd = "bluetoothctl power off ; rfkill block bluetooth"
+        else:
+            cmd = "rfkill unblock bluetooth ; sleep 0.2 ; bluetoothctl power on"
+            
         try:
-            GLib.spawn_command_line_async(cmd)
+            GLib.spawn_command_line_async(f"/bin/sh -c '{cmd}'")
         except Exception: pass
         
-        GLib.timeout_add(300, self.update_state)
+        self._upd_ui(not en)
+        GLib.timeout_add(1000, self._clear_pending)
+
+    def _clear_pending(self):
+        self._pending = False
+        self.update_state()
+        return False
 
     def _upd_ui(self, en):
-        self._pending = False
-        if self._en == en: return False
+        if self._en == en: return
         self._en = en
-            
         self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
         self.bluetooth_status_text.set_label(_ON if en else _OFF)
         _dis(self._sw, not en)
-        return False
 
     def update_state(self, *_):
-        self._upd_ui(self._get_pwr())
+        if not self._pending:
+            self._upd_ui(self._get_pwr())
         return False
 
     def _open_menu(self, *_):
@@ -308,7 +330,7 @@ class BluetoothButton(Box):
         else: exec_shell_command_async("blueman-manager")
 
     def cleanup(self):
-        self._w = self._n = None
+        self._cl = self._w = self._n = None
 
 
 class _ToggleBtn(Button):

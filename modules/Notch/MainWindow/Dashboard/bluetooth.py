@@ -44,7 +44,7 @@ def _get_dev_name(dev):
     clean_addr = addr.replace(":", "").replace("-", "").strip().upper()
     
     if clean_name == clean_addr:
-        return None
+         return None
         
     return str(name)
 
@@ -139,7 +139,7 @@ class BTSlot(Gtk.EventBox):
 
 
 class BluetoothConnections(Box):
-    __slots__ = ('_w', '_btns', '_cl', 'stack', '_slots', '_rid',
+    __slots__ = ('_w', '_btns', '_cl', 'stack', '_slots', '_rid', '_scan',
                  'lists_stack', 'connected_box', 'avail_box', 'saved_box',
                  'avail_stack', 'avail_empty',
                  'avail_section', 'saved_section', 'main_scroll', 'saved_scroll',
@@ -158,6 +158,7 @@ class BluetoothConnections(Box):
         self._btns = getattr(self._w.buttons, "bluetooth_button", None) if self._w else None
         self._slots = {"connected": [], "avail": [], "saved": []}
         self._rid = None
+        self._scan = False
         self.current_settings_dev = None
         self._previous_page = "main"
 
@@ -167,7 +168,6 @@ class BluetoothConnections(Box):
         self._build()
 
         self._cl.connect("notify::enabled", self._on_en)
-        self._cl.connect("notify::scanning", self._on_sc)
         self._cl.connect("device-added", self._sched)
         self._cl.connect("device-removed", self._sched)
         
@@ -216,7 +216,6 @@ class BluetoothConnections(Box):
         self.connected_box = Box(spacing=2, orientation="vertical")
         self.avail_box = Box(spacing=2, orientation="vertical")
         
-        # --- Пустое состояние для поиска ---
         self.avail_empty = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
         self.avail_empty.set_margin_top(24)
         self.avail_empty.set_margin_bottom(24)
@@ -414,8 +413,7 @@ class BluetoothConnections(Box):
         
         for dev in dev_list:
             real_name = _get_dev_name(dev)
-            if not real_name:
-                continue
+            if not real_name: continue
                 
             self._attach_dev_signals(dev)
             
@@ -456,14 +454,12 @@ class BluetoothConnections(Box):
         self.connected_box.set_visible(count_vis(self.connected_box) > 0)
         self.avail_section.set_visible(True)
         
-        # --- Переключаем список на пустое состояние если нет устройств ---
         if count_vis(self.avail_box) > 0:
             self.avail_stack.set_visible_child_name("list")
         else:
             self.avail_stack.set_visible_child_name("empty")
 
     def _get_pwr(self):
-        if self._btns and hasattr(self._btns, '_get_pwr'): return self._btns._get_pwr()
         try:
             bd = "/sys/class/rfkill/"
             for d in os.listdir(bd):
@@ -483,11 +479,34 @@ class BluetoothConnections(Box):
         GLib.timeout_add(350, self._on_en)
 
     def _on_scan_toggle(self, *_):
+        if self._scan: return
+        
         if not self._get_pwr():
             self._turn_on_bt()
-            GLib.timeout_add(800, lambda: getattr(self._cl, "toggle_scan", lambda: None)() or False)
+            GLib.timeout_add(800, self._do_scan)
         else:
-            getattr(self._cl, "toggle_scan", lambda: None)()
+            self._do_scan()
+
+    def _do_scan(self):
+        self._scan = True
+        self._sc_lbl.get_style_context().add_class("scanning")
+        self._sc_btn.get_style_context().add_class("scanning")
+        
+        # Используем внутренний флаг --timeout самой утилиты bluetoothctl.
+        # Это заставляет процесс висеть ровно 4 секунды и держать D-Bus канал для BlueZ.
+        GLib.spawn_command_line_async("bluetoothctl --timeout 4 scan on")
+        
+        GLib.timeout_add(4000, self._stop_scan)
+        return False
+
+    def _stop_scan(self):
+        self._scan = False
+        self._sc_lbl.get_style_context().remove_class("scanning")
+        self._sc_btn.get_style_context().remove_class("scanning")
+        
+        # Выключаем сканирование принудительно (на случай если таймер сбился)
+        GLib.spawn_command_line_async("bluetoothctl scan off")
+        return False
 
     def _on_en(self, *_):
         en = self._get_pwr()
@@ -495,17 +514,9 @@ class BluetoothConnections(Box):
         
         if en:
             self._sched()
-            if not getattr(self._cl, "scanning", False):
-                GLib.timeout_add(800, lambda: getattr(self._cl, "toggle_scan", lambda: None)() or False)
-
+            
         if self._btns and hasattr(self._btns, 'update_state'): GLib.idle_add(self._btns.update_state)
         return False
-
-    def _on_sc(self, *_):
-        sc = getattr(self._cl, "scanning", False)
-        m = "add_style_class" if sc else "remove_style_class"
-        getattr(self._sc_lbl, m)("scanning")
-        getattr(self._sc_btn, m)("scanning")
 
     def cleanup(self):
         if self._rid: 
