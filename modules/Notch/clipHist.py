@@ -27,8 +27,6 @@ class ClipHistory(ListNavigationMixin, Box):
     def __init__(self, notch, **kw):
         super().__init__(
             name="clip-history",
-            visible=False,
-            all_visible=False,
             **kw,
         )
         self.notch = notch

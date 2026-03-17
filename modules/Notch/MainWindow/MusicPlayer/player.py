@@ -95,7 +95,6 @@ _CORR_THRESH = 0.012
 _CORR_DUR = 0.20
 _CORR_POW = 2.5
 
-# ▶ FIX: порог обнаружения петли (replay) в _prog_tick
 _REPLAY_PV_THRESH = 0.85
 _REPLAY_TGT_THRESH = 0.05
 _REPLAY_DIFF_THRESH = 0.5
@@ -112,23 +111,9 @@ _V_ART_LINES = [
 ]
 _V_MAX_W = max(len(l) for l in _V_ART_LINES)
 _V_ART = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
-_V_ART_PAD = [l.ljust(_V_MAX_W) for l in _V_ART_LINES]
-_V_N_LINES = len(_V_ART_LINES)
 
 _V_SCROLL_SPEED = 1.0
 _V_GAP = 12
-
-_GL_CHANCE = 0.015
-_GL_DUR = (4, 18)
-_GL_CD = 90
-_GL_SHIFT_MAX = 15
-_GL_SPLIT_MAX = 4.0
-_GL_CORRUPT = 0.08
-_GL_FLICKER = 0.12
-_GL_BAR = 0.25
-_GL_SPEED = (0.2, 3.5)
-_GL_CHARS = "░▒▓█▀▄▌▐@#$%&!?*=~"
-_GL_CHARS_LEN = len(_GL_CHARS)
 
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
@@ -249,7 +234,7 @@ class LocalPlayer(Service):
         self.can_go_previous = False
         self.on_next_cb = None
         self.on_prev_cb = None
-        self._replaying = False  # ▶ FIX: флаг для плавной анимации при повторе трека
+        self._replaying = False
 
         ls, om = _load_mode()
         self._loop_status = ls
@@ -357,7 +342,6 @@ class LocalPlayer(Service):
         else:
             GLib.idle_add(self.next)
 
-    # ▶ FIX: устанавливаем флаг и сигналим changed для плавной анимации
     def _replay(self):
         if self._playbin:
             self._replaying = True
@@ -377,7 +361,6 @@ class PlayerBox(Box):
         '_last_art', '_last_track_id', '_extract_tried', '_is_wall', '_dcancel',
         '_upd', '_scroll_acc', '_local_order',
         '_v_offset', '_v_scroll_id',
-        '_g_on', '_g_rem', '_g_cd', '_g_shifts', '_g_split',
         '_pv', '_last_pv', '_ptimer', '_stimer',
         '_kpos', '_ktime', '_klen', '_kplay',
         '_tkey', '_last_time_txt',
@@ -413,11 +396,6 @@ class PlayerBox(Box):
         self._v_layout = self._v_font = None
         self._v_lw = self._v_lh = self._v_block = 0
         self._v_best_pt = 0
-
-        self._g_on = False
-        self._g_rem = self._g_cd = 0
-        self._g_shifts = []
-        self._g_split = 0.0
 
         self._pv = self._last_pv = 0.0
         self._ptimer = self._stimer = None
@@ -655,63 +633,14 @@ class PlayerBox(Box):
         cr.arc(cx, cy, radius, 0, _TAU)
         cr.clip()
 
-        if self._g_on and self._g_shifts:
-            self._draw_glitch(cr, w, h, font, r, g, b, a, block, off, y0, lh)
-        else:
-            cr.set_source_rgba(r, g, b, a)
-            x = -off
-            while x < w:
-                cr.move_to(x, y0)
-                PangoCairo.show_layout(cr, layout)
-                x += block
+        cr.set_source_rgba(r, g, b, a)
+        x = -off
+        while x < w:
+            cr.move_to(x, y0)
+            PangoCairo.show_layout(cr, layout)
+            x += block
 
         cr.restore()
-
-    def _draw_glitch(self, cr, w, h, font, r, g, b, a, block, off, y0, total_h):
-        n = _V_N_LINES
-        shifts = self._g_shifts
-        split = self._g_split
-        line_h = total_h / n
-        rand = random.random
-        randint = random.randint
-
-        ll = PangoCairo.create_layout(cr)
-        ll.set_font_description(font)
-
-        for i in range(n):
-            if rand() < _GL_FLICKER:
-                continue
-            shift = shifts[i] if i < len(shifts) else 0
-            ly = y0 + i * line_h
-            txt = _V_ART_PAD[i]
-            if abs(shift) > 3:
-                chars = list(txt)
-                gl_chars = _GL_CHARS
-                gl_len = _GL_CHARS_LEN
-                corrupt_rate = _GL_CORRUPT
-                for j in range(len(chars)):
-                    if chars[j] != ' ' and rand() < corrupt_rate:
-                        chars[j] = gl_chars[randint(0, gl_len - 1)]
-                txt = ''.join(chars)
-            ll.set_text(txt, -1)
-            x = -off + shift
-            while x < w:
-                if split > 0.5 and shift != 0:
-                    cr.set_source_rgba(min(1.0, r + 0.4), g * 0.15, b * 0.15, 0.55)
-                    cr.move_to(x - split, ly)
-                    PangoCairo.show_layout(cr, ll)
-                    cr.set_source_rgba(r * 0.15, g * 0.15, min(1.0, b + 0.4), 0.55)
-                    cr.move_to(x + split, ly)
-                    PangoCairo.show_layout(cr, ll)
-                cr.set_source_rgba(r, g, b, a)
-                cr.move_to(x, ly)
-                PangoCairo.show_layout(cr, ll)
-                x += block
-        if rand() < _GL_BAR:
-            cr.set_source_rgba(r, g, b, random.uniform(0.08, 0.25))
-            bar_y = random.uniform(0, h)
-            cr.rectangle(0, bar_y, w, random.uniform(2, 8))
-            cr.fill()
 
     def _v_start_scroll(self):
         if not self._v_scroll_id:
@@ -724,30 +653,7 @@ class PlayerBox(Box):
             self._v_scroll_id = None
 
     def _v_scroll_tick(self):
-        rand = random.random
-        if self._g_on:
-            self._v_offset += _V_SCROLL_SPEED * random.uniform(*_GL_SPEED)
-            self._g_rem -= 1
-            if self._g_rem <= 0:
-                self._g_on = False
-                self._g_cd = _GL_CD
-                self._g_shifts = []
-            else:
-                n = _V_N_LINES
-                self._g_shifts = [
-                    random.randint(-_GL_SHIFT_MAX, _GL_SHIFT_MAX)
-                    if rand() < 0.35 else 0
-                    for _ in range(n)
-                ]
-                self._g_split = random.uniform(0, _GL_SPLIT_MAX)
-        else:
-            self._v_offset += _V_SCROLL_SPEED
-            if self._g_cd > 0:
-                self._g_cd -= 1
-            elif rand() < _GL_CHANCE:
-                self._g_on = True
-                self._g_rem = random.randint(*_GL_DUR)
-
+        self._v_offset += _V_SCROLL_SPEED
         self._cover_box.queue_draw()
         return True
 
@@ -913,10 +819,6 @@ class PlayerBox(Box):
         self._angle = 0.0
         self._is_wall = True
         self._v_offset = 0.0
-        self._g_on = False
-        self._g_rem = self._g_cd = 0
-        self._g_shifts = []
-        self._g_split = 0.0
         self._v_start_scroll()
         self._cover_box.queue_draw()
 
@@ -1137,11 +1039,8 @@ class PlayerBox(Box):
                 target = 1.0
 
             diff = target - pv
-            adiff = -diff if diff < 0 else diff  # ▶ FIX: abs без вызова
+            adiff = -diff if diff < 0 else diff
 
-            # ▶ FIX: обнаружение петли/повтора трека (прогресс был у конца,
-            #   а цель вдруг у начала) — плавная анимация вместо резкого скачка.
-            #   Работает и для MPRIS-плееров, у которых нет флага _replaying.
             if (pv > _REPLAY_PV_THRESH
                     and target < _REPLAY_TGT_THRESH
                     and diff < -_REPLAY_DIFF_THRESH):
@@ -1189,7 +1088,6 @@ class PlayerBox(Box):
         new_key = (mp.title, mp.artist, getattr(mp, 'arturl', ''), getattr(mp, 'url', ''))
 
         if self._tkey is not None and new_key != self._tkey:
-            # Трек сменился — плавный спуск к 0, затем подъём
             if self._pv > 0.012:
                 dur = _SW_DUR_BASE + self._pv * _SW_DUR_SCALE
                 self._run_chain([(0.0, dur, _SW_POW)], on_done='rise')
@@ -1197,7 +1095,6 @@ class PlayerBox(Box):
                 self._pv = self._last_pv = 0.0
                 self._cancel_anim()
                 self._force_sync()
-        # ▶ FIX: тот же трек, но повтор (replay) — плавная анимация к 0
         elif self._is_local and getattr(mp, '_replaying', False):
             mp._replaying = False
             if self._pv > 0.012:
@@ -1213,8 +1110,6 @@ class PlayerBox(Box):
 
         self._tkey = new_key
 
-    # ▶ FIX: симметричная логика — прокрутка за границу трека
-    #   в обоих направлениях переключает трек, а не зацикливает.
     def _seek(self, direction):
         mp = self.mpris_player
         if not mp:
@@ -1229,12 +1124,10 @@ class PlayerBox(Box):
                 if good:
                     length_ns = mp.length * 1000
 
-                    # Прокрутка назад за 0:00 → предыдущий трек
                     if direction < 0 and pos <= 1_000_000_000:
                         self._do_prev()
                         return
 
-                    # ▶ FIX: прокрутка вперёд за конец → следующий трек
                     if direction > 0 and length_ns > 0 and (length_ns - pos) <= 1_000_000_000:
                         self._do_next()
                         return
@@ -1247,12 +1140,10 @@ class PlayerBox(Box):
         elif isinstance(mp, MprisPlayer) and mp.can_seek:
             cur_pos = getattr(mp, "position", 0) or 0
 
-            # Прокрутка назад за 0:00 → предыдущий трек
             if direction < 0 and cur_pos <= 1_000_000:
                 self._do_prev()
                 return
 
-            # ▶ FIX: прокрутка вперёд за конец → следующий трек
             if direction > 0 and self._klen > 0 and (self._klen - cur_pos) <= 1_000_000:
                 self._do_next()
                 return

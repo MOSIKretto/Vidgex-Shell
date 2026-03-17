@@ -66,10 +66,10 @@ class Notch(Window):
     def _get_or_create(self, key, widget_class, w=None, h=None):
         if key not in self._wc:
             if key in ('main_window', 'launcher', 'power', 'cliphist', 'tools', 'sessions'):
-                widget = widget_class(notch=self) 
+                widget = widget_class(notch=self)
             else:
                 widget = widget_class()
-                
+
             if w is not None and h is not None:
                 widget.set_size_request(w, h)
             self.stack.add_named(widget, key)
@@ -103,10 +103,10 @@ class Notch(Window):
 
         self.ctrl = ControlSmall()
         self.ctrl_rev = Revealer(
-            name="control-revealer", 
-            transition_type="slide-down", 
+            name="control-revealer",
+            transition_type="slide-down",
             transition_duration=200,
-            child_revealed=False, 
+            child_revealed=False,
             child=Box(name="control-revealer-box", h_align="center", children=[self.ctrl]),
         )
 
@@ -132,9 +132,9 @@ class Notch(Window):
         self.cr = Box(name="notch-corner-right", orientation="v", h_align="end", children=[MyCorner("top-left")])
 
         self.nb = CenterBox(
-            name="notch-box", 
-            start_children=self.cl, 
-            center_children=self.stack, 
+            name="notch-box",
+            start_children=self.cl,
+            center_children=self.stack,
             end_children=self.cr
         )
         self.nb.add_style_class("notch")
@@ -143,7 +143,7 @@ class Notch(Window):
         self.nr.set_size_request(-1, 1)
 
         self.nc = Box(name="notch-complete", children=[self.nr])
-        
+
         self.nw = Box(name="notch-wrap", h_align="center", children=[self.nc])
 
         self.heb = Gtk.EventBox(name="notch-hover-eventbox")
@@ -289,7 +289,7 @@ class Notch(Window):
     def _showclip(self):
         ch = self.cliphist
         self.stack.set_visible_child(ch)
-        if hasattr(ch, 'open'): GLib.idle_add(ch.open)
+        ch.open()
 
     def _showlaunch(self):
         ln = self.launcher
@@ -398,7 +398,7 @@ class Notch(Window):
                 if win_data:
                     wc = win_data.get("class") or win_data.get("initialClass", "")
                     wt = win_data.get("title", "")
-                    
+
         except Exception:
             pass
 
