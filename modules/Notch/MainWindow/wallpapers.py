@@ -6,38 +6,39 @@ from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
 from fabric.utils.helpers import exec_shell_command_async
-
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import (
-    _AGL_FRAME_MS, _AGL_FRAMES, _AGL_RAND_MAX,
-    _AGL_RAND_MIN, _ARR_LINES, _CSS_OUT,
-    _CURRENT, _DICE, _EXT, _HYPR_OUT,
-    _SCH, _SCH_K, _SCH_LEN, _SCHEME_F,
-    _SFXL, _SUFFIX, _THUMBS, _WALLS,
+    _ARR_LINES, _CSS_OUT, _CURRENT, _DICE, _EXT,
+    _GL_FRAME_MS, _GL_FRAMES, _GL_RAND_MAX, _GL_RAND_MIN,
+    _GL_REPEAT_CHANCE, _GLITCH_CLASSES,
+    _HYPR_OUT, _SCH, _SCH_K, _SCH_LEN,
+    _SCHEME_F, _SFXL, _SUFFIX, _THUMBS, _WALLS,
 )
 from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import (
-    _arr_glitch_lines, _arr_set_art, _md5hex, _setup_pointer_cursor,
+    _arr_set_art, _md5hex, _setup_pointer_cursor,
 )
 from modules.Notch.MainWindow.Wallpaper.wallpaperCarousel import WallpaperCarousel
 from modules.Notch.MainWindow.Wallpaper.wallpaperColors import apply_colors
 
+
 _NAV_KEYS = frozenset((Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Return, Gdk.KEY_KP_Enter))
 _LR_KEYS = frozenset((Gdk.KEY_Left, Gdk.KEY_Right))
-_INV_AGL = 1.0 / _AGL_FRAMES
+
 _src_rm = GLib.source_remove
 _t_add = GLib.timeout_add
-_t_add_s = GLib.timeout_add_seconds
 _ri_range = GLib.random_int_range
-_randint = random.randint
 
 
 class WallpaperSelector(Box):
     __slots__ = (
         "_dead", "_pend", "_files", "_mon", "_car", "_ent",
         "_sch_btn", "_sch_rev", "_sch_idx", "_rb", "_lbl",
-        "_agl_lbls", "_agl_on", "_agl_rem", "_agl_tid",
-        "_agl_rand_tid",
+        "_arr_lbls",
+        "_gl_active_lbl", "_gl_rem_lbl", "_gl_total_lbl", "_gl_tid_lbl",
+        "_gl_active_L", "_gl_rem_L", "_gl_total_L", "_gl_tid_L",
+        "_gl_active_R", "_gl_rem_R", "_gl_total_R", "_gl_tid_R",
+        "_gl_rand_tid",
     )
 
     def __init__(self, **kw):
@@ -46,13 +47,26 @@ class WallpaperSelector(Box):
         )
         self._dead = False
         self._pend = {}
+
         self._files = ()
         self._mon = None
 
-        self._agl_on = [False, False]
-        self._agl_rem = [0, 0]
-        self._agl_tid = [None, None]
-        self._agl_rand_tid = None
+        self._gl_active_lbl = False
+        self._gl_rem_lbl = 0
+        self._gl_total_lbl = _GL_FRAMES
+        self._gl_tid_lbl = None
+
+        self._gl_active_L = False
+        self._gl_rem_L = 0
+        self._gl_total_L = _GL_FRAMES
+        self._gl_tid_L = None
+
+        self._gl_active_R = False
+        self._gl_rem_R = 0
+        self._gl_total_R = _GL_FRAMES
+        self._gl_tid_R = None
+
+        self._gl_rand_tid = None
 
         os.makedirs(_WALLS, exist_ok=True)
         os.makedirs(_THUMBS, exist_ok=True)
@@ -74,7 +88,8 @@ class WallpaperSelector(Box):
         lbl_r.set_valign(Gtk.Align.CENTER)
         lbl_r.set_can_focus(False)
 
-        self._agl_lbls = (lbl_l, lbl_r)
+        self._arr_lbls = (lbl_l, lbl_r)
+
         lbl_l.connect("style-updated", self._on_style_l)
         lbl_r.connect("style-updated", self._on_style_r)
 
@@ -144,6 +159,7 @@ class WallpaperSelector(Box):
         )
 
         header = Box(spacing=8, children=[self._rb, self._ent, self._sch_btn])
+
         overlay = Gtk.Overlay()
         overlay.add(cb)
         overlay.add_overlay(self._sch_rev)
@@ -151,6 +167,7 @@ class WallpaperSelector(Box):
         self.add(header)
         self.pack_start(overlay, True, True, 0)
         self.add(self._lbl)
+
         self._roll()
 
         self.connect("destroy", self._destroy)
@@ -158,16 +175,93 @@ class WallpaperSelector(Box):
         self._scan()
         self._watch()
 
-    def _on_car_click(self, *_):
-        self._car.grab_focus()
+    def _arr_render(self, idx):
+        _arr_set_art(self._arr_lbls[idx], _ARR_LINES[idx])
 
     def _on_style_l(self, *_):
-        if not self._agl_on[0]:
-            self._arr_render(0)
+        self._arr_render(0)
 
     def _on_style_r(self, *_):
-        if not self._agl_on[1]:
-            self._arr_render(1)
+        self._arr_render(1)
+
+    def _on_realize_full(self, *_):
+        self._arr_render(0)
+        self._arr_render(1)
+        if not self._files:
+            self._scan()
+        self._schedule_random_glitch()
+
+    def _clear_glitch_widget(self, widget):
+        ctx = widget.get_style_context()
+        for cls in _GLITCH_CLASSES:
+            ctx.remove_class(cls)
+
+    def _start_glitch_for(self, which):
+        """which: 'lbl', 'L', 'R'"""
+        setattr(self, f"_gl_rem_{which}", _GL_FRAMES)
+        setattr(self, f"_gl_total_{which}", _GL_FRAMES)
+        setattr(self, f"_gl_active_{which}", True)
+        old_tid = getattr(self, f"_gl_tid_{which}")
+        if old_tid:
+            GLib.source_remove(old_tid)
+        tid = GLib.timeout_add(
+            _GL_FRAME_MS,
+            self._gl_tick_for, which,
+        )
+        setattr(self, f"_gl_tid_{which}", tid)
+
+    def _gl_tick_for(self, which):
+        rem = getattr(self, f"_gl_rem_{which}")
+        total = getattr(self, f"_gl_total_{which}")
+        progress = 1.0 - rem / total
+
+        if which == "lbl":
+            widget = self._lbl
+        elif which == "L":
+            widget = self._arr_lbls[0]
+        else:
+            widget = self._arr_lbls[1]
+
+        self._clear_glitch_widget(widget)
+
+        if random.random() > progress:
+            count = 1 if random.random() > 0.4 else 2
+            chosen = random.sample(_GLITCH_CLASSES, count)
+            for cls in chosen:
+                widget.get_style_context().add_class(cls)
+
+        rem -= 1
+        setattr(self, f"_gl_rem_{which}", rem)
+
+        if rem <= 0:
+            setattr(self, f"_gl_active_{which}", False)
+            setattr(self, f"_gl_tid_{which}", None)
+            self._clear_glitch_widget(widget)
+            if random.random() < _GL_REPEAT_CHANCE:
+                self._start_glitch_for(which)
+            return False
+
+        return True
+
+    def _schedule_random_glitch(self):
+        delay = random.randint(_GL_RAND_MIN, _GL_RAND_MAX)
+        self._gl_rand_tid = GLib.timeout_add_seconds(
+            delay, self._fire_random_glitch,
+        )
+
+    def _fire_random_glitch(self):
+        self._gl_rand_tid = None
+        if not self._gl_active_lbl:
+            self._start_glitch_for("lbl")
+        if not self._gl_active_L:
+            self._start_glitch_for("L")
+        if not self._gl_active_R:
+            self._start_glitch_for("R")
+        self._schedule_random_glitch()
+        return False
+
+    def _on_car_click(self, *_):
+        self._car.grab_focus()
 
     def _on_sch_item_click(self, btn):
         self._on_list_item_clicked(btn._si)
@@ -176,66 +270,15 @@ class WallpaperSelector(Box):
         if not self._dead:
             self._deb("r", 1000, self._scan)
 
-    def _on_realize_full(self, *_):
-        self._arr_render(0)
-        self._arr_render(1)
-        self._arr_schedule_rand()
-        if not self._files:
-            self._scan()
-
-    def _arr_render(self, idx):
-        _arr_set_art(self._agl_lbls[idx], _ARR_LINES[idx])
-
     def _on_nav(self, direction=None):
         self._ulbl()
-        if not self._car._spl and direction is not None:
-            self._arr_glitch(0 if direction < 0 else 1)
-
-    def _arr_glitch(self, idx):
-        self._agl_on[idx] = True
-        self._agl_rem[idx] = _AGL_FRAMES
-        tid = self._agl_tid[idx]
-        if tid:
-            _src_rm(tid)
-        self._agl_tid[idx] = _t_add(
-            _AGL_FRAME_MS, self._arr_gl_tick, idx,
-        )
-
-    def _arr_gl_tick(self, idx):
-        rem = self._agl_rem
-        r = rem[idx]
-        _arr_set_art(
-            self._agl_lbls[idx],
-            _arr_glitch_lines(_ARR_LINES[idx], 1.0 - r * _INV_AGL),
-        )
-        r -= 1
-        rem[idx] = r
-        if r <= 0:
-            self._agl_on[idx] = False
-            self._agl_tid[idx] = None
-            self._arr_render(idx)
-            return False
-        return True
-
-    def _arr_schedule_rand(self):
-        if not self._dead:
-            self._agl_rand_tid = _t_add_s(
-                _randint(_AGL_RAND_MIN, _AGL_RAND_MAX),
-                self._arr_fire_rand,
-            )
-
-    def _arr_fire_rand(self):
-        self._agl_rand_tid = None
-        if self._dead:
-            return False
-        pick = _randint(0, 2)
-        agl = self._agl_on
-        if pick != 1 and not agl[0]:
-            self._arr_glitch(0)
-        if pick != 0 and not agl[1]:
-            self._arr_glitch(1)
-        self._arr_schedule_rand()
-        return False
+        if direction is not None:
+            if direction < 0:
+                if not self._gl_active_L:
+                    self._start_glitch_for("L")
+            else:
+                if not self._gl_active_R:
+                    self._start_glitch_for("R")
 
     def _on_search_changed(self, *_):
         self._deb("s", 300, self._do_search)
@@ -284,13 +327,11 @@ class WallpaperSelector(Box):
         self._sch_idx = idx % _SCH_LEN
         sch_id, sch_name = _SCH[self._sch_idx]
         self._sch_btn.set_label(sch_name)
-
         try:
             with open(_SCHEME_F, "w") as f:
                 f.write(sch_id)
         except OSError:
             pass
-
         nm = self._car.cur()
         if nm and nm in self._files:
             p = _WALLS + nm
@@ -298,7 +339,6 @@ class WallpaperSelector(Box):
             p = os.path.realpath(_CURRENT)
         else:
             return
-
         self._car._ex.submit(self._gen_colors, p, sch_id)
 
     @staticmethod
@@ -362,26 +402,21 @@ class WallpaperSelector(Box):
     def _apply(self, nm, notify=False):
         if nm not in self._files:
             return False
-
         p = _WALLS + nm
         sch_id = _SCH[self._sch_idx][0]
-
         try:
             if os.path.lexists(_CURRENT):
                 os.remove(_CURRENT)
             os.symlink(p, _CURRENT)
         except OSError:
             return False
-
         exec_shell_command_async(
             f'awww img "{p}" -t fade'
             f' --transition-duration 0.5'
             f' --transition-step 255'
             f' --transition-fps 60'
         )
-
         self._car._ex.submit(self._gen_colors, p, sch_id)
-
         if notify:
             exec_shell_command_async(
                 f"notify-send '🎲 Wallpaper' 'Random wallpaper set 🎨'"
@@ -447,19 +482,14 @@ class WallpaperSelector(Box):
 
     def _destroy(self, _):
         self._dead = True
-        tid = self._agl_tid
-        for i in (0, 1):
-            t = tid[i]
-            if t:
-                _src_rm(t)
-                tid[i] = None
-        t = self._agl_rand_tid
-        if t:
-            _src_rm(t)
-            self._agl_rand_tid = None
         mon = self._mon
         if mon:
             mon.cancel()
+        for attr in ('_gl_tid_lbl', '_gl_tid_L', '_gl_tid_R', '_gl_rand_tid'):
+            tid = getattr(self, attr, None)
+            if tid:
+                _src_rm(tid)
+                setattr(self, attr, None)
         pend = self._pend
         for sid in pend.values():
             _src_rm(sid)

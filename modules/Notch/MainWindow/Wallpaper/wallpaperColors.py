@@ -1,13 +1,12 @@
 import os
 import colorsys
 from collections import Counter
-from PIL import Image
 
+from PIL import Image
 from materialyoucolor.hct import Hct
 from materialyoucolor.dynamiccolor.material_dynamic_colors import MaterialDynamicColors
 from materialyoucolor.quantize import QuantizeCelebi
 from materialyoucolor.score.score import Score
-
 from materialyoucolor.scheme.scheme_tonal_spot import SchemeTonalSpot
 from materialyoucolor.scheme.scheme_content import SchemeContent
 from materialyoucolor.scheme.scheme_expressive import SchemeExpressive
@@ -19,18 +18,17 @@ from materialyoucolor.scheme.scheme_rainbow import SchemeRainbow
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import _CURRENT
 
-
 __all__ = ["apply_colors"]
 
 SCHEME_MAP = {
-    "scheme-tonal-spot":  SchemeTonalSpot,
-    "scheme-content":     SchemeContent,
-    "scheme-expressive":  SchemeExpressive,
-    "scheme-fidelity":    SchemeFidelity,
+    "scheme-tonal-spot": SchemeTonalSpot,
+    "scheme-content": SchemeContent,
+    "scheme-expressive": SchemeExpressive,
+    "scheme-fidelity": SchemeFidelity,
     "scheme-fruit-salad": SchemeFruitSalad,
-    "scheme-monochrome":  SchemeMonochrome,
-    "scheme-neutral":     SchemeNeutral,
-    "scheme-rainbow":     SchemeRainbow,
+    "scheme-monochrome": SchemeMonochrome,
+    "scheme-neutral": SchemeNeutral,
+    "scheme-rainbow": SchemeRainbow,
 }
 
 _FALLBACK = 0xFF141318
@@ -38,15 +36,18 @@ _THUMB_SZ = (128, 128)
 
 _SCHEME_CHROMA_FACTOR = {
     "scheme-monochrome": 0.0,
-    "scheme-neutral":    0.28,
+    "scheme-neutral": 0.28,
 }
 
 _hct_fn = getattr(Hct, "from_int", None) or getattr(Hct, "fromInt", None)
 
+
 def _hct(argb):
     return _hct_fn(argb) if _hct_fn else Hct(argb)
 
+
 _FALLBACK_HCT = (_hct(_FALLBACK),)
+
 
 def _find_pal_class():
     try:
@@ -63,6 +64,7 @@ def _find_pal_class():
         pass
     return None
 
+
 _Pal = _find_pal_class()
 _pal_from_hc = None
 if _Pal:
@@ -71,11 +73,14 @@ if _Pal:
         or getattr(_Pal, "fromHueAndChroma", None)
     )
 
+
 def _rgb2argb(r, g, b):
     return 0xFF000000 | (r << 16) | (g << 8) | b
 
+
 def _hex(argb):
     return f"{(argb >> 16) & 0xFF:02x}{(argb >> 8) & 0xFF:02x}{argb & 0xFF:02x}"
+
 
 def _int_of(obj):
     if isinstance(obj, int):
@@ -98,12 +103,15 @@ def _int_of(obj):
     except Exception:
         return None
 
+
 def _hue_dist(a, b):
     d = abs(a - b) % 360
     return d if d <= 180 else 360 - d
 
+
 def _angle_diff(a, b):
     return (a - b + 180) % 360 - 180
+
 
 def _hct2argb(hue, chroma, tone):
     hue %= 360
@@ -143,6 +151,7 @@ def _hct2argb(hue, chroma, tone):
         min(255, max(0, int(b * 255))),
     )
 
+
 def _do_quantize(pixels, max_colors=128):
     try:
         r = QuantizeCelebi.quantize(pixels, max_colors)
@@ -158,6 +167,7 @@ def _do_quantize(pixels, max_colors=128):
         pass
     return _manual_quantize(pixels, max_colors)
 
+
 def _manual_quantize(pixels, max_colors=128):
     return dict(Counter(
         0xFF000000
@@ -166,6 +176,7 @@ def _manual_quantize(pixels, max_colors=128):
         | ((a & 0xF0) | ((a >> 4) & 0xF))
         for a in pixels
     ).most_common(max_colors))
+
 
 def _do_score(quantized, desired=12):
     result = None
@@ -187,6 +198,7 @@ def _do_score(quantized, desired=12):
             pass
     return _parse_result(result)
 
+
 def _parse_result(result):
     if result is None:
         return []
@@ -202,17 +214,16 @@ def _parse_result(result):
     v = _int_of(result)
     return [v] if v is not None else []
 
+
 def _extract_palette(path, desired=12):
     img_path = path or _CURRENT
     if not img_path or not os.path.isfile(img_path):
         return _FALLBACK, _FALLBACK_HCT
-
     try:
         if os.path.getsize(img_path) < 100:
             return _FALLBACK, _FALLBACK_HCT
     except Exception:
         pass
-
     try:
         img = Image.open(img_path)
         img = img.convert("RGB")
@@ -272,11 +283,13 @@ def _extract_palette(path, desired=12):
 
     return seed, palette
 
+
 _GREEN_HUE = 145.0
 _GREEN_MIN_CHR = 45
 _GREEN_FLOOR = 55
 _GREEN_CAP = 70
 _GREEN_TONES = {True: (64, 68), False: (38, 70)}
+
 
 def _find_closest(target_hue, palette):
     best, best_d = None, 999.0
@@ -288,12 +301,15 @@ def _find_closest(target_hue, palette):
             best, best_d = h, d
     return (best, best_d) if best_d <= 55 else (None, best_d)
 
+
 def _blend_hue(h1, h2, w):
     return (h2 + _angle_diff(h1, h2) * w) % 360
+
 
 def _soft_harmonize(base_hue, source_hue, max_shift):
     diff = _angle_diff(source_hue, base_hue)
     return (base_hue + min(abs(diff), max_shift) * (1 if diff > 0 else -1) * 0.4) % 360
+
 
 def _palette_vibrancy(palette):
     total = count = 0
@@ -304,6 +320,7 @@ def _palette_vibrancy(palette):
     if not count:
         return 0.5
     return min(max(total / (count * 50.0), 0.5), 1.0)
+
 
 def _gen_green(palette, dominant, dark, vibrancy):
     match, dist = _find_closest(_GREEN_HUE, palette)
@@ -329,6 +346,7 @@ def _gen_green(palette, dominant, dark, vibrancy):
     chroma = min(max(chroma * (0.90 + vibrancy * 0.20), _GREEN_FLOOR), _GREEN_CAP)
     return _hct2argb(hue % 360, chroma, tone)
 
+
 _mdc = MaterialDynamicColors()
 
 _STD_ROLES = (
@@ -341,31 +359,34 @@ _STD_ROLES = (
     "background", "on_surface",
 )
 
+
 def _camel(name):
     parts = name.split("_")
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
 
 _CAMEL = {n: _camel(n) for n in _STD_ROLES}
 
 _TONE_FB = {
     name: (pa, _camel(pa), td, tl)
     for name, (pa, td, tl) in {
-        "primary":        ("primary_palette",         80,  40),
-        "on_primary":     ("primary_palette",         20, 100),
-        "secondary":      ("secondary_palette",       80,  40),
-        "on_secondary":   ("secondary_palette",       20, 100),
-        "tertiary":       ("tertiary_palette",        80,  40),
-        "on_tertiary":    ("tertiary_palette",        20, 100),
-        "surface":        ("neutral_palette",          6,  98),
-        "surface_bright": ("neutral_palette",         24,  98),
-        "error":          ("error_palette",           80,  40),
-        "on_error":       ("error_palette",           20, 100),
-        "outline":        ("neutral_variant_palette", 60,  50),
-        "shadow":         ("neutral_palette",          0,   0),
-        "background":     ("neutral_palette",          6,  98),
-        "on_surface":     ("neutral_palette",         90,  10),
+        "primary":       ("primary_palette",         80, 40),
+        "on_primary":    ("primary_palette",         20, 100),
+        "secondary":     ("secondary_palette",       80, 40),
+        "on_secondary":  ("secondary_palette",       20, 100),
+        "tertiary":      ("tertiary_palette",        80, 40),
+        "on_tertiary":   ("tertiary_palette",        20, 100),
+        "surface":       ("neutral_palette",          6, 98),
+        "surface_bright":("neutral_palette",         24, 98),
+        "error":         ("error_palette",           80, 40),
+        "on_error":      ("error_palette",           20, 100),
+        "outline":       ("neutral_variant_palette", 60, 50),
+        "shadow":        ("neutral_palette",          0,  0),
+        "background":    ("neutral_palette",          6, 98),
+        "on_surface":    ("neutral_palette",         90, 10),
     }.items()
 }
+
 
 def _get_dc(name):
     for attr in (name, _CAMEL.get(name, name)):
@@ -384,7 +405,9 @@ def _get_dc(name):
                     pass
     return None
 
+
 _dc = {n: v for n in _STD_ROLES if (v := _get_dc(n)) is not None}
+
 
 def _resolve(scheme, name, dark):
     dc = _dc.get(name)
@@ -420,8 +443,8 @@ def _resolve(scheme, name, dark):
                         return v
                 except Exception:
                     pass
-
     return _FALLBACK
+
 
 def _build(path, scheme_id, dark, contrast):
     seed, palette = _extract_palette(path)
@@ -454,6 +477,7 @@ def _build(path, scheme_id, dark, contrast):
     p["cursor"] = p["on_surface"]
     return p
 
+
 _TPL = (
     ("foreground",     "foreground"),
     ("background",     "background"),
@@ -473,17 +497,20 @@ _TPL = (
     ("green",          "green"),
 )
 
+
 def _write_css(p, path):
     g = p.get
-    body = "\n".join(f"  --{c}: #{g(k, '000000')};" for c, k in _TPL)
+    body = "\n".join(f"    --{c}: #{g(k, '000000')};" for c, k in _TPL)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         f.write(f":vars {{\n{body}\n}}\n")
+
 
 def _write_hypr(p, path):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         f.write("\n".join(f"${k} = {v}" for k, v in p.items()) + "\n")
+
 
 def apply_colors(image_path=None, scheme_id="scheme-tonal-spot",
                  css_path=None, hypr_path=None, dark=True, contrast=0.0):

@@ -12,6 +12,7 @@ from modules.Notch.MainWindow.Wallpaper.wallpaperUtils import _md5hex, _rpath
 
 
 _EMPTY = ()
+
 _FPS = 20
 _DECAY = 0.65
 _EPS = 0.015
@@ -111,9 +112,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         flt = self._flt
         if self._dead or not flt:
             return False
-
         n, cur, th = len(flt), self._idx, self._th
-
         needed = set()
         ld, submit, ldth = self._ld, self._ex.submit, self._ldth
         for i in _LOAD_RNG:
@@ -122,19 +121,15 @@ class WallpaperCarousel(Gtk.DrawingArea):
             if nm not in th and nm not in ld:
                 ld.add(nm)
                 submit(ldth, nm)
-
         for k in [k for k in th if k not in needed]:
             th.pop(k).finish()
-
         return False
 
     def _ldth(self, nm):
         if self._dead:
             return
-
         cp = _THUMBS + _md5hex(nm) + _SUFFIX
         surf = None
-
         try:
             surf = cairo.ImageSurface.create_from_png(cp)
             if surf.get_width() != _SZ or surf.get_height() != _SZ:
@@ -142,7 +137,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
                 surf = None
         except Exception:
             pass
-
         if not surf:
             try:
                 raw = GdkPixbuf.Pixbuf.new_from_file_at_scale(
@@ -160,7 +154,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
                         sq = raw.new_subpixbuf(
                             (w - _SZ) >> 1, (h - _SZ) >> 1, _SZ, _SZ
                         )
-
                     surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, _SZ, _SZ)
                     ct = cairo.Context(surf)
                     _rpath(ct, 0, 0, _SZ, _SZ, _CR)
@@ -173,12 +166,10 @@ class WallpaperCarousel(Gtk.DrawingArea):
                 if surf:
                     surf.finish()
                 surf = None
-
         if self._dead:
             if surf:
                 surf.finish()
             return
-
         if surf:
             GLib.idle_add(self._onth, nm, surf)
 
@@ -187,13 +178,11 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if self._dead:
             surf.finish()
             return False
-
         flt = self._flt
         n = len(flt)
         if not n:
             surf.finish()
             return False
-
         cur = self._idx
         for i in _LOAD_RNG:
             if flt[(cur + i) % n] == nm:
@@ -201,7 +190,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
                 if not self._bnc and not self._anim:
                     self.queue_draw()
                 return False
-
         surf.finish()
         return False
 
@@ -209,7 +197,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
         alloc = w.get_allocation()
         flt = self._flt
         n = len(flt)
-
         if not n:
             cr.set_source_rgba(0.6, 0.6, 0.6, 0.6)
             cr.select_font_face(
@@ -224,7 +211,6 @@ class WallpaperCarousel(Gtk.DrawingArea):
             )
             cr.show_text(t)
             return
-
         cx = alloc.width * 0.5
         cy = alloc.height * 0.5 + 10.0
         off = self._off
@@ -331,7 +317,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         else:
             self._off = 0.0
             self.queue_draw()
-            self._sched()
+        self._sched()
         if self._on_nav:
             self._on_nav(dr)
 
