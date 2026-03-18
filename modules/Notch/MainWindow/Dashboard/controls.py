@@ -60,10 +60,8 @@ def _setup_pointer_cursor(widget: Gtk.Widget):
     widget.connect("enter-notify-event", _on_btn_enter)
     widget.connect("leave-notify-event", _on_btn_leave)
 
-
 def _ease_out_cubic(t: float) -> float:
     return 1.0 - (1.0 - t) ** 3
-
 
 def _val_from_x(scale: Gtk.Widget, x: float) -> float:
     w = scale.get_allocation().width

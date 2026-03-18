@@ -24,8 +24,12 @@
 
 #player-title,
 #player-album,
-#player-artist {
+#player-artist,
+#player-time {
   font-weight: bold;
+  transition: text-shadow 40ms step-end,
+              color       40ms step-end,
+              opacity     40ms step-end;
 }
 
 #player-title {
@@ -42,6 +46,68 @@
   font-size: 10pt;
   color: var(--primary);
 }
+
+#player-time {
+  color: var(--outline);
+  font-size: 10pt;
+  font-family: monospace;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   GLITCH ANIMATION (Для текста плеера)
+══════════════════════════════════════════════════════════════════════════════ */
+
+.glitch-aberration {
+  text-shadow:  2px 0 alpha(#ff0040, 0.85),
+               -2px 0 alpha(#00e5ff, 0.85);
+}
+
+.glitch-shift-right {
+  text-shadow:  4px 0 alpha(#ff0040, 0.7),
+                8px 0 alpha(#ff0040, 0.25);
+}
+
+.glitch-shift-left {
+  text-shadow: -4px 0 alpha(#00e5ff, 0.7),
+               -8px 0 alpha(#00e5ff, 0.25);
+}
+
+.glitch-flicker {
+  opacity: 0.1;
+}
+
+.glitch-heavy {
+  text-shadow:  5px  1px alpha(#ff0040, 0.6),
+               -5px -1px alpha(#00e5ff, 0.6),
+                0    3px alpha(#76ff03, 0.35);
+}
+
+.glitch-color-swap {
+  color: #ff0040;
+  text-shadow: 0 0 8px alpha(#ff0040, 0.5);
+}
+
+.glitch-aberration.glitch-color-swap {
+  color: #ff0040;
+  text-shadow:  2px 0 alpha(#ff0040, 0.85),
+               -2px 0 alpha(#00e5ff, 0.85),
+                0   0 8px alpha(#ff0040, 0.4);
+}
+
+.glitch-shift-right.glitch-flicker {
+  opacity: 0.3;
+  text-shadow: 4px 0 alpha(#ff0040, 0.9);
+}
+
+.glitch-shift-left.glitch-heavy {
+  text-shadow: -5px  0   alpha(#00e5ff, 0.8),
+                5px  1px alpha(#ff0040, 0.5),
+                0    3px alpha(#76ff03, 0.3);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   КНОПКИ УПРАВЛЕНИЯ ПЛЕЕРОМ
+══════════════════════════════════════════════════════════════════════════════ */
 
 #player-btn label {
   font-size: 16px;
@@ -141,13 +207,6 @@
 
 #player-btn.mode.active:hover label {
   color: var(--shadow);
-}
-
-#player-time {
-  font-weight: bold;
-  color: var(--outline);
-  font-size: 10pt;
-  font-family: monospace;
 }
 
 #player-switcher {
@@ -562,7 +621,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   ПОЛЗУНКИ УРОВНЯ (SLIDERS) — без затемнения .muted
+   ПОЛЗУНКИ УРОВНЯ (SLIDERS)
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #control-slider {
@@ -608,7 +667,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   МАЛЕНЬКИЕ ВИДЖЕТЫ ГРОМКОСТИ/МИКРОФОНА/ЯРКОСТИ — без затемнения .muted
+   МАЛЕНЬКИЕ ВИДЖЕТЫ ГРОМКОСТИ/МИКРОФОНА/ЯРКОСТИ
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #control-small {
@@ -670,36 +729,4 @@
   color: var(--shadow);
   font-size: 20px;
   font-family: "Symbols Nerd Font Mono";
-}
-
-/* GLITCH для player-title */
-
-#player-title.glitch-aberration {
-  text-shadow:  2px 0 alpha(#ff0040, 0.85),
-               -2px 0 alpha(#00e5ff, 0.85);
-}
-
-#player-title.glitch-shift-right {
-  text-shadow:  4px 0 alpha(#ff0040, 0.7),
-                8px 0 alpha(#ff0040, 0.25);
-}
-
-#player-title.glitch-shift-left {
-  text-shadow: -4px 0 alpha(#00e5ff, 0.7),
-               -8px 0 alpha(#00e5ff, 0.25);
-}
-
-#player-title.glitch-flicker {
-  opacity: 0.1;
-}
-
-#player-title.glitch-heavy {
-  text-shadow:  5px  1px alpha(#ff0040, 0.6),
-               -5px -1px alpha(#00e5ff, 0.6),
-                0    3px alpha(#76ff03, 0.35);
-}
-
-#player-title.glitch-color-swap {
-  color: #ff0040;
-  text-shadow: 0 0 8px alpha(#ff0040, 0.5);
 }

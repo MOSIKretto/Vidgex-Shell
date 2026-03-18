@@ -115,6 +115,21 @@ _V_ART = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
 _V_SCROLL_SPEED = 1.0
 _V_GAP = 12
 
+_GL_FRAMES = 14
+_GL_FRAME_MS = 35
+_GL_RAND_MIN = 1
+_GL_RAND_MAX = 60
+_GL_REPEAT_CHANCE = 0.5
+
+_GLITCH_CLASSES = [
+    "glitch-shift-right",
+    "glitch-shift-left",
+    "glitch-flicker",
+    "glitch-aberration",
+    "glitch-heavy",
+    "glitch-color-swap",
+]
+
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
 def _cleanup_cache():
@@ -123,12 +138,9 @@ def _cleanup_cache():
         with os.scandir(_CACHE_DIR) as it:
             for e in it:
                 if e.is_file() and e.stat().st_mtime < cutoff:
-                    try:
-                        os.remove(e.path)
-                    except OSError:
-                        pass
-    except Exception:
-        pass
+                    try: os.remove(e.path)
+                    except OSError: pass
+    except Exception: pass
 
 threading.Thread(target=_cleanup_cache, daemon=True).start()
 
@@ -146,20 +158,17 @@ def _on_hover_enter(w, _e):
 
 def _on_hover_leave(w, _e):
     win = w.get_window()
-    if win:
-        win.set_cursor(None)
+    if win: win.set_cursor(None)
 
 def _hover(w):
     w.add_events(_HOVER_MASK)
     w.connect("enter-notify-event", _on_hover_enter)
     w.connect("leave-notify-event", _on_hover_leave)
 
-def _fex(p):
-    return bool(p) and os.path.isfile(p)
+def _fex(p): return bool(p) and os.path.isfile(p)
 
 def _ext(p):
-    if not p:
-        return ""
+    if not p: return ""
     _, e = os.path.splitext(p.split('?', 1)[0])
     return e
 
@@ -172,21 +181,17 @@ def _set_label(lbl, txt):
     lbl.set_opacity(1.0 if ok else 0.0)
 
 def _is_valid_image(data):
-    if len(data) < 8:
-        return False
+    if len(data) < 8: return False
     for sig, off, length in _IMG_SIGS:
-        if data[off:length] == sig:
-            return True
+        if data[off:length] == sig: return True
     return len(data) >= 12 and data[:4] == b'RIFF' and data[8:12] == b'WEBP'
 
 def _load_mode():
     try:
         if os.path.isfile(_MODE_FILE):
-            with open(_MODE_FILE) as f:
-                d = json.load(f)
+            with open(_MODE_FILE) as f: d = json.load(f)
             return d.get("loop_status", "None"), d.get("order_mode", "normal")
-    except Exception:
-        pass
+    except Exception: pass
     return "None", "normal"
 
 def _save_mode(ls, om):
@@ -194,13 +199,10 @@ def _save_mode(ls, om):
         os.makedirs(os.path.dirname(_MODE_FILE), exist_ok=True)
         with open(_MODE_FILE, "w") as f:
             json.dump({"loop_status": ls, "order_mode": om}, f)
-    except Exception:
-        pass
+    except Exception: pass
 
 def _mpris_id(mp):
-    return (getattr(mp, "player_instance", None)
-            or getattr(mp, "player_name", None)
-            or f"player_{id(mp)}")
+    return (getattr(mp, "player_instance", None) or getattr(mp, "player_name", None) or f"player_{id(mp)}")
 
 def _fmt_time(us):
     s = max(0, int(us)) // 1_000_000
@@ -247,8 +249,7 @@ class LocalPlayer(Service):
             bus.connect("message::eos", self._on_eos)
 
     @Property(str, "read-write", default_value="None")
-    def loop_status(self):
-        return self._loop_status
+    def loop_status(self): return self._loop_status
 
     @loop_status.setter
     def loop_status(self, v):
@@ -256,8 +257,7 @@ class LocalPlayer(Service):
         _save_mode(v, self._order_mode)
 
     @Property(str, "read-write", default_value="normal")
-    def order_mode(self):
-        return self._order_mode
+    def order_mode(self): return self._order_mode
 
     @order_mode.setter
     def order_mode(self, v):
@@ -265,8 +265,7 @@ class LocalPlayer(Service):
         _save_mode(self._loop_status, v)
 
     @Property(bool, "read-write", default_value=False)
-    def shuffle(self):
-        return self._order_mode == "shuffle"
+    def shuffle(self): return self._order_mode == "shuffle"
 
     @shuffle.setter
     def shuffle(self, v):
@@ -278,18 +277,15 @@ class LocalPlayer(Service):
         pb = self._playbin
         if pb and self.playback_status in ("playing", "paused"):
             ok, pos = pb.query_position(Gst.Format.TIME)
-            if ok:
-                return pos // 1000
+            if ok: return pos // 1000
         return 0
 
     def play_file(self, path, artist, title, album, length_us, art_url):
         pb = self._playbin
-        if not pb:
-            return
+        if not pb: return
         pb.set_state(Gst.State.NULL)
         uri = GLib.filename_to_uri(path, None)
         pb.set_property("uri", uri)
-        
         self.url = uri
         self.title = title
         self.artist = artist
@@ -302,8 +298,7 @@ class LocalPlayer(Service):
         self.emit("changed")
 
     def stop(self):
-        if self._playbin:
-            self._playbin.set_state(Gst.State.NULL)
+        if self._playbin: self._playbin.set_state(Gst.State.NULL)
         self.title = _DEFAULT_TITLE
         self.artist = _DEFAULT_ARTIST
         self.album = _DEFAULT_ALBUM
@@ -316,8 +311,7 @@ class LocalPlayer(Service):
 
     def play_pause(self):
         pb = self._playbin
-        if not pb:
-            return
+        if not pb: return
         st = self.playback_status
         if st == "playing":
             pb.set_state(Gst.State.PAUSED)
@@ -327,20 +321,14 @@ class LocalPlayer(Service):
             self.playback_status = "playing"
         self.emit("changed")
 
-    def next(self):
-        (self.on_next_cb or (lambda: self.emit("next_requested")))()
-
-    def previous(self):
-        (self.on_prev_cb or (lambda: self.emit("previous_requested")))()
+    def next(self): (self.on_next_cb or (lambda: self.emit("next_requested")))()
+    def previous(self): (self.on_prev_cb or (lambda: self.emit("previous_requested")))()
 
     def _on_eos(self, _bus, _msg):
         ls = self._loop_status
-        if ls == "Track":
-            GLib.idle_add(self._replay)
-        elif self._order_mode == "reverse":
-            GLib.idle_add(self.previous)
-        else:
-            GLib.idle_add(self.next)
+        if ls == "Track": GLib.idle_add(self._replay)
+        elif self._order_mode == "reverse": GLib.idle_add(self.previous)
+        else: GLib.idle_add(self.next)
 
     def _replay(self):
         if self._playbin:
@@ -367,6 +355,7 @@ class PlayerBox(Box):
         '_a_active', '_a_t0', '_a_from', '_a_to',
         '_a_dur', '_a_pow', '_a_chain', '_a_done',
         '_v_layout', '_v_font', '_v_lw', '_v_lh', '_v_block', '_v_best_pt',
+        '_gl_active', '_gl_rem', '_gl_total', '_gl_tid', '_gl_rand_tid', '_active_glitches'
     )
 
     def __init__(self, mpris_player=None):
@@ -377,8 +366,11 @@ class PlayerBox(Box):
         mp = self.mpris_player = mpris_player
         self._is_local = isinstance(mp, LocalPlayer)
 
-        self._sig_id = self._exit_sig_id = None
-        self._anim_id = self._dcancel = None
+        # ── Инициализация ВСЕХ атрибутов ДО любых вызовов методов ──
+        self._sig_id = None
+        self._exit_sig_id = None
+        self._anim_id = None
+        self._dcancel = None
         self._upd = False
 
         self._last_art = None
@@ -393,25 +385,41 @@ class PlayerBox(Box):
 
         self._v_offset = 0.0
         self._v_scroll_id = None
-        self._v_layout = self._v_font = None
-        self._v_lw = self._v_lh = self._v_block = 0
+        self._v_layout = None
+        self._v_font = None
+        self._v_lw = 0
+        self._v_lh = 0
+        self._v_block = 0
         self._v_best_pt = 0
 
-        self._pv = self._last_pv = 0.0
-        self._ptimer = self._stimer = None
-        self._kpos = self._klen = 0
+        self._gl_active = False
+        self._gl_rem = 0
+        self._gl_total = _GL_FRAMES
+        self._gl_tid = None
+        self._gl_rand_tid = None
+        self._active_glitches = []
+
+        # ── Прогресс-бар и анимация: инициализация ДО _wire()/_prog_start() ──
+        self._pv = 0.0
+        self._last_pv = 0.0
+        self._ptimer = None
+        self._stimer = None
+        self._kpos = 0
         self._ktime = _time.monotonic()
+        self._klen = 0
         self._kplay = False
         self._tkey = None
         self._last_time_txt = ""
-
         self._a_active = False
-        self._a_t0 = self._a_from = self._a_to = 0.0
-        self._a_dur = 0.3
-        self._a_pow = 4.0
+        self._a_t0 = 0.0
+        self._a_from = 0.0
+        self._a_to = 0.0
+        self._a_dur = 0.0
+        self._a_pow = 1.0
         self._a_chain = []
         self._a_done = 'live'
 
+        # ── Виджеты ──
         self.cover = CircleImage(
             name="player-cover", size=_COVER_SIZE,
             h_align="center", v_align="center",
@@ -524,6 +532,7 @@ class PlayerBox(Box):
 
         if self._is_wall:
             self._v_start_scroll()
+            self._schedule_random_glitch()
 
     @staticmethod
     def _btn(icon, sc=()):
@@ -536,57 +545,162 @@ class PlayerBox(Box):
         _hover(b)
         return b
 
-    def _get_order(self):
-        mp = self.mpris_player
-        if self._is_local:
-            return mp._order_mode
-        return self._local_order
+    # ---------------------------------------------------------
+    # GLITCH АНИМАЦИЯ: Синхронизация Cairo и CSS текстов
+    # ---------------------------------------------------------
+    def _schedule_random_glitch(self):
+        if not self._is_wall: return
+        delay = random.randint(_GL_RAND_MIN, _GL_RAND_MAX)
+        self._gl_rand_tid = GLib.timeout_add_seconds(delay, self._fire_random_glitch)
 
-    def _is_reversed(self):
-        return self._get_order() == "reverse"
+    def _fire_random_glitch(self):
+        self._gl_rand_tid = None
+        if not self._gl_active and self._is_wall:
+            self._start_glitch()
+        self._schedule_random_glitch()
+        return False
 
-    def _check_spin_state(self):
-        if self._is_wall:
-            self._spinning = False
+    def _start_glitch(self):
+        self._gl_rem = _GL_FRAMES
+        self._gl_total = _GL_FRAMES
+        self._gl_active = True
+        if self._gl_tid:
+            GLib.source_remove(self._gl_tid)
+        self._gl_tid = GLib.timeout_add(_GL_FRAME_MS, self._gl_tick)
+
+    def _clear_glitch(self):
+        self._active_glitches = []
+
+    def _gl_tick(self):
+        if not self._is_wall:
+            self._clear_glitch()
+            self._gl_active = False
+            self._gl_tid = None
+            return False
+
+        progress = 1.0 - self._gl_rem / self._gl_total
+        self._clear_glitch()
+
+        if random.random() > progress:
+            count = 1 if random.random() > 0.4 else 2
+            self._active_glitches = random.sample(_GLITCH_CLASSES, count)
+
+        self._cover_box.queue_draw()
+        self._gl_rem -= 1
+
+        if self._gl_rem <= 0:
+            self._gl_active = False
+            self._gl_tid = None
+            self._clear_glitch()
+            self._cover_box.queue_draw()
+
+            if random.random() < _GL_REPEAT_CHANCE:
+                self._start_glitch()
+            return False
+        return True
+
+    def _draw_glitch_text(self, cr, layout, x, y, r, g, b, a):
+        glitches = self._active_glitches
+        if not glitches:
+            cr.move_to(x, y)
+            cr.set_source_rgba(r, g, b, a)
+            PangoCairo.show_layout(cr, layout)
             return
 
+        flicker = "glitch-flicker" in glitches
+        aberration = "glitch-aberration" in glitches
+        shift_r = "glitch-shift-right" in glitches
+        shift_l = "glitch-shift-left" in glitches
+        heavy = "glitch-heavy" in glitches
+        color_swap = "glitch-color-swap" in glitches
+
+        base_r, base_g, base_b, base_a = r, g, b, a
+
+        if flicker: base_a = 0.3 if shift_r else 0.1
+        if color_swap: base_r, base_g, base_b = 1.0, 0.0, 0.25
+
+        shadows = []
+
+        if aberration and color_swap:
+            shadows.append((2, 0, 1.0, 0.0, 0.25, 0.85))
+            shadows.append((-2, 0, 0.0, 0.9, 1.0, 0.85))
+            shadows.append((0, 0, 1.0, 0.0, 0.25, 0.4))
+        elif aberration:
+            shadows.append((2, 0, 1.0, 0.0, 0.25, 0.85))
+            shadows.append((-2, 0, 0.0, 0.9, 1.0, 0.85))
+
+        if shift_r and flicker:
+            shadows.append((4, 0, 1.0, 0.0, 0.25, 0.9))
+        elif shift_r:
+            shadows.append((4, 0, 1.0, 0.0, 0.25, 0.7))
+            shadows.append((8, 0, 1.0, 0.0, 0.25, 0.25))
+
+        if shift_l and heavy:
+            shadows.append((-5, 0, 0.0, 0.9, 1.0, 0.8))
+            shadows.append((5, 1, 1.0, 0.0, 0.25, 0.5))
+            shadows.append((0, 3, 0.46, 1.0, 0.01, 0.3))
+        elif shift_l:
+            shadows.append((-4, 0, 0.0, 0.9, 1.0, 0.7))
+            shadows.append((-8, 0, 0.0, 0.9, 1.0, 0.25))
+
+        if heavy and not shift_l:
+            shadows.append((5, 1, 1.0, 0.0, 0.25, 0.6))
+            shadows.append((-5, -1, 0.0, 0.9, 1.0, 0.6))
+            shadows.append((0, 3, 0.46, 1.0, 0.01, 0.35))
+
+        if color_swap and not aberration:
+            shadows.append((0, 0, 1.0, 0.0, 0.25, 0.5))
+
+        for dx, dy, sr, sg, sb, sa in shadows:
+            cr.move_to(x + dx, y + dy)
+            cr.set_source_rgba(sr, sg, sb, sa)
+            PangoCairo.show_layout(cr, layout)
+
+        cr.move_to(x, y)
+        cr.set_source_rgba(base_r, base_g, base_b, base_a)
+        PangoCairo.show_layout(cr, layout)
+    # ---------------------------------------------------------
+
+    def _get_order(self):
+        mp = self.mpris_player
+        if self._is_local: return mp._order_mode
+        return self._local_order
+
+    def _is_reversed(self): return self._get_order() == "reverse"
+
+    def _check_spin_state(self):
         mp = self.mpris_player
         playing = mp and getattr(mp, "playback_status", "") == "playing"
-
         if playing:
             self._spinning = True
             self._ensure_anim()
-        else:
-            self._spinning = False
+        else: self._spinning = False
 
     def _on_cover_draw(self, w, cr):
-        if self._is_wall:
-            alloc = w.get_allocation()
-            self._draw_v(cr, alloc.width, alloc.height)
-            return True
-        child = w.get_child()
-        if not child or not child.get_visible():
-            return True
+        alloc = w.get_allocation()
+        w_width, w_height = alloc.width, alloc.height
         angle = self._angle
+
         if angle:
-            alloc = w.get_allocation()
-            cx, cy = alloc.width * 0.5, alloc.height * 0.5
+            cx, cy = w_width * 0.5, w_height * 0.5
             cr.save()
             cr.translate(cx, cy)
             cr.rotate(angle)
             cr.translate(-cx, -cy)
-            w.propagate_draw(child, cr)
-            cr.restore()
+
+        if self._is_wall:
+            self._draw_v(cr, w_width, w_height)
         else:
-            w.propagate_draw(child, cr)
+            child = w.get_child()
+            if child and child.get_visible(): w.propagate_draw(child, cr)
+
+        if angle: cr.restore()
         return True
 
     def _draw_v(self, cr, w, h):
         rgba = self.artist.get_style_context().get_color(Gtk.StateFlags.NORMAL)
-        if rgba.alpha < 0.01:
-            r, g, b, a = 0.55, 0.55, 0.55, 1.0
-        else:
-            r, g, b, a = rgba.red, rgba.green, rgba.blue, rgba.alpha
+        if rgba.alpha < 0.01: r, g, b, a = 0.55, 0.55, 0.55, 1.0
+        else: r, g, b, a = rgba.red, rgba.green, rgba.blue, rgba.alpha
 
         layout = self._v_layout
         font = self._v_font
@@ -607,10 +721,8 @@ class PlayerBox(Box):
                 font.set_size(pt * Pango.SCALE)
                 layout.set_font_description(font)
                 _, lh = layout.get_pixel_size()
-                if lh <= max_h:
-                    best = pt
-                else:
-                    break
+                if lh <= max_h: best = pt
+                else: break
             self._v_best_pt = best
 
         font.set_size(best * Pango.SCALE)
@@ -633,24 +745,19 @@ class PlayerBox(Box):
         cr.arc(cx, cy, radius, 0, _TAU)
         cr.clip()
 
-        cr.set_source_rgba(r, g, b, a)
         x = -off
         while x < w:
-            cr.move_to(x, y0)
-            PangoCairo.show_layout(cr, layout)
+            self._draw_glitch_text(cr, layout, x, y0, r, g, b, a)
             x += block
 
         cr.restore()
 
     def _v_start_scroll(self):
-        if not self._v_scroll_id:
-            self._v_scroll_id = GLib.timeout_add(_ANIM_MS, self._v_scroll_tick)
+        if not self._v_scroll_id: self._v_scroll_id = GLib.timeout_add(_ANIM_MS, self._v_scroll_tick)
 
     def _v_stop_scroll(self):
         sid = self._v_scroll_id
-        if sid:
-            GLib.source_remove(sid)
-            self._v_scroll_id = None
+        if sid: GLib.source_remove(sid); self._v_scroll_id = None
 
     def _v_scroll_tick(self):
         self._v_offset += _V_SCROLL_SPEED
@@ -658,99 +765,79 @@ class PlayerBox(Box):
         return True
 
     def _ensure_anim(self):
-        if self._anim_id is None:
-            self._anim_id = GLib.timeout_add(_ANIM_MS, self._anim_tick)
+        if self._anim_id is None: self._anim_id = GLib.timeout_add(_ANIM_MS, self._anim_tick)
 
     def _anim_tick(self):
         spinning = self._spinning
         flick_v = self._flick_v
         angle = self._angle
 
-        if spinning:
-            angle += _SPIN_STEP
+        if spinning: angle += _SPIN_STEP
         if flick_v:
             angle += flick_v
             flick_v *= _FLICK_DECAY
-            if abs(flick_v) < _FLICK_MIN:
-                flick_v = 0.0
+            if abs(flick_v) < _FLICK_MIN: flick_v = 0.0
             self._flick_v = flick_v
-            
+
         angle %= _TAU
 
         self._angle = angle
         self._cover_box.queue_draw()
 
         alive = spinning or bool(flick_v)
-        if not alive:
-            self._anim_id = None
+        if not alive: self._anim_id = None
         return alive
 
     def _on_scroll(self, _w, ev):
         d = ev.direction
-        if d == Gdk.ScrollDirection.UP:
-            self._seek(1)
-            return True
-        if d == Gdk.ScrollDirection.DOWN:
-            self._seek(-1)
-            return True
+        if d == Gdk.ScrollDirection.UP: return bool(self._seek(1) or True)
+        if d == Gdk.ScrollDirection.DOWN: return bool(self._seek(-1) or True)
         ok, _dx, dy = ev.get_scroll_deltas()
         if ok and dy:
             acc = self._scroll_acc + dy
             if acc <= -_SCROLL_THRESHOLD:
-                self._seek(1)
-                acc = 0.0
+                self._seek(1); acc = 0.0
             elif acc >= _SCROLL_THRESHOLD:
-                self._seek(-1)
-                acc = 0.0
+                self._seek(-1); acc = 0.0
             self._scroll_acc = acc
         return True
 
     def _on_cover_click(self, _w, ev):
-        if ev.button == 1 and self.mpris_player:
-            self.mpris_player.play_pause()
+        if ev.button == 1 and self.mpris_player: self.mpris_player.play_pause()
         return True
 
     def _ucover(self, track_id, arturl):
-        if track_id == self._last_track_id and arturl == self._last_art:
-            return
-            
+        if track_id == self._last_track_id and arturl == self._last_art: return
+
         self._last_track_id = track_id
         self._last_art = arturl
         self._extract_tried = False
-        
+
         self._angle = 0.0
         self._spinning = False
         self._flick_v = 0.0
         aid = self._anim_id
-        if aid is not None:
-            GLib.source_remove(aid)
-            self._anim_id = None
-            
+        if aid is not None: GLib.source_remove(aid); self._anim_id = None
+
         self._scroll_acc = 0.0
 
         if not arturl:
             self._try_extract()
             return
-            
+
         scheme = GLib.uri_parse_scheme(arturl)
-        if scheme == "file":
-            self._set_img(GLib.uri_unescape_string(arturl[7:], None))
-        elif scheme in ("http", "https"):
-            self._dl_art(arturl)
-        elif arturl.startswith('/'):
-            self._set_img(arturl)
-        else:
-            self._placeholder()
+        if scheme == "file": self._set_img(GLib.uri_unescape_string(arturl[7:], None))
+        elif scheme in ("http", "https"): self._dl_art(arturl)
+        elif arturl.startswith('/'): self._set_img(arturl)
+        else: self._placeholder()
 
     def _try_extract(self):
-        if self._extract_tried:
-            self._placeholder()
-            return
+        if self._extract_tried: return self._placeholder()
         self._extract_tried = True
         mp = self.mpris_player
-        
+
         url = getattr(mp, 'url', '') or getattr(mp, 'arturl', '')
-        
+
         if url.startswith("file://"):
             try:
                 gfile = Gio.File.new_for_uri(url)
@@ -758,92 +845,80 @@ class PlayerBox(Box):
                 if path and os.path.isfile(path):
                     threading.Thread(target=self._extract_bg, args=(path,), daemon=True).start()
                     return
-            except Exception:
-                pass
-                
+            except Exception: pass
+
         self._placeholder()
 
     def _extract_bg(self, path):
         try:
             h = hashlib.md5(path.encode('utf-8')).hexdigest()
             cp = os.path.join(_CACHE_DIR, f"ex_{h}.png")
-            
+
             if _fex(cp):
                 GLib.idle_add(self._set_img, cp)
                 return
-            
+
             af = MutagenFile(path)
             if af:
                 data = self._cover_bytes(af)
                 if data:
-                    with open(cp, 'wb') as f:
-                        f.write(data)
+                    with open(cp, 'wb') as f: f.write(data)
                     GLib.idle_add(self._set_img, cp)
                     return
-        except Exception:
-            pass
+        except Exception: pass
         GLib.idle_add(self._placeholder)
 
     @staticmethod
     def _cover_bytes(audio):
         try:
-            if hasattr(audio, 'pictures') and audio.pictures:
-                return audio.pictures[0].data
-            
+            if hasattr(audio, 'pictures') and audio.pictures: return audio.pictures[0].data
             tags = getattr(audio, 'tags', None)
-            if not tags:
-                return None
-                
+            if not tags: return None
             for k in tags:
-                if k.startswith('APIC'):
-                    return tags[k].data
-                    
-            if 'covr' in tags and tags['covr']:
-                return bytes(tags['covr'][0])
-                
+                if k.startswith('APIC'): return tags[k].data
+            if 'covr' in tags and tags['covr']: return bytes(tags['covr'][0])
             if 'WM/Picture' in tags and tags['WM/Picture']:
                 pic = tags['WM/Picture'][0]
-                if hasattr(pic, 'value'):
-                    return pic.value
-        except Exception:
-            pass
+                if hasattr(pic, 'value'): return pic.value
+        except Exception: pass
         return None
 
     def _placeholder(self):
         self._spinning = False
         self._flick_v = 0.0
         aid = self._anim_id
-        if aid is not None:
-            GLib.source_remove(aid)
-            self._anim_id = None
+        if aid is not None: GLib.source_remove(aid); self._anim_id = None
         self._angle = 0.0
         self._is_wall = True
         self._v_offset = 0.0
         self._v_start_scroll()
         self._cover_box.queue_draw()
+        if not self._gl_rand_tid and not self._gl_active:
+            self._schedule_random_glitch()
 
     def _set_img(self, p):
         if _fex(p):
             self.cover.set_image_from_file(p)
             self._is_wall = False
+            self._clear_glitch()
+            self._gl_active = False
+            if self._gl_tid: GLib.source_remove(self._gl_tid); self._gl_tid = None
             self._v_stop_scroll()
             self._cover_box.queue_draw()
-            self._check_spin_state() 
+            self._check_spin_state()
         else:
             self._placeholder()
 
     def _dl_art(self, url):
         h = hashlib.md5(url.encode('utf-8')).hexdigest()
         ext = _ext(url) or '.png'
-        if ext.lower() not in _VALID_COVER_EXT:
-            ext = '.png'
+        if ext.lower() not in _VALID_COVER_EXT: ext = '.png'
         cp = os.path.join(_CACHE_DIR, f"{h}{ext}")
         if _fex(cp):
             self._set_img(cp)
             return
         dc = self._dcancel
-        if dc:
-            dc.cancel()
+        if dc: dc.cancel()
         self._dcancel = dc = Gio.Cancellable.new()
         Gio.File.new_for_uri(url).load_contents_async(dc, self._on_dl, cp)
 
@@ -856,17 +931,13 @@ class PlayerBox(Box):
                     Gio.FileCreateFlags.PRIVATE, self._dcancel,
                     self._on_dl_save, cp)
                 return
-        except GLib.Error:
-            pass
+        except GLib.Error: pass
         GLib.idle_add(self._try_extract)
 
     def _on_dl_save(self, gf, res, cp):
         try:
-            if gf.replace_contents_finish(res)[0]:
-                GLib.idle_add(self._set_img, cp)
-                return
-        except GLib.Error:
-            pass
+            if gf.replace_contents_finish(res)[0]: return GLib.idle_add(self._set_img, cp)
+        except GLib.Error: pass
         GLib.idle_add(self._try_extract)
 
     def _wire(self):
@@ -880,28 +951,21 @@ class PlayerBox(Box):
         self._sig_id = mp.connect("changed", self._on_changed)
 
     def _do_prev(self):
-        mp = self.mpris_player
-        if mp:
-            (mp.next if self._is_reversed() else mp.previous)()
+        if self.mpris_player: (self.mpris_player.next if self._is_reversed() else self.mpris_player.previous)()
 
     def _do_next(self):
-        mp = self.mpris_player
-        if mp:
-            (mp.previous if self._is_reversed() else mp.next)()
+        if self.mpris_player: (self.mpris_player.previous if self._is_reversed() else self.mpris_player.next)()
 
     def _setup_empty(self):
         self._spinning = False
         self._flick_v = 0.0
         aid = self._anim_id
-        if aid is not None:
-            GLib.source_remove(aid)
-            self._anim_id = None
+        if aid is not None: GLib.source_remove(aid); self._anim_id = None
         self._angle = 0.0
         self._cover_box.queue_draw()
         self.play_pause.get_child().set_markup(icons.stop)
         self.play_pause.add_style_class("stop")
-        for b in (self.backward, self.forward, self.prev, self.next,
-                  self.shuffle_btn, self.repeat_btn):
+        for b in (self.backward, self.forward, self.prev, self.next, self.shuffle_btn, self.repeat_btn):
             b.add_style_class("disabled")
         self.progressbar.set_value(0.0)
         self.progressbar.queue_draw()
@@ -926,8 +990,7 @@ class PlayerBox(Box):
         self._a_pow = power
 
     def _run_chain(self, segments, on_done='live'):
-        if not segments:
-            return
+        if not segments: return
         self._a_chain = list(segments[1:])
         self._a_done = on_done
         s = segments[0]
@@ -938,23 +1001,18 @@ class PlayerBox(Box):
         self._a_chain = []
 
     def _prog_start(self):
-        if not self._ptimer:
-            self._ptimer = GLib.timeout_add(_PROG_FPS, self._prog_tick)
-        if not self._stimer:
-            self._stimer = GLib.timeout_add(_SYNC_MS, self._sync_tick)
+        if not self._ptimer: self._ptimer = GLib.timeout_add(_PROG_FPS, self._prog_tick)
+        if not self._stimer: self._stimer = GLib.timeout_add(_SYNC_MS, self._sync_tick)
         self._force_sync()
 
     def _prog_stop(self):
         for attr in ('_ptimer', '_stimer'):
             tid = getattr(self, attr, None)
-            if tid:
-                GLib.source_remove(tid)
-                setattr(self, attr, None)
+            if tid: GLib.source_remove(tid); setattr(self, attr, None)
 
     def _force_sync(self):
         mp = self.mpris_player
-        if not mp:
-            return
+        if not mp: return
         self._kpos = getattr(mp, 'position', 0) or 0
         self._ktime = _time.monotonic()
         self._klen = getattr(mp, 'length', 0) or 0
@@ -1013,49 +1071,31 @@ class PlayerBox(Box):
                         klen, kpos = self._klen, self._kpos
                         if klen > 0 and kpos > 0:
                             tgt = kpos / klen
-                            if tgt > 1.0:
-                                tgt = 1.0
-                            if tgt > _RISE_MIN:
-                                self._run_chain([(tgt, _RISE_DUR, _RISE_POW)], on_done='live')
-                            else:
-                                self._kpos = int(pv * tot)
-                                self._ktime = now
-                        else:
-                            self._kpos = int(pv * tot)
-                            self._ktime = now
-                    else:
-                        self._kpos = int(pv * tot)
-                        self._ktime = now
+                            if tgt > 1.0: tgt = 1.0
+                            if tgt > _RISE_MIN: self._run_chain([(tgt, _RISE_DUR, _RISE_POW)], on_done='live')
+                            else: self._kpos = int(pv * tot); self._ktime = now
+                        else: self._kpos = int(pv * tot); self._ktime = now
+                    else: self._kpos = int(pv * tot); self._ktime = now
             self._pv = pv
         else:
-            if self._kplay:
-                predicted = self._kpos + (now - self._ktime) * 1_000_000
-                target = predicted / tot
-            else:
-                target = self._kpos / tot
-            if target < 0.0:
-                target = 0.0
-            elif target > 1.0:
-                target = 1.0
+            if self._kplay: target = (self._kpos + (now - self._ktime) * 1_000_000) / tot
+            else: target = self._kpos / tot
+            if target < 0.0: target = 0.0
+            elif target > 1.0: target = 1.0
 
             diff = target - pv
             adiff = -diff if diff < 0 else diff
 
-            if (pv > _REPLAY_PV_THRESH
-                    and target < _REPLAY_TGT_THRESH
-                    and diff < -_REPLAY_DIFF_THRESH):
-                sw_dur = _SW_DUR_BASE + pv * _SW_DUR_SCALE
-                self._run_chain([(0.0, sw_dur, _SW_POW)], on_done='live')
+            if (pv > _REPLAY_PV_THRESH and target < _REPLAY_TGT_THRESH and diff < -_REPLAY_DIFF_THRESH):
+                self._run_chain([(0.0, _SW_DUR_BASE + pv * _SW_DUR_SCALE, _SW_POW)], on_done='live')
             elif adiff > _CORR_THRESH:
                 self._run_chain([(target, _CORR_DUR, _CORR_POW)], on_done='live')
             else:
                 pv = target
                 self._pv = pv
 
-        if pv < 0.0:
-            pv = 0.0
-        elif pv > 1.0:
-            pv = 1.0
+        if pv < 0.0: pv = 0.0
+        elif pv > 1.0: pv = 1.0
 
         if pv != self._last_pv:
             self._last_pv = pv
@@ -1088,22 +1128,12 @@ class PlayerBox(Box):
         new_key = (mp.title, mp.artist, getattr(mp, 'arturl', ''), getattr(mp, 'url', ''))
 
         if self._tkey is not None and new_key != self._tkey:
-            if self._pv > 0.012:
-                dur = _SW_DUR_BASE + self._pv * _SW_DUR_SCALE
-                self._run_chain([(0.0, dur, _SW_POW)], on_done='rise')
-            else:
-                self._pv = self._last_pv = 0.0
-                self._cancel_anim()
-                self._force_sync()
+            if self._pv > 0.012: self._run_chain([(0.0, _SW_DUR_BASE + self._pv * _SW_DUR_SCALE, _SW_POW)], on_done='rise')
+            else: self._pv = self._last_pv = 0.0; self._cancel_anim(); self._force_sync()
         elif self._is_local and getattr(mp, '_replaying', False):
             mp._replaying = False
-            if self._pv > 0.012:
-                dur = _SW_DUR_BASE + self._pv * _SW_DUR_SCALE
-                self._run_chain([(0.0, dur, _SW_POW)], on_done='rise')
-            else:
-                self._pv = self._last_pv = 0.0
-                self._cancel_anim()
-                self._force_sync()
+            if self._pv > 0.012: self._run_chain([(0.0, _SW_DUR_BASE + self._pv * _SW_DUR_SCALE, _SW_POW)], on_done='rise')
+            else: self._pv = self._last_pv = 0.0; self._cancel_anim(); self._force_sync()
         elif not self._a_active:
             self._kpos = getattr(mp, 'position', 0) or 0
             self._ktime = _time.monotonic()
@@ -1112,8 +1142,7 @@ class PlayerBox(Box):
 
     def _seek(self, direction):
         mp = self.mpris_player
-        if not mp:
-            return
+        if not mp: return
         ok = False
         new_us = None
 
@@ -1123,57 +1152,36 @@ class PlayerBox(Box):
                 good, pos = pb.query_position(Gst.Format.TIME)
                 if good:
                     length_ns = mp.length * 1000
-
-                    if direction < 0 and pos <= 1_000_000_000:
-                        self._do_prev()
-                        return
-
-                    if direction > 0 and length_ns > 0 and (length_ns - pos) <= 1_000_000_000:
-                        self._do_next()
-                        return
-
-                    tgt = (min(pos + _SEEK_NS, length_ns) if direction > 0
-                           else max(0, pos - _SEEK_NS))
+                    if direction < 0 and pos <= 1_000_000_000: return self._do_prev()
+                    if direction > 0 and length_ns > 0 and (length_ns - pos) <= 1_000_000_000: return self._do_next()
+                    tgt = (min(pos + _SEEK_NS, length_ns) if direction > 0 else max(0, pos - _SEEK_NS))
                     pb.seek_simple(Gst.Format.TIME, _SEEK_FLAGS, tgt)
                     new_us = tgt // 1000
                     ok = True
         elif isinstance(mp, MprisPlayer) and mp.can_seek:
             cur_pos = getattr(mp, "position", 0) or 0
-
-            if direction < 0 and cur_pos <= 1_000_000:
-                self._do_prev()
-                return
-
-            if direction > 0 and self._klen > 0 and (self._klen - cur_pos) <= 1_000_000:
-                self._do_next()
-                return
-
+            if direction < 0 and cur_pos <= 1_000_000: return self._do_prev()
+            if direction > 0 and self._klen > 0 and (self._klen - cur_pos) <= 1_000_000: return self._do_next()
             mp.seek(_SEEK_US * direction)
             new_us = max(0, cur_pos + _SEEK_US * direction)
-            if self._klen > 0:
-                new_us = min(new_us, self._klen)
+            if self._klen > 0: new_us = min(new_us, self._klen)
             ok = True
 
-        if ok and new_us is not None:
-            if self._klen > 0:
-                self._kpos = int(new_us)
-                self._ktime = _time.monotonic()
-                target = max(0.0, min(1.0, new_us / self._klen))
+        if ok and new_us is not None and self._klen > 0:
+            self._kpos = int(new_us)
+            self._ktime = _time.monotonic()
+            target = max(0.0, min(1.0, new_us / self._klen))
+            over_pct = random.uniform(_OVERSHOOT_MIN, _OVERSHOOT_MAX)
+            over = max(0.0, min(1.0, target + (1.0 if direction > 0 else -1.0) * over_pct))
+            dist = abs(target - self._pv)
+            if dist < 0.05: d1, d2 = _SK_DUR_1, _SK_DUR_2
+            elif dist < 0.15: d1, d2 = _SK_DUR_1 * _SK_SCALE_MD, _SK_DUR_2 * _SK_SCALE_MD
+            else: d1, d2 = _SK_DUR_1 * _SK_SCALE_LG, _SK_DUR_2 * _SK_SCALE_LG
+            self._run_chain([(over, d1, _SK_POW_1), (target, d2, _SK_POW_2)], on_done='live')
 
-                over_pct = random.uniform(_OVERSHOOT_MIN, _OVERSHOOT_MAX)
-                over = max(0.0, min(1.0, target + (1.0 if direction > 0 else -1.0) * over_pct))
-
-                dist = abs(target - self._pv)
-                if dist < 0.05: d1, d2 = _SK_DUR_1, _SK_DUR_2
-                elif dist < 0.15: d1, d2 = _SK_DUR_1 * _SK_SCALE_MD, _SK_DUR_2 * _SK_SCALE_MD
-                else: d1, d2 = _SK_DUR_1 * _SK_SCALE_LG, _SK_DUR_2 * _SK_SCALE_LG
-
-                self._run_chain([(over, d1, _SK_POW_1), (target, d2, _SK_POW_2)], on_done='live')
-
-        if ok and not self._is_wall:
+        if ok:
             self._flick_v = _FLICK_INITIAL * float(direction)
             self._ensure_anim()
-            self._check_spin_state()
 
     def _toggle_order(self, *_):
         mp = self.mpris_player
@@ -1187,8 +1195,7 @@ class PlayerBox(Box):
         if isinstance(mp, MprisPlayer) and not getattr(mp, '_dead', False) and not getattr(mp, 'is_limited', False):
             can_sh = getattr(mp, 'can_shuffle', False)
             nxt = (_ORDER_NEXT_3 if can_sh else _ORDER_NEXT_2).get(self._local_order, "normal")
-            if can_sh and (self._local_order == "shuffle") != (nxt == "shuffle"):
-                GLib.idle_add(lambda: setattr(mp, 'shuffle', nxt == "shuffle") or False)
+            if can_sh and (self._local_order == "shuffle") != (nxt == "shuffle"): GLib.idle_add(lambda: setattr(mp, 'shuffle', nxt == "shuffle") or False)
             self._local_order = nxt
             self._refresh()
 
@@ -1207,10 +1214,8 @@ class PlayerBox(Box):
 
     def _refresh(self):
         mp = self.mpris_player
-        if not mp:
-            return
-        if getattr(mp, '_dead', False):
-            return self._setup_empty()
+        if not mp: return
+        if getattr(mp, '_dead', False): return self._setup_empty()
 
         if isinstance(mp, MprisPlayer) and getattr(mp, 'can_shuffle', False):
             mpris_sh = getattr(mp, "shuffle", False)
@@ -1220,13 +1225,13 @@ class PlayerBox(Box):
         _set_label(self.title, mp.title)
         _set_label(self.album, mp.album)
         _set_label(self.artist, mp.artist)
-        
+
         self._ucover(getattr(mp, 'url', '') or getattr(mp, 'title', ''), getattr(mp, 'arturl', ''))
 
         playing = getattr(mp, "playback_status", "") == "playing"
         self.play_pause.get_child().set_markup(icons.pause if playing else icons.play)
         _set_style(self.play_pause, "playing", playing)
-        
+
         self._check_spin_state()
         self._umode(mp)
         self._ubtn(mp)
@@ -1259,10 +1264,8 @@ class PlayerBox(Box):
         _set_style(self.backward, "disabled", st == "stopped" or not csk)
         _set_style(self.forward, "disabled", st == "stopped" or not csk)
 
-        if self._is_local:
-            cp = cn = st in ("playing", "paused")
-        else:
-            cp, cn = getattr(mp, "can_go_previous", True), getattr(mp, "can_go_next", True)
+        if self._is_local: cp = cn = st in ("playing", "paused")
+        else: cp, cn = getattr(mp, "can_go_previous", True), getattr(mp, "can_go_next", True)
 
         _set_style(self.prev, "disabled", not cp)
         _set_style(self.next, "disabled", not cn)
@@ -1281,7 +1284,9 @@ class PlayerBox(Box):
     def cleanup(self):
         self._spinning = False
         self._flick_v = 0.0
-        if self._anim_id is not None: GLib.source_remove(self._anim_id); self._anim_id = None
+        for attr in ('_anim_id', '_gl_tid', '_gl_rand_tid'):
+            tid = getattr(self, attr, None)
+            if tid is not None: GLib.source_remove(tid); setattr(self, attr, None)
         self._v_stop_scroll()
         self._prog_stop()
         self._cancel_anim()
@@ -1367,11 +1372,10 @@ class MediaPlayer(Box):
         for ch in self.player_stack.get_children():
             nm = self.player_stack.child_get_property(ch, "name")
             if nm == "nothing":
-                nothing = ch
-                continue
+                nothing = ch; continue
             mp = getattr(ch, 'mpris_player', None)
             if not mp: continue
-            
+
             st = getattr(mp, 'playback_status', 'stopped')
             if isinstance(mp, LocalPlayer):
                 active += 1
@@ -1381,8 +1385,7 @@ class MediaPlayer(Box):
                 if mp.is_dead: drop.append(ch)
                 elif st == "stopped" and not mp.title.strip(): ch.hide(); self._states[nm] = "ghost"
                 else:
-                    ch.show()
-                    active += 1
+                    ch.show(); active += 1
                     if st == "playing" and self._states.get(nm) != "playing": goto = nm
                     self._states[nm] = st
 

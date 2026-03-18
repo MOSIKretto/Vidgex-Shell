@@ -14,6 +14,9 @@ _ANIM_STEPS = 25
 _ANIM_INTERVAL_MS = 16
 _INV_ANIM_STEPS = 1.0 / _ANIM_STEPS
 
+_CLICK_STEPS = 20
+_CLICK_MS = 14
+
 _pointer_cursor = None
 _default_cursor = None
 
@@ -41,8 +44,22 @@ def _on_btn_leave(widget, _event):
     return False
 
 
+def _ease_out_cubic(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
+
+
+def _val_from_x(scale: Gtk.Widget, x: float) -> float:
+    w = scale.get_allocation().width
+    if w <= 0:
+        return 0.0
+    return max(0.0, min(1.0, x / w))
+
+
 class MixerSlider(Scale):
-    __slots__ = ("stream", "_updating", "_muted_style")
+    __slots__ = (
+        "stream", "_updating", "_muted_style",
+        "_canim_id", "_canim_s", "_canim_e", "_canim_n", "_pressed",
+    )
 
     def __init__(self, stream, **kwargs):
         super().__init__(
@@ -58,6 +75,11 @@ class MixerSlider(Scale):
         self.stream = stream
         self._updating = False
 
+        self._canim_id = None
+        self._canim_s = self._canim_e = 0.0
+        self._canim_n = 0
+        self._pressed = False
+
         muted = stream.muted
         self._muted_style = muted
 
@@ -69,6 +91,9 @@ class MixerSlider(Scale):
         self.set_tooltip_text(f"{int(volume + 0.5)}%")
 
         self.connect("value-changed", self._on_value_changed)
+        self.connect("button-press-event", self._on_click_press)
+        self.connect("button-release-event", self._on_click_release)
+        self.connect("motion-notify-event", self._on_click_motion)
 
         ltype = getattr(stream, "type", "").lower()
         self.add_style_class(
@@ -78,7 +103,55 @@ class MixerSlider(Scale):
         if muted:
             self.add_style_class(_MUTED_CLASS)
 
+    # ── click-to-animate ──────────────────────────────────────────────
+
+    def _on_click_press(self, _, event):
+        if event.button != 1:
+            return False
+        target = _val_from_x(self, event.x)
+        current = self.value
+        if abs(target - current) < 0.03:
+            return False
+        self._pressed = True
+        self._cancel_canim()
+        self._canim_s = current
+        self._canim_e = target
+        self._canim_n = 0
+        self._canim_id = GLib.timeout_add(_CLICK_MS, self._canim_tick)
+        return True
+
+    def _on_click_release(self, _, event):
+        if not self._pressed:
+            return False
+        self._pressed = False
+        return True
+
+    def _on_click_motion(self, _, event):
+        if not self._pressed:
+            return False
+        self._cancel_canim()
+        self.value = _val_from_x(self, event.x)
+        return True
+
+    def _canim_tick(self):
+        self._canim_n += 1
+        t = min(self._canim_n / float(_CLICK_STEPS), 1.0)
+        self.value = self._canim_s + (self._canim_e - self._canim_s) * _ease_out_cubic(t)
+        if self._canim_n >= _CLICK_STEPS:
+            self._canim_id = None
+            return False
+        return True
+
+    def _cancel_canim(self):
+        if self._canim_id is not None:
+            GLib.source_remove(self._canim_id)
+            self._canim_id = None
+
+    # ── sync / value-changed ──────────────────────────────────────────
+
     def sync(self, stream, pct_str):
+        if self._canim_id is not None or self._pressed:
+            return
         self._updating = True
         self.value = stream.volume * 0.01
         if pct_str is not None:
@@ -104,6 +177,7 @@ class MixerSlider(Scale):
             self.set_tooltip_text(f"{int(new_vol + 0.5)}%")
 
     def cleanup(self):
+        self._cancel_canim()
         self.stream = None
 
 
@@ -284,7 +358,6 @@ class MixerSection(Box):
         slots = self._slots
         saved = self._saved_volumes
 
-        # Плоский список (slot, start, delta) — без dict-lookup в каждом кадре
         anim_list = []
         for sid, slot in slots.items():
             s = slot.stream
@@ -343,7 +416,6 @@ class MixerSection(Box):
                     content.add(slot)
                     added = True
 
-        # Проверяем удалённые только если количество не совпадает
         if len(seen) < len(slots):
             stale = [sid for sid in slots if sid not in seen]
             saved = self._saved_volumes
@@ -354,7 +426,6 @@ class MixerSection(Box):
                 slot.destroy()
                 saved.pop(sid, None)
 
-        # show_all только при добавлении новых виджетов
         if added:
             content.show_all()
 
