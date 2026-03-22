@@ -492,8 +492,6 @@ class BluetoothConnections(Box):
         self._sc_lbl.get_style_context().add_class("scanning")
         self._sc_btn.get_style_context().add_class("scanning")
         
-        # Используем внутренний флаг --timeout самой утилиты bluetoothctl.
-        # Это заставляет процесс висеть ровно 4 секунды и держать D-Bus канал для BlueZ.
         GLib.spawn_command_line_async("bluetoothctl --timeout 4 scan on")
         
         GLib.timeout_add(4000, self._stop_scan)
@@ -504,7 +502,6 @@ class BluetoothConnections(Box):
         self._sc_lbl.get_style_context().remove_class("scanning")
         self._sc_btn.get_style_context().remove_class("scanning")
         
-        # Выключаем сканирование принудительно (на случай если таймер сбился)
         GLib.spawn_command_line_async("bluetoothctl scan off")
         return False
 

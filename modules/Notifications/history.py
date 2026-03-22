@@ -17,6 +17,7 @@ from .notificationBox import (
     NotificationBox, NotificationGroup, HistoricalNotification,
     get_history_ignored_apps, is_safe_image_file, delete_notification_image,
     clear_all_notification_images, submit_io_task, cleanup_orphan_images,
+    set_pointer_cursor,
     PERSISTENT_HISTORY_FILE, MAX_NOTIFICATION_HISTORY, MAX_POPUP_NOTIFICATIONS,
     NOTIFICATION_WIDTH,
 )
@@ -72,6 +73,15 @@ class NotificationHistory(Box):
             "notify::active", self._on_dnd_changed
         )
 
+        set_pointer_cursor(self.header_switch)
+
+        clear_history_btn = Button(
+            name="nhh-button",
+            child=Label(name="nhh-button-label", markup=icons.trash),
+            on_clicked=self.clear_history,
+        )
+        set_pointer_cursor(clear_history_btn)
+
         header = CenterBox(
             name="notification-history-header",
             start_children=[
@@ -86,13 +96,7 @@ class NotificationHistory(Box):
                     h_expand=True,
                 ),
             ],
-            end_children=[
-                Button(
-                    name="nhh-button",
-                    child=Label(name="nhh-button-label", markup=icons.trash),
-                    on_clicked=self.clear_history,
-                ),
-            ],
+            end_children=[clear_history_btn],
         )
 
         self.notifications_list = Box(
@@ -137,8 +141,8 @@ class NotificationHistory(Box):
 
     def _update_empty_state(self):
         has_items = (
-            len(self.containers) > 0 or 
-            len(self.persistent_notifications) > 0 or 
+            len(self.containers) > 0 or
+            len(self.persistent_notifications) > 0 or
             self._loading
         )
 
@@ -266,6 +270,8 @@ class NotificationHistory(Box):
             notification_box.uuid,
             weakref.ref(container),
         )
+
+        set_pointer_cursor(close_btn)
 
         container.add(
             Box(
@@ -396,7 +402,6 @@ class NotificationHistory(Box):
 
         container.destroy()
         self._update_empty_state()
-
 
     def add_notification(self, notification_box):
         if self._is_destroyed:
@@ -612,7 +617,6 @@ class NotificationHistory(Box):
             except OSError:
                 pass
 
-
     def destroy(self):
         if self._is_destroyed:
             return
@@ -719,6 +723,7 @@ class NotificationContainer(Box):
         for b in (self.prev_button, self.close_all_button, self.next_button):
             b.connect("enter-notify-event", self._on_nav_enter)
             b.connect("leave-notify-event", self._on_nav_leave)
+            set_pointer_cursor(b)  # ← ДОБАВЛЕНО
 
         nav = Box(
             name="notification-navigation",
@@ -904,6 +909,7 @@ class NotificationContainer(Box):
         self.notification_history = None
 
         super().destroy()
+
 
 _shared_history_instance = None
 

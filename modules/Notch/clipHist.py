@@ -4,10 +4,27 @@ from fabric.widgets.entry import Entry
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
-from gi.repository import GdkPixbuf, GLib, Gio
+from gi.repository import Gdk, GdkPixbuf, GLib, Gio
 
 import services.icons as icons
 from services.listNavigation import ListNavigationMixin
+
+
+def set_pointer_cursor(widget):
+    def _on_enter(w, _event):
+        win = w.get_window()
+        if win:
+            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+        return False
+
+    def _on_leave(w, _event):
+        win = w.get_window()
+        if win:
+            win.set_cursor(None)
+        return False
+
+    widget.connect("enter-notify-event", _on_enter)
+    widget.connect("leave-notify-event", _on_leave)
 
 
 class ClipHistory(ListNavigationMixin, Box):
@@ -41,7 +58,7 @@ class ClipHistory(ListNavigationMixin, Box):
 
         self.ent = Entry(
             name="search-entry",
-            placeholder="Searching the buffer history...",
+            placeholder="Search In Buffer...",
             h_expand=True,
             notify_text=lambda e, *_: self._schedule_filter(e.get_text()),
             on_activate=lambda *_: self._nav_activate(),
@@ -56,6 +73,20 @@ class ClipHistory(ListNavigationMixin, Box):
             propagate_height=False,
         )
 
+        clear_btn = Button(
+            name="clear-button",
+            child=Label(name="clear-label", markup=icons.trash),
+            on_clicked=lambda *_: self._wipe(),
+        )
+        set_pointer_cursor(clear_btn)
+
+        close_btn = Button(
+            name="close-button",
+            child=Label(name="close-label", markup=icons.cancel),
+            on_clicked=lambda *_: self.close(),
+        )
+        set_pointer_cursor(close_btn)
+
         self.add(Box(
             name="launcher-box",
             spacing=10,
@@ -63,17 +94,9 @@ class ClipHistory(ListNavigationMixin, Box):
             orientation="v",
             children=[
                 Box(name="header_box", spacing=10, children=[
-                    Button(
-                        name="clear-button",
-                        child=Label(name="clear-label", markup=icons.trash),
-                        on_clicked=lambda *_: self._wipe(),
-                    ),
+                    clear_btn,
                     self.ent,
-                    Button(
-                        name="close-button",
-                        child=Label(name="close-label", markup=icons.cancel),
-                        on_clicked=lambda *_: self.close(),
-                    ),
+                    close_btn,
                 ]),
                 self.sw,
             ],
@@ -143,7 +166,7 @@ class ClipHistory(ListNavigationMixin, Box):
             icon = Label(name="clip-icon", markup=icons.clip_text)
             text = content[:100].strip()
 
-        return Button(
+        btn = Button(
             name="slot-button",
             on_clicked=lambda *_, i=idx: self._paste(i),
             child=Box(
@@ -162,6 +185,8 @@ class ClipHistory(ListNavigationMixin, Box):
                 ],
             ),
         )
+        set_pointer_cursor(btn)
+        return btn
 
     def _load_thumb_async(self, widget, idx):
         try:

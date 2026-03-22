@@ -201,7 +201,6 @@ class IconResolver(GObject.GObject):
                 v.add(app_id[:-len(suffix)])
                 break
         
-        # CamelCase
         parts = []
         start = 0
         for i in range(1, len(app_id)):
@@ -215,9 +214,7 @@ class IconResolver(GObject.GObject):
             v.add('-'.join(p.lower() for p in parts))
         
         return tuple(x for x in v if x and len(x) > 1)
-    
-    # ==================== DESKTOP FILE ====================
-    
+        
     def _find_desktop(self, app_id):
         variants = self._gen_variants(app_id)
         if not variants:
@@ -258,9 +255,7 @@ class IconResolver(GObject.GObject):
             return icon.strip() if icon else None
         except Exception:
             return None
-    
-    # ==================== ICON FILE ====================
-    
+        
     def _find_icon_file(self, app_id):
         variants = self._gen_variants(app_id)
         if not variants:
@@ -276,7 +271,6 @@ class IconResolver(GObject.GObject):
                     if f.lower() in targets:
                         return join(idir, f)
             else:
-                # Итеративный обход
                 stack = [(idir, 0)]
                 while stack:
                     cur, depth = stack.pop()
@@ -290,9 +284,7 @@ class IconResolver(GObject.GObject):
                             return full
         
         return None
-    
-    # ==================== ICON RESOLUTION ====================
-    
+        
     def get_icon_name(self, app_id):
         if not app_id:
             return self.default_icon

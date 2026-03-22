@@ -20,7 +20,6 @@ _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
 _cursor_hand = None
 _LST = 0.0
 
-
 def _hov(w):
     def sc(widget, _, is_hovered):
         global _cursor_hand
@@ -30,7 +29,6 @@ def _hov(w):
             win.set_cursor(_cursor_hand if is_hovered else None)
     w.connect("enter-notify-event", sc, True)
     w.connect("leave-notify-event", sc, False)
-
 
 def _get_active_ws(conn):
     try:
@@ -49,7 +47,6 @@ def _get_active_ws(conn):
         pass
     return 1
 
-
 def _dispatch_exact(conn, target_row, target_col, is_vertical=False):
     next_ws = target_row * 3 + target_col + 1
 
@@ -62,7 +59,6 @@ def _dispatch_exact(conn, target_row, target_col, is_vertical=False):
         conn.send_command(cmd)
     else:
         conn.send_command(f"dispatch workspace {next_ws}")
-
 
 def _check_scroll_cooldown(e, axis=None):
     global _LST

@@ -506,7 +506,6 @@ class TerminalMixin:
         return hasattr(self, 'stack') and self.stack.get_visible_child_name() == "terminal"
 
     def _apply_terminal_width(self):
-        """Жестко задает окну ширину в 3/5 экрана."""
         try:
             display = Gdk.Display.get_default()
             monitor = None

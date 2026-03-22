@@ -151,10 +151,8 @@ class TimeWidget(Box):
         self._set_art(_render_time(time_str, self._colon_on))
         self._clear_glitch()
 
-        # вероятность уменьшается → глитч затухает
         if random.random() > progress:
             self.get_style_context().add_class("glitching")
-            # 1–2 эффекта одновременно для плотности
             count = 1 if random.random() > 0.4 else 2
             for cls in random.sample(_GLITCH_CLASSES, count):
                 self._time_lbl.get_style_context().add_class(cls)

@@ -25,7 +25,6 @@ _STATUS_TO_STR = {
 _CACHE_DIR = os.path.join(GLib.get_user_cache_dir(), "vidgex-shell", "covers")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
-# Использование кортежей вместо списков экономит память
 _ART_KEYS = ("mpris:artUrl", "xesam:artUrl")
 _ALBUM_KEYS = ("xesam:album", "xesam:albumTitle", "album")
 _TITLE_FALLBACK_KEYS = ("xesam:title", "title", "xesam:name", "xesam:displayName")
@@ -36,7 +35,6 @@ def _decode_data_uri(data_uri: str) -> tuple[bytes | None, str]:
     if not data_uri or not data_uri.startswith("data:"):
         return None, ""
     
-    # Оптимизированный парсинг без лишних аллокаций
     comma_idx = data_uri.find(',')
     if comma_idx == -1:
         return None, ""
@@ -133,8 +131,6 @@ class MprisPlayer(Service):
 
         GLib.idle_add(self._update_status_once)
 
-    # ── capability probing ──────────────────────────────────────────
-
     def _probe_loop_support(self) -> bool:
         if self._dead or not self._player:
             return False
@@ -168,8 +164,6 @@ class MprisPlayer(Service):
         if result:
             self._supports_shuffle = True
         return result
-
-    # ── signal handlers ─────────────────────────────────────────────
 
     def _on_loop_changed(self):
         self._supports_loop = True
@@ -223,8 +217,6 @@ class MprisPlayer(Service):
         self._player = None
         GLib.idle_add(lambda: (self.emit("exit"), False))
 
-    # ── metadata helpers ────────────────────────────────────────────
-
     def _get_metadata(self) -> dict:
         if not self._player or self._dead:
             return {}
@@ -232,7 +224,7 @@ class MprisPlayer(Service):
             meta = self._player.get_property("metadata")
             if meta:
                 result = {}
-                for k in meta.keys():  # Восстановлен критически важный способ итерации GLib.Variant
+                for k in meta.keys():
                     try:
                         val = meta[k]
                         if hasattr(val, 'unpack'):
@@ -255,14 +247,9 @@ class MprisPlayer(Service):
             return ", ".join(str(x).strip() for x in val if x)
         return str(val).strip()
 
-    # ── public state ────────────────────────────────────────────────
-
     @property
     def is_dead(self) -> bool:
         return self._dead
-
-    # ── transport controls ──────────────────────────────────────────
-    # Возвращено обязательное "False" в конце лямбд для GTK
 
     def play_pause(self):
         if self._player and not self._dead:
@@ -295,8 +282,6 @@ class MprisPlayer(Service):
     def set_position(self, position_us: int):
         if self._player and not self._dead:
             GLib.idle_add(lambda: (self._player.set_position(position_us), False))
-
-    # ── properties ──────────────────────────────────────────────────
 
     @Property(str, "readable", default_value="")
     def player_name(self) -> str:

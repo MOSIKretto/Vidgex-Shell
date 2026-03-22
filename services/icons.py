@@ -1,4 +1,3 @@
-# Parameters
 font_family: str = "tabler-icons"
 font_weight: str = "normal"
 

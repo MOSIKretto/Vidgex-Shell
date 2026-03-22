@@ -2,18 +2,14 @@ import cairo
 from fabric.widgets.window import Window
 from gi.repository import Gdk, Gtk, GtkLayerShell
 
-# O(1) Словари для моментального доступа без .replace() и долгих цепочек if/else
 _LAYER_MAP = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
 _EXCL_MAP = {"none": 0, "normal": 1, "auto": 2}
 _KBD_MAP = {"none": 0, "exclusive": 1, "on_demand": 2, "on-demand": 2}
 
-# Глобальный пустой регион: предотвращает выделение памяти под cairo.Region() каждый раз
 _EMPTY_REGION = cairo.Region()
 
 
 class WaylandWindow(Window):
-    """Wayland-окно с поддержкой gtk-layer-shell. Максимально оптимизировано."""
-
     __slots__ = (
         "_layer", "_exclusivity", "_pass_through",
         "_keyboard_mode", "_keyboard_interactivity",
@@ -46,7 +42,6 @@ class WaylandWindow(Window):
         self._display = Gdk.Display.get_default()
         self._monitor_obj = None
         
-        # ВАЖНО: Возвращаем -1, чтобы сеттеры гарантированно передали настройки в C-слой Wayland/GtkLayerShell
         self._layer = self._exclusivity = self._keyboard_mode = -1
         self._keyboard_interactivity = self._pass_through = False
 
@@ -82,7 +77,6 @@ class WaylandWindow(Window):
 
     @property
     def anchor(self) -> int:
-        # Прямые битовые операции — самое быстрое решение
         return (GtkLayerShell.get_anchor(self, 0) |
                (GtkLayerShell.get_anchor(self, 1) << 1) |
                (GtkLayerShell.get_anchor(self, 2) << 2) |
@@ -91,7 +85,6 @@ class WaylandWindow(Window):
     @anchor.setter
     def anchor(self, value: str | tuple | list | set) -> None:
         if type(value) is str:
-            # .split() решает проблему поиска точного слова, а не куска буквы
             v = value.lower().split()
             GtkLayerShell.set_anchor(self, 0, "left" in v)
             GtkLayerShell.set_anchor(self, 1, "right" in v)
@@ -116,7 +109,6 @@ class WaylandWindow(Window):
     def margin(self, value: str | tuple | list) -> None:
         nums = []
         if type(value) is str:
-            # Сверхбыстрый парсер, поддерживающий дробные числа как в оригинале
             for x in value.replace(",", " ").replace("px", "").split():
                 try: nums.append(int(float(x)))
                 except ValueError: pass
@@ -130,7 +122,6 @@ class WaylandWindow(Window):
         elif l == 3: t = nums[0]; r = left = nums[1]; b = nums[2]
         else: t, r, b, left = nums[:4]
 
-        # Прямые вызовы C-уровня без циклов (unrolling)
         GtkLayerShell.set_margin(self, 0, left)
         GtkLayerShell.set_margin(self, 1, r)
         GtkLayerShell.set_margin(self, 2, t)

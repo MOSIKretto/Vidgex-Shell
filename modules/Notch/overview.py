@@ -132,10 +132,13 @@ class HyprlandWindowButton(Button):
         self.addr = addr
         self.wid = wid
 
+        name = (app.display_name or app.name) if app else None
+        tooltip = name or title or aid
+
         super().__init__(
             name="overview-client-box",
             image=Image(pixbuf=self._px),
-            tooltip_text=(app.display_name or app.name if app else None) or title or aid,
+            tooltip_text=tooltip,
             size=sz,
             on_clicked=self._foc,
             on_button_press_event=self._press,

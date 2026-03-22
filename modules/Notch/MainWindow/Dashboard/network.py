@@ -716,7 +716,6 @@ class NetworkConnections(Box):
         self.connected_box.set_visible(len(cd) > 0)
         self.avail_section.set_visible(True)
         
-        # --- Переключаем список на пустое состояние если нет сетей ---
         if len(ad) > 0:
             self.avail_stack.set_visible_child_name("list")
         else:

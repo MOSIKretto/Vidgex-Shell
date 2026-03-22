@@ -3,19 +3,19 @@ import random
 import re
 import threading
 from collections import defaultdict, namedtuple
-
 from gi.repository import Gdk, Gio, GLib, Gtk
 from mutagen import File as MutagenFile
 
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
+from fabric.widgets.entry import Entry
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.scrolledwindow import ScrolledWindow
 
 import services.icons as icons
-from .player import _fex, _hover
+from .player import _hover
 
 
 _TRACK_NUM_RE = re.compile(r"^(\d+[\s.\-_]+)+")
@@ -37,7 +37,8 @@ _MUSIC_DIR = (
 
 _TrackRow = namedtuple(
     "_TrackRow",
-    ("btn", "search_str", "path", "artist", "title", "album", "length_us", "art_url"),
+    ("btn", "search_str", "path", "artist", "title", "album",
+     "length_us", "art_url"),
 )
 
 _UNKNOWN_ARTISTS = frozenset({"unknown", "unknown artist"})
@@ -80,7 +81,6 @@ def _artist_group_key(artist: str) -> str:
 def _get_metadata(filepath, filename):
     artist = title = album = ""
     secs = 0
-
     try:
         audio = MutagenFile(filepath)
         if audio:
@@ -96,22 +96,22 @@ def _get_metadata(filepath, filename):
 
     if not artist or not title:
         clean = _TRACK_NUM_RE.sub("", filename).strip()
-        
+
         if not clean:
             clean = filename
-            
+
         if " - " in clean:
             fa, ft = clean.split(" - ", 1)
         elif "-" in clean:
             fa, ft = clean.split("-", 1)
         else:
             fa, ft = "Unknown", clean
-            
+
         if not artist:
             artist = fa.strip()
         if not title:
             title = ft.strip()
-            
+
     if not title:
         title = filename
 
@@ -219,7 +219,7 @@ class ArtistGroup(Box):
 class TrackList(Box):
     __slots__ = (
         "_rows", "_path_map", "_playing_btn",
-        "_search_entry", "_search_overlay", "_search_placeholder",
+        "_ent", "_pend",
         "_list_box", "_count_lbl", "_mon", "_pend_id", "_dead",
         "local_player", "media_player_ref",
         "_current_path", "_artist_groups", "_sw",
@@ -241,6 +241,7 @@ class TrackList(Box):
         self._current_path = None
         self._mon = None
         self._pend_id = 0
+        self._pend = {}
         self._dead = False
         self._anim_id = None
         self._anim_target_group = None
@@ -256,39 +257,25 @@ class TrackList(Box):
             name="track-count", label="scanning...",
             h_align="end", h_expand=True,
         )
-
         header = Box(
             name="track-header", orientation="h", spacing=8,
             h_expand=True, h_align="fill",
             children=(
                 Label(name="track-icon", markup=icons.disc),
-                Label(name="track-title", label="Music Library", h_align="start"),
+                Label(name="track-title", label="Music Library",
+                      h_align="start"),
                 count_lbl,
             ),
         )
 
-        search_entry = Gtk.SearchEntry(name="track-search")
-        search_entry.set_hexpand(True)
-        search_entry.set_halign(Gtk.Align.FILL)
-        search_entry.set_alignment(0.0)
-        search_entry.set_placeholder_text("")
-        search_entry.connect("search-changed", self._on_search)
-        search_entry.connect("key-press-event", self._on_search_key_press)
-        search_entry.connect("focus-in-event", self._on_search_focus_in)
-        search_entry.connect("focus-out-event", self._on_search_focus_out)
-        self._search_entry = search_entry
-
-        search_placeholder = Gtk.Label(name="track-search-placeholder")
-        search_placeholder.set_label("Search tracks...")
-        search_placeholder.set_halign(Gtk.Align.START)
-        search_placeholder.set_valign(Gtk.Align.CENTER)
-        self._search_placeholder = search_placeholder
-
-        search_overlay = Gtk.Overlay()
-        search_overlay.add(search_entry)
-        search_overlay.add_overlay(search_placeholder)
-        search_overlay.set_overlay_pass_through(search_placeholder, True)
-        self._search_overlay = search_overlay
+        self._ent = Entry(
+            name="track-search", placeholder="Search Tracks...",
+            h_expand=True, h_align="fill",
+        )
+        self._ent.set_can_focus(True)
+        self._ent.connect("notify::text", self._on_search_changed)
+        self._ent.connect("key-press-event", self._ekey)
+        self._ent.connect("map", self._on_entry_map)
 
         list_box = self._list_box = Box(
             name="track-content", orientation="v", spacing=2,
@@ -306,16 +293,73 @@ class TrackList(Box):
         sw.set_overlay_scrolling(False)
 
         self.add(header)
-        self.add(search_overlay)
+        self.add(self._ent)
         self.add(sw)
 
         threading.Thread(target=self._scan, daemon=True).start()
         self._watch()
 
+    def _on_entry_map(self, *_):
+        GLib.idle_add(self._ent.grab_focus)
+
+    def grab_search_focus(self):
+        if self._ent.get_mapped():
+            self._ent.grab_focus()
+
+    def _on_search_changed(self, *_):
+        self._deb("s", 300, self._do_search)
+
+    def _do_search(self):
+        if self._dead:
+            return
+        query = self._ent.get_text().lower().strip()
+        if query == self._last_query:
+            return
+        self._last_query = query
+
+        visible_count = 0
+        has_query = bool(query)
+
+        for row in self._rows:
+            vis = not has_query or query in row.search_str
+            row.btn.set_visible(vis)
+            visible_count += vis
+
+        for group in self._artist_groups.values():
+            children = group.get_content_box().get_children()
+            group_vis = sum(1 for c in children if c.get_visible())
+            group.set_visible(group_vis > 0)
+            group.update_visible_count(group_vis)
+            group.set_expanded(has_query and group_vis > 0)
+
+        total = len(self._rows)
+        self._count_lbl.set_text(
+            f"{visible_count}/{total}" if has_query else f"{total} tracks"
+        )
+        self._emit_nav(visible_count > 0)
+
+    def _ekey(self, _, e):
+        if e.keyval == Gdk.KEY_Escape:
+            self._ent.set_text("")
+            return True
+        return False
+
+    def _deb(self, k, ms, func):
+        old = self._pend.get(k)
+        if old:
+            GLib.source_remove(old)
+        self._pend[k] = GLib.timeout_add(ms, self._deb_run, k, func)
+
+    def _deb_run(self, k, func):
+        self._pend.pop(k, None)
+        func()
+        return False
+
     @staticmethod
     def _make_centered_state(icon: str, text: str, name: str) -> Box:
         inner = Box(
-            orientation="v", h_align="center", v_align="center", spacing=12,
+            orientation="v", h_align="center", v_align="center",
+            spacing=12,
             children=[
                 Image(icon_name=icon, icon_size=48, name="explorer-empty-icon"),
                 Label(name="explorer-empty-label", label=text),
@@ -345,7 +389,8 @@ class TrackList(Box):
         if aid:
             GLib.source_remove(aid)
         self._anim_target_group = group
-        self._anim_id = GLib.timeout_add(_SCROLL_ANIM_MS, self._scroll_tick)
+        self._anim_id = GLib.timeout_add(_SCROLL_ANIM_MS,
+                                          self._scroll_tick)
 
     def _scroll_tick(self):
         group = self._anim_target_group
@@ -381,53 +426,6 @@ class TrackList(Box):
 
         vadj.set_value(current + diff * 0.15)
         return True
-
-    def _on_search_key_press(self, _widget, event):
-        if event.keyval != Gdk.KEY_Escape:
-            return False
-        self._search_entry.set_text("")
-        toplevel = self.get_toplevel()
-        if isinstance(toplevel, Gtk.Window):
-            toplevel.set_focus(None)
-        return True
-
-    def _on_search_focus_in(self, _widget, _event):
-        self._search_placeholder.set_visible(False)
-        return False
-
-    def _on_search_focus_out(self, _widget, _event):
-        if not self._search_entry.get_text().strip():
-            self._search_placeholder.set_visible(True)
-        return False
-
-    def _on_search(self, entry):
-        query = entry.get_text().lower().strip()
-        if query == self._last_query:
-            return
-        self._last_query = query
-
-        self._search_placeholder.set_visible(not query and not entry.is_focus())
-
-        visible_count = 0
-        has_query = bool(query)
-
-        for row in self._rows:
-            vis = not has_query or query in row.search_str
-            row.btn.set_visible(vis)
-            visible_count += vis
-
-        for group in self._artist_groups.values():
-            children = group.get_content_box().get_children()
-            group_vis = sum(1 for c in children if c.get_visible())
-            group.set_visible(group_vis > 0)
-            group.update_visible_count(group_vis)
-            group.set_expanded(has_query and group_vis > 0)
-
-        total = len(self._rows)
-        self._count_lbl.set_text(
-            f"{visible_count}/{total}" if has_query else f"{total} tracks"
-        )
-        self._emit_nav(visible_count > 0)
 
     def _watch(self):
         if not os.path.isdir(_MUSIC_DIR):
@@ -501,7 +499,8 @@ class TrackList(Box):
             list_box.show_all()
             return
 
-        tracks.sort(key=lambda t: (_artist_group_key(t[0]).lower(), t[1].lower()))
+        tracks.sort(key=lambda t: (_artist_group_key(t[0]).lower(),
+                                    t[1].lower()))
 
         grouped: dict[str, list] = defaultdict(list)
         for track in tracks:
@@ -519,7 +518,8 @@ class TrackList(Box):
         for group_key in sorted_keys:
             group_widget = ArtistGroup(group_key, on_expand_cb=on_expand)
 
-            for artist, title, album, dur_str, search_str, full, length_us, art_url in grouped[group_key]:
+            for artist, title, album, dur_str, search_str, full, \
+                    length_us, art_url in grouped[group_key]:
                 _, feat = _split_artists(artist)
                 t_esc = escape(title, -1)
 
@@ -535,12 +535,14 @@ class TrackList(Box):
                         children=[
                             Label(
                                 name="track-name", markup=display,
-                                h_expand=True, h_align="start", v_align="center",
+                                h_expand=True, h_align="start",
+                                v_align="center",
                                 ellipsization="end", max_chars_width=50,
                             ),
                             Label(
                                 name="track-duration", label=dur_str,
-                                h_expand=False, h_align="end", v_align="center",
+                                h_expand=False, h_align="end",
+                                v_align="center",
                             ),
                         ],
                     ),
@@ -606,7 +608,8 @@ class TrackList(Box):
         self.media_player_ref.switch_to_local()
         self._emit_nav(True)
         self.local_player.play_file(
-            path, row.artist, row.title, row.album, row.length_us, row.art_url,
+            path, row.artist, row.title, row.album, row.length_us,
+            row.art_url,
         )
 
     def _play_adjacent(self, direction: int):
@@ -624,9 +627,6 @@ class TrackList(Box):
 
         lp = self.local_player
 
-        # Убрана блокировка при lp.loop_status == "Track".
-        # Теперь принудительное переключение (скролл в конец / начало / кнопки)
-        # всегда переключает трек как при плейлисте
         if lp.shuffle:
             target = random.randrange(len(vis))
         elif current_idx != -1:
@@ -660,6 +660,11 @@ class TrackList(Box):
             except Exception:
                 pass
             self._pend_id = 0
+
+        pend = self._pend
+        for sid in pend.values():
+            GLib.source_remove(sid)
+        pend.clear()
 
         self._stop_current()
         self._rows.clear()

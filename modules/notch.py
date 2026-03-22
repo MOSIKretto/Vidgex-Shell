@@ -14,7 +14,6 @@ from modules.Notch.appLauncher import AppLauncher
 from modules.Notch.overview import Overview
 from modules.Notch.powerMenu import PowerMenu
 from modules.Notch.toolBox import ToolBox
-from modules.Notch.sessionManager import SessionManagerUI
 
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
@@ -65,7 +64,7 @@ class Notch(Window):
 
     def _get_or_create(self, key, widget_class, w=None, h=None):
         if key not in self._wc:
-            if key in ('main_window', 'launcher', 'power', 'cliphist', 'tools', 'sessions'):
+            if key in ('main_window', 'launcher', 'power', 'cliphist', 'tools'):
                 widget = widget_class(notch=self)
             else:
                 widget = widget_class()
@@ -88,8 +87,6 @@ class Notch(Window):
     def cliphist(self): return self._get_or_create('cliphist', ClipHistory, 480, 244)
     @property
     def tools(self): return self._get_or_create('tools', ToolBox)
-    @property
-    def sessions(self): return self._get_or_create('sessions', SessionManagerUI, 480, 244)
 
     def _build(self):
         self.win_ic = Image(name="notch-window-icon", icon_name="application-x-executable", icon_size=20)
@@ -264,7 +261,6 @@ class Notch(Window):
         elif name == "tools": self.stack.set_visible_child(self.tools)
         elif name == "cliphist": self._showclip()
         elif name == "launcher": self._showlaunch()
-        elif name == "sessions": self.stack.set_visible_child(self.sessions)
 
         self._cw = name
         self._setbar(False)

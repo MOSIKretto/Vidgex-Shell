@@ -81,10 +81,8 @@ class SystemTray(Box):
                     child.connect("realize", self._set_pointer_cursor)
 
     def _prepare_menu(self, menu):
-        """Устанавливает курсор-указатель для всего меню и его пунктов."""
         menu.connect("realize", self._set_pointer_cursor)
         menu.connect("map", lambda m: self._set_pointer_cursor_recursive(m))
-        # Для подменю — рекурсивно
         for item in menu.get_children():
             item.connect("realize", self._set_pointer_cursor)
             sub = item.get_submenu() if isinstance(item, Gtk.MenuItem) else None

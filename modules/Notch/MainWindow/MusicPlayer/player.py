@@ -24,6 +24,7 @@ import services.icons as icons
 from modules.Notch.MainWindow.MusicPlayer.Player.mpris import MprisPlayer, MprisPlayerManager
 from modules.Notch.MainWindow.MusicPlayer.Player.circleImage import CircleImage
 
+
 _LBL_H = 20
 _COVER_SIZE = 174
 _PROG_SIZE = 200
@@ -366,7 +367,6 @@ class PlayerBox(Box):
         mp = self.mpris_player = mpris_player
         self._is_local = isinstance(mp, LocalPlayer)
 
-        # ── Инициализация ВСЕХ атрибутов ДО любых вызовов методов ──
         self._sig_id = None
         self._exit_sig_id = None
         self._anim_id = None
@@ -399,7 +399,6 @@ class PlayerBox(Box):
         self._gl_rand_tid = None
         self._active_glitches = []
 
-        # ── Прогресс-бар и анимация: инициализация ДО _wire()/_prog_start() ──
         self._pv = 0.0
         self._last_pv = 0.0
         self._ptimer = None
@@ -419,7 +418,6 @@ class PlayerBox(Box):
         self._a_chain = []
         self._a_done = 'live'
 
-        # ── Виджеты ──
         self.cover = CircleImage(
             name="player-cover", size=_COVER_SIZE,
             h_align="center", v_align="center",
@@ -545,9 +543,6 @@ class PlayerBox(Box):
         _hover(b)
         return b
 
-    # ---------------------------------------------------------
-    # GLITCH АНИМАЦИЯ: Синхронизация Cairo и CSS текстов
-    # ---------------------------------------------------------
     def _schedule_random_glitch(self):
         if not self._is_wall: return
         delay = random.randint(_GL_RAND_MIN, _GL_RAND_MAX)
@@ -659,7 +654,6 @@ class PlayerBox(Box):
         cr.move_to(x, y)
         cr.set_source_rgba(base_r, base_g, base_b, base_a)
         PangoCairo.show_layout(cr, layout)
-    # ---------------------------------------------------------
 
     def _get_order(self):
         mp = self.mpris_player

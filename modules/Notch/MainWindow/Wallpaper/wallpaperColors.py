@@ -18,6 +18,7 @@ from materialyoucolor.scheme.scheme_rainbow import SchemeRainbow
 
 from modules.Notch.MainWindow.Wallpaper.wallpaperConstants import _CURRENT
 
+
 __all__ = ["apply_colors"]
 
 SCHEME_MAP = {

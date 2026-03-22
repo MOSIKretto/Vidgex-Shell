@@ -12,7 +12,7 @@
     border-radius: 12px;
 }
 
-entry#search-entry-walls {
+#search-entry-walls {
     background: var(--surface);
     border-image: none;
     box-shadow: none;
@@ -32,19 +32,19 @@ entry#search-entry-walls {
                 border-color 150ms ease-in-out;
 }
 
-entry#search-entry-walls text {
+#search-entry-walls text {
     background: transparent;
     box-shadow: none;
 }
 
-entry#search-entry-walls:focus {
+#search-entry-walls:focus {
     background: var(--surface-bright);
     border-color: var(--primary);
     box-shadow: none;
     outline: none;
 }
 
-entry#search-entry-walls selection {
+#search-entry-walls selection {
     background: var(--primary);
     color: var(--shadow);
 }
@@ -422,4 +422,23 @@ entry#search-entry-walls selection {
     text-shadow: -5px 0   alpha(#00e5ff, 0.8),
                   5px 1px alpha(#ff0040, 0.5),
                   0   3px alpha(#76ff03, 0.3);
+}
+
+#random-wall-button {
+  background-color: var(--surface);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+  transition: all 150ms ease-in-out;
+}
+
+#scheme-dropdown-btn {
+  background-color: var(--surface);
+  padding: 6px 8px;
+  border-radius: 12px; 
+  border: 1px solid transparent;
+  transition: background-color 150ms ease-in-out, border-color 150ms ease-in-out;
+  min-width: 110px;
 }

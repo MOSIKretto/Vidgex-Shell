@@ -23,7 +23,6 @@ _prov = None
 _subs = weakref.WeakSet()
 _cursor_hand = None
 
-
 def _hov(w):
     def sc(widget, _, is_hovered):
         global _cursor_hand
@@ -265,7 +264,6 @@ class NetworkMetricSmall:
         
         self.sig_level = Label(name='metrics-level', style_classes='net', label='0%')
         
-        # Убрана иконка из sig_box, чтобы не было дублирования с иконкой внутри круга
         self.sig_rev = Revealer(name='metrics-net-sig-revealer', transition_duration=250, transition_type='slide-right', child=self.sig_level, child_revealed=False)
         
         self.box = Box(name='metrics-net-box', orientation='h', spacing=0, children=[self.circle, self.sig_rev])

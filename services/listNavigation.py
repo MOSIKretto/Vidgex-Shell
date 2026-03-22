@@ -2,8 +2,6 @@ from gi.repository import Gdk, GLib
 
 
 class ListNavigationMixin:
-    """Миксин для вертикальной навигации по списку."""
-    
     _NAV_KEYS = {Gdk.KEY_Down: 1, Gdk.KEY_Up: -1}
     _PG_KEYS = {Gdk.KEY_Page_Down: 1, Gdk.KEY_Page_Up: -1}
     _ACT_KEYS = (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
@@ -56,8 +54,6 @@ class ListNavigationMixin:
 
 
 class HorizontalNavigationMixin:
-    """Миксин для горизонтальной навигации."""
-    
     _H_KEYS = {Gdk.KEY_Left: -1, Gdk.KEY_Up: -1, Gdk.KEY_Right: 1, Gdk.KEY_Down: 1}
 
     def _hnav_init(self):

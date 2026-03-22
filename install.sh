@@ -467,6 +467,13 @@ configure_hyprland() {
   print_info "$(msg "hyprland_creating")"
 
   cat > "$HYPRLAND_CONF" <<'EOF'
+#################################
+### LAZARETTO HYPRLAND CONFIG ###
+#################################
+
+################
+### МОНИТОРЫ ###
+################
 monitor = ,preferred,auto,1
 
 ########################
@@ -477,7 +484,7 @@ decoration {
     rounding = 12
 
     active_opacity = 1.0
-    inactive_opacity = 0.9
+    inactive_opacity = 0.8
 
     blur {
         enabled = yes
@@ -525,9 +532,8 @@ misc {
     mouse_move_enables_dpms = true
     key_press_enables_dpms = true
     enable_swallow = true
-    swallow_regex = ^(kitty)$
 
-    background_color = rgb(1f1e1e)
+	background_color = rgb(1f1e1e)
 }
 
 cursor {
@@ -539,27 +545,21 @@ xwayland {
     force_zero_scaling = true
 }
 
-device {
-    name = epic-mouse-v1
-    sensitivity = -0.5
-}
-
-###################################
-### ОКНА И РАБОЧИЕ ПРОСТРАНСТВА ###
-###################################
-windowrule = opacity 0.9, match:class kitty, match:focus 1
-windowrule = opacity 0.7, match:class kitty, match:focus 0
-
-
-debug {
-    damage_tracking = 2
-}
+################################
+### НАСТРОЙКИ ГОРЯЧИХ КЛАВИШ ###
+################################
+# source = ~/.config/hypr/bind.conf
 
 # Базовые бинды
 bind = SUPER SHIFT, Q, killactive # Закрыть окно
 bind = SUPER ALT, T, exec, kitty # Терминал
 
 bind = SUPER, F, exec, firefox # Браузер
+
+
+debug {
+    damage_tracking = 2
+}
 
 # Vidgex Shell
 source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf

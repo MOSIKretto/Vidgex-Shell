@@ -16,7 +16,6 @@ from typing import Optional, Tuple
 _COMPRESS_ONLY_EXTS = frozenset({'.gz', '.bz2', '.xz', '.zst', '.lz4', '.lzma', '.sz'})
 _ARCHIVE_MIME_KEYWORDS = frozenset({'zip', 'tar', 'compress', 'archive'})
 
-
 class ActionsMixin:
 
     @staticmethod

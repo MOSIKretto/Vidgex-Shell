@@ -11,7 +11,6 @@ class NavigationMixin:
 
     @staticmethod
     def _algo_history_push(history: List[Path], index: int, path: Path) -> Tuple[List[Path], int]:
-        """Trim forward branch, append path. Returns (new_history, new_index)."""
         if index < len(history) - 1:
             del history[index + 1:]
             
@@ -22,7 +21,6 @@ class NavigationMixin:
 
     @staticmethod
     def _algo_history_go(index: int, hist_len: int, delta: int) -> Optional[int]:
-        """Move index by delta within bounds. Returns new index or None."""
         new = index + delta
         if 0 <= new < hist_len:
             return new
@@ -30,7 +28,6 @@ class NavigationMixin:
 
     @staticmethod
     def _algo_nav_sensitivity(index: int, hist_len: int, path: Path) -> Tuple[bool, bool, bool]:
-        """Returns (back_sensitive, forward_sensitive, up_sensitive)."""
         return (
             index > 0,
             index < hist_len - 1,
@@ -39,7 +36,6 @@ class NavigationMixin:
 
     @staticmethod
     def _algo_is_navigable(path: Path) -> bool:
-        """Check path is an accessible directory (minimal I/O)."""
         if not isinstance(path, Path):
             try:
                 path = Path(path)
@@ -58,7 +54,6 @@ class NavigationMixin:
 
     @staticmethod
     def _algo_should_refresh(is_loading: bool, rename_active: bool, chooser_active: bool) -> bool:
-        """Whether a directory refresh is allowed right now."""
         return not (is_loading or rename_active or chooser_active)
 
     def _lock_set(self):

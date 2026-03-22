@@ -1,152 +1,272 @@
+/* ══════════════════════════════════════
+   DOCK
+   ══════════════════════════════════════ */
+
 #dock {
-  background-color: var(--shadow);
-  padding: 8px;
-  margin: 8px 8px 0 8px;
-  border-radius: 12px 12px 0 0;
+    background-color: var(--shadow);
+    padding: 8px;
+    margin: 8px 8px 0 8px;
+    border-radius: 12px 12px 0 0;
 }
 
 #dock.integrated {
-  background-color: var(--shadow);
-  padding: 4px;
-  margin: 0;
-  border-radius: 12px;
-  border: none;
+    background-color: var(--shadow);
+    padding: 4px;
+    margin: 0;
+    border-radius: 12px;
+    border: none;
 }
 
 #dock-full {
-  opacity: 1;
+    opacity: 1;
 }
 
+/* ── Кнопка приложения (базовая) ────── */
 #dock-app-button {
-  padding: 6px;
-  border-radius: 12px;
-  background-color: transparent;
-  border: 1px solid transparent;
-  box-shadow: 
-    0 2px 8px alpha(var(--shadow), 0.2),
-    0 1px 4px alpha(var(--shadow), 0.1);
-  margin-left: 2px;
-  margin-right: 2px;
-  transition: all 150ms ease-in-out;
+    padding: 6px;
+    border-radius: 12px;
+    background-color: transparent;
+    border: 2px solid transparent;
+    box-shadow:
+        0 2px 8px alpha(var(--shadow), 0.2),
+        0 1px 4px alpha(var(--shadow), 0.1);
+    margin-left: 2px;
+    margin-right: 2px;
+    transition: all 150ms ease-in-out;
 }
 
 #dock-app-button:first-child {
-  margin-left: 0;
+    margin-left: 0;
 }
 
 #dock-app-button:last-child {
-  margin-right: 0;
+    margin-right: 0;
+}
+
+/* ── Запущенное приложение ──────────── */
+#dock-app-button.instance,
+#dock-app-button:hover {
+    background-color: alpha(var(--surface-bright), 0.8);
+    border-radius: 12px;
 }
 
 #dock-app-button.hovered {
-  background-color: alpha(var(--surface-bright), 0.9);
-  border-radius: 12px;
-}
-
-#dock-app-button.dragging {
-  opacity: 0.5;
-  background-color: alpha(var(--primary), 0.3);
+    background-color: alpha(var(--surface-bright), 0.9);
+    border-radius: 12px;
 }
 
 #dock-app-button:hover.instance {
-  background-color: alpha(var(--outline), 0.5);
-  border-radius: 12px;
+    background-color: alpha(var(--outline), 0.5);
+    border-radius: 12px;
 }
 
 #dock-app-button:active,
 #dock-app-button:active.instance {
-  background-color: alpha(var(--primary), 0.4);
-  border-radius: 12px;
-}
-
-#dock-app-button.instance,
-#dock-app-button:hover {
-  background-color: alpha(var(--surface-bright), 0.8);
-  border-radius: 12px;
+    background-color: alpha(var(--primary), 0.4);
+    border-radius: 12px;
 }
 
 #dock-app-button.active {
-  background-color: alpha(var(--primary), 0.2);
-  border: 2px solid var(--primary);
-  border-radius: 12px;
+    background-color: alpha(var(--primary), 0.2);
+    border: 2px solid var(--primary);
+    border-radius: 12px;
 }
 
 #dock-app-button.active.instance {
-  border: 2px solid var(--primary);
-  border-radius: 12px;
+    border: 2px solid var(--primary);
+    border-radius: 12px;
 }
 
+/* ── Закреплённое, но НЕ запущенное ── */
+#dock-app-button.pinned-empty {
+    background-color: alpha(var(--surface-bright), 0.35);
+    border: 2px dashed alpha(var(--outline), 0.4);
+    border-radius: 12px;
+    min-width: 36px;
+    min-height: 36px;
+}
+
+#dock-app-button.pinned-empty #dock-icon-image {
+    opacity: 0.55;
+}
+
+#dock-app-button.pinned-empty:hover {
+    background-color: alpha(var(--surface-bright), 0.8);
+    border: 2px solid alpha(var(--outline), 0.6);
+}
+
+#dock-app-button.pinned-empty:hover #dock-icon-image {
+    opacity: 1;
+}
+
+#dock-app-button.pinned-empty:active {
+    background-color: alpha(var(--primary), 0.35);
+    border: 2px solid var(--primary);
+}
+
+/* ── Drag & Drop ───────────────────── */
+#dock-app-button.dragging {
+    opacity: 0.5;
+    background-color: alpha(var(--primary), 0.3);
+}
+
+#dock-app-button.drag-hover {
+    background-color: alpha(var(--primary), 0.3);
+    border: 2px dashed var(--primary);
+    border-radius: 12px;
+}
+
+/* ── Иконка и обёртки ──────────────── */
 #dock-icon {
-  transition: all 150ms ease-out;
+    transition: all 150ms ease-out;
 }
 
 #dock-icon-wrapper {
-  transition: all 150ms ease-out;
+    transition: all 150ms ease-out;
 }
 
 #dock-icon-box {
-  transition: all 150ms ease-out;
-  margin-bottom: 0px;
-  margin-top: 0px;
+    transition: all 150ms ease-out;
+    margin-bottom: 0px;
+    margin-top: 0px;
 }
 
 #dock-icon-box.lifted {
-  margin-bottom: 6px;
-  margin-top: -6px;
+    margin-bottom: 6px;
+    margin-top: -6px;
 }
 
 #dock-icon-image {
-  transition: all 150ms ease-out;
+    transition: all 150ms ease-out;
 }
 
+/* ── Точки инстансов ───────────────── */
 #dock-dots-wrapper {
-  padding-left: 3px;
-  padding-right: 1px;
+    padding-left: 3px;
+    padding-right: 1px;
 }
 
 #dock-dots {
-  padding: 2px 0;
+    padding: 2px 0;
 }
 
 #dock-dot {
-  min-width: 5px;
-  min-height: 5px;
-  border-radius: 3px;
-  background-color: var(--primary);
-  opacity: 0.7;
-  box-shadow: 0 1px 2px alpha(var(--shadow), 0.3);
-  transition: all 150ms ease-out;
+    min-width: 5px;
+    min-height: 5px;
+    border-radius: 3px;
+    background-color: var(--primary);
+    opacity: 0.7;
+    box-shadow: 0 1px 2px alpha(var(--shadow), 0.3);
+    transition: all 150ms ease-out;
 }
 
 #dock-app-button:hover #dock-dot {
-  background-color: var(--on-primary);
-  opacity: 1;
+    background-color: var(--on-primary);
+    opacity: 1;
 }
 
 #dock-app-button.active #dock-dot {
-  background-color: var(--primary);
-  opacity: 1;
-  box-shadow: 0 0 4px var(--primary);
+    background-color: var(--primary);
+    opacity: 1;
+    box-shadow: 0 0 4px var(--primary);
 }
 
+/* ── Крестик (закреплено, не запущено) ── */
+#dock-cross {
+    font-size: 9px;
+    font-weight: bold;
+    min-width: 5px;
+    min-height: 5px;
+    color: alpha(var(--outline), 0.45);
+    transition: all 150ms ease-out;
+}
+
+#dock-app-button.pinned-empty:hover #dock-cross {
+    color: var(--primary);
+}
+
+#dock-app-button.pinned-empty:active #dock-cross {
+    color: var(--on-primary);
+}
+
+/* ── Разделитель ───────────────────── */
 #dock-separator {
-  padding: 2px;
-  border-radius: 12px;
-  background-color: var(--surface-bright);
+    padding: 2px;
+    border-radius: 12px;
+    background-color: var(--surface-bright);
 }
 
+/* ── Углы ──────────────────────────── */
 #dock-corner-left {
-  margin: 0 -8px 0 0;
+    margin: 0 -8px 0 0;
 }
 
 #dock-corner-right {
-  margin: 0 0 0 -8px;
+    margin: 0 0 0 -8px;
 }
 
 #dock-corner-top {
-  margin: 0 0 -8px 0;
+    margin: 0 0 -8px 0;
 }
 
 #dock-corner-bottom {
-  margin: -8px 0 0 0;
+    margin: -8px 0 0 0;
+}
+
+/* ── Кнопка pin/unpin ──────────────── */
+#dock-app-pin-btn {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 4px 0 0 4px;
+    border-radius: 99px;
+    background-color: alpha(var(--surface), 0.85);
+    border: 1px solid alpha(var(--outline), 0.3);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+    color: var(--on-surface);
+    opacity: 0;
+    transition: all 200ms ease-out;
+}
+
+#dock-app-pin-btn label {
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    color: inherit;
+}
+
+.hovered #dock-app-pin-btn {
+    opacity: 1;
+}
+
+#dock-app-pin-btn:hover {
+    background-color: var(--surface-bright);
+    border-color: alpha(var(--primary), 0.6);
+    color: var(--primary);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+#dock-app-pin-btn:active {
+    background-color: alpha(var(--primary), 0.2);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+#dock-app-pin-btn.active {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+}
+
+#dock-app-pin-btn.active label {
+    color: var(--on-primary);
+}
+
+#dock-app-pin-btn.active:hover {
+    background-color: alpha(var(--primary), 0.8);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+#dock-app-pin-btn.active:active {
+    background-color: alpha(var(--primary), 0.6);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }

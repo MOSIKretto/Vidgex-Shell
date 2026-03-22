@@ -103,8 +103,6 @@ class MixerSlider(Scale):
         if muted:
             self.add_style_class(_MUTED_CLASS)
 
-    # ── click-to-animate ──────────────────────────────────────────────
-
     def _on_click_press(self, _, event):
         if event.button != 1:
             return False
@@ -146,8 +144,6 @@ class MixerSlider(Scale):
         if self._canim_id is not None:
             GLib.source_remove(self._canim_id)
             self._canim_id = None
-
-    # ── sync / value-changed ──────────────────────────────────────────
 
     def sync(self, stream, pct_str):
         if self._canim_id is not None or self._pressed:
