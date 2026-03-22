@@ -408,7 +408,7 @@ class AppResolver:
 
 class SessionManager:
     def __init__(self, resolver: Optional[AppResolver] = None):
-        self._file = GLib.get_user_cache_dir() + "/vidgex-shell/session.json"
+        self._file = (Path(GLib.get_user_cache_dir()) / "vidgex-shell" / "session.json")
         self._file.parent.mkdir(parents=True, exist_ok=True)
         self._resolver = resolver or AppResolver()
         self._protect_pid = self._ancestor_pid()
