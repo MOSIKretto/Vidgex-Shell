@@ -27,7 +27,7 @@ LIGHT_BLUE='\033[1;34m'
 # ═══════════════════════════════════════════════════════════════════════════════
 INSTALL_DIR="$HOME/.config/Vidgex-Shell"
 REPO_URL="https://github.com/MOSIKretto/Vidgex-Shell.git"
-REPO_BRANCH="develop"
+REPO_BRANCH="main"
 HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
 LANG_CHOICE="EN"
 
