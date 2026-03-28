@@ -172,7 +172,7 @@ declare -A MSG_RU=(
   ["retry_option"]="Повторить (сбросить счётчик)"
   ["skip_option"]="Пропустить этот шаг"
   ["abort_option"]="Прервать установку"
-  ["retry_retrying"]="��овтор..."
+  ["retry_retrying"]="Повтор..."
   ["retry_skipping"]="Пропуск шага"
   ["retry_aborting"]="Установка прервана пользователем."
   ["retry_success"]="Шаг выполнен успешно"
@@ -1170,32 +1170,6 @@ SVCEOF
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 10: ЗАПУСК VIDGEX-SHELL
-# ═══════════════════════════════════════════════════════════════════════════════
-step_start_shell() {
-  print_step "$(msg "starting_shell")"
-
-  killall vidgex-shell 2>/dev/null || true
-
-  if [ ! -f "$INSTALL_DIR/main.py" ]; then
-    print_error "main.py not found at $INSTALL_DIR/main.py"
-    return 1
-  fi
-
-  python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
-  disown
-
-  sleep 1
-  if pgrep -f "$INSTALL_DIR/main.py" >/dev/null 2>&1; then
-    print_success "Vidgex-Shell started!"
-    return 0
-  else
-    print_error "Vidgex-Shell process died immediately"
-    return 1
-  fi
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # ОСНОВНОЙ СКРИПТ
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1225,7 +1199,30 @@ retry_step  "Fonts"                   step_install_fonts        5
 retry_step  "Network"                 step_configure_network    5
 retry_step  "Hyprland config"         step_configure_hyprland   5
 retry_step  "Autolayout"              step_configure_autolayout 5
-retry_step  "Start Vidgex-Shell"      step_start_shell          5
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ШАГ 10: ЗАПУСК VIDGEX-SHELL
+# ═══════════════════════════════════════════════════════════════════════════════
+print_step "$(msg "starting_shell")"
+
+  killall vidgex-shell 2>/dev/null || true
+
+  if [ ! -f "$INSTALL_DIR/main.py" ]; then
+    print_error "main.py not found at $INSTALL_DIR/main.py"
+    return 1
+  fi
+
+  python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
+  disown
+
+  sleep 1
+  if pgrep -f "$INSTALL_DIR/main.py" >/dev/null 2>&1; then
+    print_success "Vidgex-Shell started!"
+    return 0
+  else
+    print_error "Vidgex-Shell process died immediately"
+    return 1
+  fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ЗАВЕРШЕНИЕ
@@ -1244,7 +1241,7 @@ echo -e "${GRAY}║                                                             
 echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Autolayout:${NC}   ${CYAN}systemctl --user status autolayout${NC}              ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                         ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                            ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
