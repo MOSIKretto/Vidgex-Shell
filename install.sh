@@ -1090,7 +1090,7 @@ echo -e "${GRAY}╔════════════════════�
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                         ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                            ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
