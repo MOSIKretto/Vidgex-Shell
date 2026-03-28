@@ -6,6 +6,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk, GLib
 
 from fabric.hyprland.service import Hyprland
+from fabric.utils import get_desktop_applications
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.eventbox import EventBox
@@ -13,287 +14,251 @@ from fabric.widgets.image import Image
 from fabric.widgets.label import Label
 
 import services.icons as icons
-from services.iconResolver import IconResolver
 
 
-def get_screen_dims():
-    scr = Gdk.Screen.get_default()
-    if scr is not None:
-        return scr.get_width(), scr.get_height()
-    return 1920, 1080
+SCALE = 0.1
+COLS, ROWS = 3, 3
+WS_RANGE = range(1, COLS * ROWS + 1)
+SPACING = 8
+ANIM_MS = 200
+ICON_SCALE = 0.5
+MIN_ICON = 16
+FALLBACK_ICON = "application-x-executable-symbolic"
+ANIM_V = "workspaces,1,6,overshot,slidevert"
+ANIM_H = "workspaces,1,6,overshot,slide"
+DND = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
 
-_CW, _CH = get_screen_dims()
-_SW, _SH = int(_CW * 0.1), int(_CH * 0.1)
-
-_BS = 0.1
-_TG = [Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)]
-
-_conn = Hyprland()
-_app_resolver = IconResolver.get_default()
+_hypr = Hyprland()
+_theme = Gtk.IconTheme.get_default()
+_apps, _map = [], {}
 
 
-def _get_monitors():
+def _norm(n):
+    if not n:
+        return ""
+    return n.lower().strip().rsplit(".", 1)[-1]
+
+def _refresh():
+    global _apps
+    _apps = get_desktop_applications()
+    _map.clear()
+    for a in _apps:
+        for k in filter(None, (a.name, a.display_name)):
+            _map.setdefault(k.lower(), a)
+            _map.setdefault(_norm(k), a)
+
+def _find(name):
+    if not name:
+        return None
+    low, n = name.lower(), _norm(name)
+    for key in (low, n):
+        if key in _map:
+            return _map[key]
+    if "." in low:
+        for seg in low.split("."):
+            if seg in _map:
+                return _map[seg]
+    for a in _apps:
+        an, ad = (a.name or "").lower(), (a.display_name or "").lower()
+        if n in an or an in n or n in ad or ad in n:
+            return a
+    return None
+
+def _icon(cls, size):
+    app = _find(cls)
+    if app:
+        try:
+            px = app.get_icon_pixbuf(size=size)
+            if px:
+                return px
+        except Exception:
+            pass
+    for n in filter(None, (cls, _norm(cls), cls and cls.lower(), FALLBACK_ICON)):
+        try:
+            px = _theme.load_icon(n, size, Gtk.IconLookupFlags.FORCE_SIZE)
+            if px:
+                return px
+        except Exception:
+            pass
+    return None
+
+def _qj(cmd):
     try:
-        return _conn.get_monitors()
+        return getattr(_hypr, f"get_{cmd}")()
     except Exception:
-        return json.loads(_conn.send_command("j/monitors").reply)
+        res = _hypr.send_command(f"j/{cmd}")
+        return json.loads(res.reply if hasattr(res, "reply") else res)
 
-
-def _get_clients():
+def _active_ws():
     try:
-        return _conn.get_clients()
+        ws = _qj("activeworkspace")["id"]
+        return ws if ws in WS_RANGE else WS_RANGE.start
     except Exception:
-        return json.loads(_conn.send_command("j/clients").reply)
+        return WS_RANGE.start
 
+def _switch(target, cb=None):
+    cur = _active_ws()
+    if cur == target:
+        return cb and cb()
 
-def _switch_workspace(target_ws, on_complete=None):
-    try:
-        res = _conn.send_command("j/activeworkspace")
-        active_ws = json.loads(res.reply)["id"] if hasattr(res, "reply") else json.loads(res)["id"]
-    except Exception:
-        active_ws = 1
+    cr, cc = divmod(cur - WS_RANGE.start, COLS)
+    tr, tc = divmod(target - WS_RANGE.start, COLS)
+    r, c, steps = cr, cc, []
 
-    if not (1 <= active_ws <= 9):
-        active_ws = 5
+    def go(is_row, tgt):
+        nonlocal r, c
+        while (r if is_row else c) != tgt:
+            if is_row:
+                r += 1 if tgt > r else -1
+            else:
+                c += 1 if tgt > c else -1
+            steps.append((r * COLS + c + WS_RANGE.start, is_row))
 
-    def finish_action():
-        if on_complete:
-            on_complete()
+    axes = [(True, tr), (False, tc)]
+    if random.choice((True, False)):
+        axes.reverse()
+    for a in axes:
+        go(*a)
 
-    if active_ws == target_ws:
-        finish_action()
-        return
-
-    cur_row = (active_ws - 1) // 3
-    cur_col = (active_ws - 1) % 3
-
-    target_row = (target_ws - 1) // 3
-    target_col = (target_ws - 1) % 3
-
-    ANIM_TIME_MS = 200
-
-    def move_vert(ws):
-        cmd = f"[[BATCH]] keyword animation workspaces,1,6,overshot,slidevert ; dispatch workspace {ws} ; keyword animation workspaces,1,6,overshot,slide"
-        _conn.send_command(cmd)
-
-    steps = []
-    r, c = cur_row, cur_col
-    
-    horiz_first = random.choice([True, False])
-
-    if horiz_first:
-        step_c = 1 if target_col > c else -1
-        while c != target_col:
-            c += step_c
-            steps.append((r * 3 + c + 1, False))
-            
-        step_r = 1 if target_row > r else -1
-        while r != target_row:
-            r += step_r
-            steps.append((r * 3 + c + 1, True))
-    else:
-        step_r = 1 if target_row > r else -1
-        while r != target_row:
-            r += step_r
-            steps.append((r * 3 + c + 1, True))
-            
-        step_c = 1 if target_col > c else -1
-        while c != target_col:
-            c += step_c
-            steps.append((r * 3 + c + 1, False))
-
-    def run_next_step():
+    def tick():
         if not steps:
-            return False
-            
-        next_ws, is_vert = steps.pop(0)
-        
-        if is_vert:
-            move_vert(next_ws)
-        else:
-            _conn.send_command(f"dispatch workspace {next_ws}")
-            
-        if steps:
-            GLib.timeout_add(ANIM_TIME_MS, run_next_step)
-        else:
-            finish_action()
-            
-        return False
+            return
+        ws, vert = steps.pop(0)
+        _hypr.send_command(
+            f"[[BATCH]] keyword animation {ANIM_V} ; "
+            f"dispatch workspace {ws} ; keyword animation {ANIM_H}"
+            if vert
+            else f"dispatch workspace {ws}",
+        )
+        GLib.timeout_add(ANIM_MS, tick) if steps else (cb and cb())
 
-    run_next_step()
+    tick()
 
 
-class HyprlandWindowButton(Button):
-    __slots__ = ("addr", "_px", "wid")
-
-    def __init__(self, addr, aid, title, sz, wid):
-        app = _app_resolver.find_app(aid)
-        self._px = _app_resolver.get_icon(aid, int(min(sz) * 0.5), app)
-        self.addr = addr
-        self.wid = wid
-
-        name = (app.display_name or app.name) if app else None
-        tooltip = name or title or aid
+class WindowButton(Button):
+    def __init__(self, addr, cls, title, size, ws_id):
+        px = _icon(cls, max(MIN_ICON, int(min(size) * ICON_SCALE)))
+        app = _find(cls)
+        tip = ((app.display_name or app.name) if app else None) or title or cls
 
         super().__init__(
             name="overview-client-box",
-            image=Image(pixbuf=self._px),
-            tooltip_text=tooltip,
-            size=sz,
-            on_clicked=self._foc,
-            on_button_press_event=self._press,
-            on_drag_data_get=self._dget,
-            on_drag_begin=self._dbegin,
+            image=Image(pixbuf=px) if px else None,
+            tooltip_text=tip,
+            size=size,
+            on_clicked=lambda *_: _switch(
+                ws_id,
+                lambda: _hypr.send_command(
+                    f"/dispatch focuswindow address:{addr}"
+                ),
+            ),
+            on_button_press_event=lambda _, e: (
+                _hypr.send_command(f"/dispatch closewindow address:{addr}")
+                if e.button == 3
+                else None
+            ),
+            on_drag_data_get=lambda _, __, d, *___: d.set_text(addr, len(addr)),
+            on_drag_begin=lambda _, ctx: (
+                Gtk.drag_set_icon_pixbuf(ctx, px, 0, 0)
+                if px
+                else Gtk.drag_set_icon_default(ctx)
+            ),
         )
-        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, _TG, Gdk.DragAction.COPY)
-
-    def _foc(self, *_):
-        def focus_window():
-            _conn.send_command(f"/dispatch focuswindow address:{self.addr}")
-        
-        _switch_workspace(self.wid, on_complete=focus_window)
-
-    def _press(self, _, e):
-        if e.button == 3:
-            _conn.send_command(f"/dispatch closewindow address:{self.addr}")
-
-    def _dget(self, _, __, d, *___):
-        d.set_text(self.addr, len(self.addr))
-
-    def _dbegin(self, _, ctx):
-        Gtk.drag_set_icon_pixbuf(ctx, self._px, 0, 0) if self._px else Gtk.drag_set_icon_default(ctx)
+        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, DND, Gdk.DragAction.COPY)
 
 
-class WorkspaceEventBox(EventBox):
-    __slots__ = ("wid",)
-
-    def __init__(self, wid, fixed):
-        self.wid = wid
+class WsBox(EventBox):
+    def __init__(self, ws_id, fixed, sw, sh):
         super().__init__(
             name="overview-workspace-bg",
-            size=(_SW, _SH),
-            child=fixed or Label(
-                name="overview-add-label", 
-                markup=icons.circle_plus, 
-                h_expand=True, 
-                v_expand=True
+            size=(sw, sh),
+            child=fixed
+            or Label(
+                name="overview-add-label",
+                markup=icons.circle_plus,
+                h_expand=True,
+                v_expand=True,
             ),
-            on_drag_data_received=self._on_drop,
-            on_button_press_event=self._on_click,
+            on_drag_data_received=lambda w, ctx, x, y, d, *_: _hypr.send_command(
+                f"/dispatch movetoworkspacesilent "
+                f"{ws_id},address:{d.get_data().decode()}",
+            ),
+            on_button_press_event=lambda _, e: (
+                _switch(ws_id) if e.button == 1 else None
+            ),
         )
-        self.drag_dest_set(Gtk.DestDefaults.ALL, _TG, Gdk.DragAction.COPY)
+        self.drag_dest_set(Gtk.DestDefaults.ALL, DND, Gdk.DragAction.COPY)
         if fixed:
             fixed.show_all()
 
-    def _on_drop(self, _, __, ___, ____, data, _____):
-        _conn.send_command(f"/dispatch movetoworkspacesilent {self.wid},address:{data.get_data().decode()}")
-
-    def _on_click(self, _, event):
-        if event.button == 1:
-            _switch_workspace(self.wid)
-
 
 class Overview(Box):
-    __slots__ = ("mid", "ws_s", "ws_e", "cli", "wsb")
-
-    def __init__(self, monitor_id=0, **kwargs):
-        super().__init__(name="overview", orientation="v", spacing=8, **kwargs)
-
+    def __init__(self, monitor_id=0, **kw):
+        super().__init__(name="overview", orientation="v", spacing=SPACING, **kw)
         self.mid = monitor_id
-        self.ws_s = 1
-        self.ws_e = 9
-        self.cli = {}
-        self.wsb = {}
+        self._w, self._f = {}, {}
+        _hypr.connect("event", self._rebuild)
+        self._rebuild()
 
-        events = (
-            "openwindow", 
-            "closewindow", 
-            "movewindow", 
-            "activewindow", 
-            "workspace",
-            "fullscreen",
-            "changefloatingmode"
-        )
-        for ev in events:
-            _conn.connect(f"event::{ev}", self.update)
+    def _screen(self, mons):
+        for m in mons:
+            if m.get("id") == self.mid:
+                return m["width"], m["height"]
+        if mons:
+            return mons[0]["width"], mons[0]["height"]
+        g = Gdk.Display.get_default().get_monitor(0).get_geometry()
+        return g.width, g.height
 
-        self.update()
-
-    def update(self, *_):
-        for b in self.cli.values():
-            b.destroy()
-        self.cli.clear()
-
-        for b in self.wsb.values():
-            b.destroy()
-        self.wsb.clear()
-
-        self.children = []
-        
-        _app_resolver.refresh()
-
-        md = _get_monitors()
-        cd = _get_clients()
-
-        mons = {m["id"]: (m["x"], m["y"], m["width"], m["height"]) for m in md}
-        rows = [Box(spacing=8) for _ in range(3)]
+    def _rebuild(self, *_):
+        self.cleanup()
+        _refresh()
+        mons, clients = _qj("monitors"), _qj("clients")
+        rects = {m["id"]: (m["x"], m["y"], m["width"], m["height"]) for m in mons}
+        sw, sh = self._screen(mons)
+        tw, th = int(sw * SCALE), int(sh * SCALE)
+        rows = [Box(spacing=SPACING) for _ in range(ROWS)]
         self.children = rows
 
-        ws_s, ws_e = self.ws_s, self.ws_e
-
-        for c in cd:
+        for c in clients:
             wid = c["workspace"]["id"]
-            if not ws_s <= wid <= ws_e:
+            if wid not in WS_RANGE:
                 continue
-
-            mx, my, mw, mh = mons.get(c["monitor"], (0, 0, 1920, 1080))
-            
+            mx, my, mw, mh = rects.get(c["monitor"], (0, 0, sw, sh))
             cx, cy = c["at"]
             cw, ch = c["size"]
-
-            is_mapped = c.get("mapped", True)
-            is_hidden = c.get("hidden", False)
-            
-            is_on_screen = (
-                cx < (mx + mw) and
-                (cx + cw) > mx and
-                cy < (my + mh) and
-                (cy + ch) > my
-            )
-
-            if not is_mapped or is_hidden or not is_on_screen:
+            if (
+                not c.get("mapped", True)
+                or c.get("hidden", False)
+                or cx >= mx + mw
+                or cx + cw <= mx
+                or cy >= my + mh
+                or cy + ch <= my
+            ):
                 continue
-
             addr = c["address"]
-            aid = c["initialClass"]
-            sz = (int(cw * _BS), int(ch * _BS))
-
-            btn = HyprlandWindowButton(addr, aid, c["title"], sz, wid)
-            self.cli[addr] = btn
-
-            if wid not in self.wsb:
-                self.wsb[wid] = Gtk.Fixed()
-
-            self.wsb[wid].put(btn, int((cx - mx) * _BS), int((cy - my) * _BS))
-
-        for wid in range(ws_s, ws_e + 1):
-            ws_box = Box(
-                name="overview-workspace-box",
-                orientation="vertical",
-                children=[
-                    Label(name="overview-workspace-label", label=f"Workspace {wid}"),
-                    WorkspaceEventBox(wid, self.wsb.get(wid)),
-                ],
+            btn = WindowButton(
+                addr, c["initialClass"], c["title"],
+                (int(cw * SCALE), int(ch * SCALE)), wid,
             )
-            rows[(wid - ws_s) // 3].add(ws_box)
+            self._w[addr] = btn
+            self._f.setdefault(wid, Gtk.Fixed())
+            self._f[wid].put(btn, int((cx - mx) * SCALE), int((cy - my) * SCALE))
+
+        for wid in WS_RANGE:
+            rows[(wid - WS_RANGE.start) // COLS].add(
+                Box(
+                    name="overview-workspace-box",
+                    orientation="vertical",
+                    children=[
+                        Label(name="overview-workspace-label", label=f"Workspace {wid}"),
+                        WsBox(wid, self._f.get(wid), tw, th),
+                    ],
+                ),
+            )
 
     def cleanup(self):
-        for b in self.cli.values():
-            b.destroy()
-        self.cli.clear()
-
-        for b in self.wsb.values():
-            b.destroy()
-        self.wsb.clear()
-
+        for w in (*self._w.values(), *self._f.values()):
+            w.destroy()
+        self._w.clear()
+        self._f.clear()
         self.children = []
