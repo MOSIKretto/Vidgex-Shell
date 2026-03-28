@@ -296,6 +296,7 @@ print_separator() {
 show_animated_banner() {
   clear
 
+  # 1. МАССИВЫ ДЛЯ ВЕРХНЕГО ЛОГОТИПА
   local banner_lines=(
     "        #########################################################################################        "
     "  #####################################################################################################  "
@@ -324,37 +325,111 @@ show_animated_banner() {
                 "$PURPLE" "$LIGHT_PURPLE" "$PURPLE" "$LIGHT_PURPLE"
                 "$CYAN" "$LIGHT_CYAN" "$CYAN" "$CYAN" "$GRAY" "$GRAY")
 
+  # 2. МАССИВЫ ДЛЯ НИЖНЕЙ ТАБЛИЧКИ
+  local box_raw=(
+    "                  ╔═══════════════════════════════════════════════════════════════╗"
+    "                  ║                                                               ║"
+    "                  ║                V I D G E X  -  S H E L L                      ║"
+    "                  ║                   Installation Script                         ║"
+    "                  ║                                                               ║"
+    "                  ╚═══════════════════════════════════════════════════════════════╝"
+  )
+
+  local box_colored=(
+    "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
+    "${WHITE}${BOLD}                  ║                                                               ║${NC}"
+    "${WHITE}${BOLD}                  ║                ${PURPLE}V I D G E X  -  S H E L L${WHITE}                      ║${NC}"
+    "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
+    "${WHITE}${BOLD}                  ║                                                               ║${NC}"
+    "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
+  )
+
+  local g_formats=('\033[46;30m' '\033[45;30m' '\033[47;30m' '\033[100;30m' '\033[7m' '\033[1;36m')
+
   echo ""
 
+  # --- АНИМАЦИЯ ЛОГОТИПА ---
   for i in "${!banner_lines[@]}"; do
     local line="${banner_lines[$i]}"
-    local color="${colors[$i]}"
+    local final_color="${colors[$i]}"
+    local len=${#line}
 
-    local glitch_chars='░▒▓█▀▄▌▐@#$%&!?*=~'
+    local format="${g_formats[$((RANDOM % ${#g_formats[@]}))]}"
     local glitched=""
-    for ((j=0; j<${#line}; j++)); do
-      if [ $((RANDOM % 3)) -eq 0 ]; then
-        glitched+="${glitch_chars:$((RANDOM % ${#glitch_chars})):1}"
-      else
-        glitched+="${line:$j:1}"
-      fi
-    done
-    echo -ne "${GRAY}${glitched}${NC}\r"
-    sleep 0.02
+    local type=$((RANDOM % 5))
+    
+    if [ $type -eq 0 ]; then
+      local shift=$((RANDOM % 20 + 15))
+      glitched="$(printf '%*s' "$shift" '')████████████${line:0:$((len-shift-12))}"
+    elif [ $type -eq 1 ]; then
+      local shift=$((RANDOM % 20 + 15))
+      glitched="${line:$shift}████████████$(printf '%*s' "$shift" '')"
+    elif [ $type -eq 2 ]; then
+      local cut=$((RANDOM % 40 + 20))
+      glitched="${line:0:cut}▓▓▓▓████████▓▓▓▓${line:$((cut+16))}"
+    elif [ $type -eq 3 ]; then
+      glitched="$(printf '█%.0s' {1..105})"
+    else
+      glitched="${line// /█}"
+      glitched="${glitched//@/▓}"
+      glitched="${glitched//#/▒}"
+    fi
 
-    echo -e "${color}${line}${NC}"
+    # Строго обрезаем длину глитча, чтобы он не вылезал за пределы строки
+    glitched="${glitched:0:$len}"
+
+    echo -ne "${format}${glitched}${NC}\r"
     sleep 0.03
+    # Добавлен \033[K - зачистка остатков строки перед выводом чистой
+    echo -e "${final_color}${line}\033[K${NC}"
+    sleep 0.01
   done
 
   echo ""
-  sleep 0.2
+  
+  # Промежуточный "удар" глитчем
+  echo -ne "\033[46;30m$(printf '█%.0s' {1..105})${NC}\r"
+  sleep 0.04
+  # Полная очистка всей строки \033[2K
+  echo -ne "\033[2K\r" 
 
-  echo -e "${WHITE}${BOLD}                  ╔═══════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║                ${PURPLE}V I D G E X  -  S H E L L${WHITE}                      ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║                   ${GRAY}Installation Script${WHITE}                         ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ║                                                               ║${NC}"
-  echo -e "${WHITE}${BOLD}                  ╚═══════════════════════════════════════════════════════════════╝${NC}"
+  # --- АНИМАЦИЯ ТАБЛИЧКИ ---
+  for i in "${!box_raw[@]}"; do
+    local line="${box_raw[$i]}"
+    local final_line="${box_colored[$i]}"
+    local len=${#line}
+
+    local format="${g_formats[$((RANDOM % ${#g_formats[@]}))]}"
+    local glitched=""
+    local type=$((RANDOM % 5))
+    
+    if [ $type -eq 0 ]; then
+      local shift=$((RANDOM % 15 + 10))
+      glitched="$(printf '%*s' "$shift" '')████████${line:0:$((len-shift-8))}"
+    elif [ $type -eq 1 ]; then
+      local shift=$((RANDOM % 15 + 10))
+      glitched="${line:$shift}████████$(printf '%*s' "$shift" '')"
+    elif [ $type -eq 2 ]; then
+      local cut=$((RANDOM % 30 + 15))
+      glitched="${line:0:cut}▓▓████▓▓${line:$((cut+8))}"
+    elif [ $type -eq 3 ]; then
+      glitched="$(printf '█%.0s' {1..105})"
+    else
+      glitched="${line// /█}"
+      glitched="${glitched//═/▓}"
+      glitched="${glitched//║/▒}"
+    fi
+
+    # Строго обрезаем
+    glitched="${glitched:0:$len}"
+
+    echo -ne "${format}${glitched}${NC}\r"
+    sleep 0.03
+    # Добавлен \033[K для защиты от остаточных пикселей глитча
+    echo -e "${final_line}\033[K"
+    sleep 0.01
+  done
+
   echo ""
 }
 
