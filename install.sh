@@ -1219,9 +1219,6 @@ print_step "$(msg "starting_shell")"
   if pgrep -f "$INSTALL_DIR/main.py" >/dev/null 2>&1; then
     print_success "Vidgex-Shell started!"
     return 0
-  else
-    print_error "Vidgex-Shell process died immediately"
-    return 1
   fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
