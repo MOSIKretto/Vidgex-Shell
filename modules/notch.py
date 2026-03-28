@@ -22,6 +22,7 @@ from modules.Notch.toolBox import ToolBox
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
 from modules.corners import MyCorner
+
 from services.wayland import WaylandWindow as Window
 
 

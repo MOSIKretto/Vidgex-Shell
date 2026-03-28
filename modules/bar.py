@@ -16,6 +16,7 @@ from modules.Notch.MainWindow.Dashboard.buttons import AutolayoutButton
 from modules.Bar.metrics import Battery, MetricsSmall
 from modules.Bar.systemtray import SystemTray
 from modules.Bar.workspaces import TopWorkspaces, SideBarWindow, _hov
+
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
 

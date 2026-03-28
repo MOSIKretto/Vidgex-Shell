@@ -21,6 +21,7 @@ from modules.Dock.windowNavigator import WindowNavigator
 from modules.Dock.restore import AppResolver as RestoreAppResolver
 from modules.Dock.DnD import Dnd
 from modules.corners import MyCorner
+
 from services.wayland import WaylandWindow as Window
 from services.icons import pin, pinned
 
