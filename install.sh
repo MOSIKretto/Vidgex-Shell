@@ -330,7 +330,7 @@ show_animated_banner() {
     local line="${banner_lines[$i]}"
     local color="${colors[$i]}"
 
-    local glitch_chars='░▒▓█#@'
+    local glitch_chars='░▒▓█▀▄▌▐@#$%&!?*=~'
     local glitched=""
     for ((j=0; j<${#line}; j++)); do
       if [ $((RANDOM % 3)) -eq 0 ]; then
