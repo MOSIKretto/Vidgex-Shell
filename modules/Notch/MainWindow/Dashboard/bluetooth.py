@@ -1,6 +1,7 @@
 import os
+
 from gi.repository import GLib, Gtk, Gdk
-from fabric.bluetooth import BluetoothClient, BluetoothDevice
+from fabric.bluetooth import BluetoothClient
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
@@ -11,47 +12,61 @@ from fabric.widgets.stack import Stack
 
 import services.icons as icons
 
+
 def set_pointer_cursor(widget):
     widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    def _ent(w, _):
-        if win := w.get_window(): win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
-    def _lv(w, _):
-        if win := w.get_window(): win.set_cursor(None)
-    widget.connect("enter-notify-event", _ent)
-    widget.connect("leave-notify-event", _lv)
+
+    def _on_enter(w, _event):
+        win = w.get_window()
+        if win:
+            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+
+    def _on_leave(w, _event):
+        win = w.get_window()
+        if win:
+            win.set_cursor(None)
+
+    widget.connect("enter-notify-event", _on_enter)
+    widget.connect("leave-notify-event", _on_leave)
+
 
 def _run_bt_cmd(cmd_str, callback=None):
-    def _on_exit(pid, status, *_):
-        GLib.spawn_close_pid(pid)
-        if callback: GLib.idle_add(callback)
+    def _on_exit(pid, _status, *_args):
+        try:
+            GLib.spawn_close_pid(pid)
+        except Exception:
+            pass
+        if callback:
+            GLib.idle_add(callback)
+
     try:
         pid, _, _, _ = GLib.spawn_async(
             ["/bin/sh", "-c", cmd_str],
-            flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD
+            flags=GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
         )
         GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, _on_exit)
     except Exception:
-        if callback: GLib.idle_add(callback)
+        if callback:
+            GLib.idle_add(callback)
+
 
 def _get_dev_name(dev):
-    addr = getattr(dev, "address", "").upper()
+    addr = (getattr(dev, "address", "") or "").upper()
     name = getattr(dev, "alias", None) or getattr(dev, "name", None)
-    
+
     if not name or str(name).strip() in ("", "Unknown", "unknown"):
         return None
-        
+
     clean_name = str(name).replace(":", "").replace("-", "").strip().upper()
     clean_addr = addr.replace(":", "").replace("-", "").strip().upper()
-    
+
     if clean_name == clean_addr:
-         return None
-        
+        return None
+
     return str(name)
 
 
 class BTSlot(Gtk.EventBox):
-    __slots__ = ('dev', 'client', 'parent_bt', 'list_type', 'main_box', 'name_lbl', 'status_lbl', 'icon', 'btn_settings')
-
     def __init__(self, client, parent_bt):
         super().__init__()
         self.client = client
@@ -75,7 +90,7 @@ class BTSlot(Gtk.EventBox):
         self.btn_settings = Button(
             child=Label(markup=icons.settings),
             tooltip_text="Device Settings",
-            on_clicked=self._on_settings
+            on_clicked=self._on_settings,
         )
         self.btn_settings.get_style_context().add_class("pixel-icon-button")
         self.btn_settings.get_style_context().add_class("settings-btn")
@@ -84,113 +99,149 @@ class BTSlot(Gtk.EventBox):
 
         self.main_box.add_start(start_box)
         self.main_box.add_end(self.btn_settings)
-        
         self.add(self.main_box)
 
     def update(self, dev, list_type):
         self.dev = dev
         self.list_type = list_type
-        
+
         icon_name = f"{getattr(dev, 'icon_name', 'bluetooth')}-symbolic"
         self.icon.set_from_icon_name(icon_name, 24)
-        
-        dev_name = _get_dev_name(dev) or getattr(dev, 'name', 'Unknown')
+
+        dev_name = _get_dev_name(dev) or getattr(dev, "name", None) or "Unknown"
         self.name_lbl.set_label(dev_name)
 
         self._upd()
 
     def _upd(self):
-        if not self.dev: return
-        
-        c = getattr(self.dev, "connected", False)
+        if not self.dev:
+            return
+
+        connected = getattr(self.dev, "connected", False)
         known = getattr(self.dev, "paired", False) or getattr(self.dev, "trusted", False)
 
-        self.btn_settings.set_visible(known or c)
+        self.btn_settings.set_visible(known or connected)
 
-        if c:
+        main_ctx = self.main_box.get_style_context()
+        icon_ctx = self.icon.get_style_context()
+        btn_ctx = self.btn_settings.get_style_context()
+
+        if connected:
             self.status_lbl.set_label("Connected")
-            self.main_box.get_style_context().add_class("active-slot")
-            self.icon.get_style_context().add_class("active-icon")
-            self.btn_settings.get_style_context().add_class("active-settings-btn")
+            main_ctx.add_class("active-slot")
+            icon_ctx.add_class("active-icon")
+            btn_ctx.add_class("active-settings-btn")
         else:
             self.status_lbl.set_label("Saved" if known else "Available")
-            self.main_box.get_style_context().remove_class("active-slot")
-            self.icon.get_style_context().remove_class("active-icon")
-            self.btn_settings.get_style_context().remove_class("active-settings-btn")
+            main_ctx.remove_class("active-slot")
+            icon_ctx.remove_class("active-icon")
+            btn_ctx.remove_class("active-settings-btn")
 
-    def _on_click(self, widget, event):
-        if not self.dev: return
-        addr = self.dev.address
+    def _on_click(self, _widget, _event):
+        if not self.dev:
+            return
+
+        addr = getattr(self.dev, "address", None)
+        if not addr:
+            return
+
         is_conn = getattr(self.dev, "connected", False)
         known = getattr(self.dev, "paired", False) or getattr(self.dev, "trusted", False)
 
         if is_conn:
             self.status_lbl.set_label("Disconnecting...")
-            _run_bt_cmd(f"bluetoothctl disconnect {addr}", self.parent_bt._req_ref)
+            _run_bt_cmd(f"bluetoothctl disconnect {addr}", self._safe_refresh)
         else:
             self.status_lbl.set_label("Connecting...")
             if known:
-                _run_bt_cmd(f"bluetoothctl connect {addr}", self.parent_bt._req_ref)
+                _run_bt_cmd(f"bluetoothctl connect {addr}", self._safe_refresh)
             else:
-                _run_bt_cmd(f"bluetoothctl pair {addr} ; bluetoothctl trust {addr} ; bluetoothctl connect {addr}", self.parent_bt._req_ref)
+                _run_bt_cmd(
+                    f"bluetoothctl pair {addr} && bluetoothctl trust {addr} && bluetoothctl connect {addr}",
+                    self._safe_refresh,
+                )
 
-    def _on_settings(self, _):
-        if self.parent_bt: self.parent_bt.open_settings(self)
+    def _safe_refresh(self):
+        if self.parent_bt:
+            return self.parent_bt._req_ref()
+        return False
+
+    def _on_settings(self, _btn):
+        if self.parent_bt:
+            self.parent_bt.open_settings(self)
 
 
 class BluetoothConnections(Box):
-    __slots__ = ('_w', '_btns', '_cl', 'stack', '_slots', '_rid', '_scan',
-                 'lists_stack', 'connected_box', 'avail_box', 'saved_box',
-                 'avail_stack', 'avail_empty',
-                 'avail_section', 'saved_section', 'main_scroll', 'saved_scroll',
-                 'settings_scroll', 'header_title', 'saved_btn', '_sc_btn', '_sc_lbl',
-                 'current_settings_dev', '_previous_page',
-                 'btn_bt_forget', 'btn_bt_disconnect', 'lbl_bt_disconnect',
-                 'lbl_bt_addr', 'lbl_bt_paired', 'lbl_bt_trusted')
-
     def __init__(self, **kwargs):
         self._w = kwargs.pop("widgets", None)
         super().__init__(
-            name="bluetooth", spacing=4, orientation="vertical", 
-            h_expand=True, v_expand=True, v_align="fill", **kwargs
+            name="bluetooth",
+            spacing=4,
+            orientation="vertical",
+            h_expand=True,
+            v_expand=True,
+            v_align="fill",
+            **kwargs,
         )
 
-        self._btns = getattr(self._w.buttons, "bluetooth_button", None) if self._w else None
+        self._btns = None
+        if self._w and hasattr(self._w, "buttons"):
+            self._btns = getattr(self._w.buttons, "bluetooth_button", None)
+
         self._slots = {"connected": [], "avail": [], "saved": []}
         self._rid = None
         self._scan = False
         self.current_settings_dev = None
         self._previous_page = "main"
+        self._cl = None
 
-        try: self._cl = BluetoothClient()
-        except Exception: return
+        try:
+            self._cl = BluetoothClient()
+        except Exception:
+            return
 
         self._build()
 
         self._cl.connect("notify::enabled", self._on_en)
         self._cl.connect("device-added", self._sched)
         self._cl.connect("device-removed", self._sched)
-        
+
         self._on_en()
         self._sched()
 
     def _build(self):
-        back_btn = Button(name="bluetooth-back", child=Label(markup=icons.chevron_left, name="bluetooth-back-label"))
+        back_btn = Button(
+            name="bluetooth-back",
+            child=Label(markup=icons.chevron_left, name="bluetooth-back-label"),
+        )
         back_btn.connect("clicked", self._on_back_click)
         set_pointer_cursor(back_btn)
 
         self.header_title = Label(label="Bluetooth", v_align="center", name="header-title")
-        
-        self.saved_btn = Button(name="bluetooth-saved", child=Label(markup=icons.save, name="bluetooth-saved-label"), tooltip_text="Saved Devices", on_clicked=self._on_saved_toggle)
+
+        self.saved_btn = Button(
+            name="bluetooth-saved",
+            child=Label(markup=icons.save, name="bluetooth-saved-label"),
+            tooltip_text="Saved Devices",
+            on_clicked=self._on_saved_toggle,
+        )
         set_pointer_cursor(self.saved_btn)
 
         self._sc_lbl = Label(markup=icons.radar, name="bluetooth-scan-label")
-        self._sc_btn = Button(name="bluetooth-scan", child=self._sc_lbl, tooltip_text="Scan", on_clicked=self._on_scan_toggle)
+        self._sc_btn = Button(
+            name="bluetooth-scan",
+            child=self._sc_lbl,
+            tooltip_text="Scan",
+            on_clicked=self._on_scan_toggle,
+        )
         set_pointer_cursor(self._sc_btn)
 
-        header_end_box = Box(spacing=4, orientation="horizontal", children=(self.saved_btn, self._sc_btn))
-
-        header = CenterBox(start_children=(back_btn,), center_children=(self.header_title,), end_children=(header_end_box,))
+        header_end = Box(spacing=4, orientation="horizontal", children=(self.saved_btn, self._sc_btn))
+        header = CenterBox(
+            start_children=(back_btn,),
+            center_children=(self.header_title,),
+            end_children=(header_end,),
+        )
         header.set_margin_bottom(8)
         self.add(header)
 
@@ -201,58 +252,79 @@ class BluetoothConnections(Box):
         off_icon = Label(markup=f"<span size='32768'>{icons.bluetooth_off}</span>")
         off_icon.get_style_context().add_class("bluetooth-off-icon")
         off_box.add(off_icon)
+
         off_label = Label(label="Bluetooth is disabled")
         off_label.get_style_context().add_class("bluetooth-off-label")
         off_box.add(off_label)
+
         btn_turn_on = Button(label="Turn On", h_align="center", on_clicked=self._turn_on_bt)
         btn_turn_on.get_style_context().add_class("bluetooth-turn-on-btn")
         set_pointer_cursor(btn_turn_on)
         off_box.add(btn_turn_on)
-        
+
         self.stack.add_named(off_box, "off")
 
-        self.lists_stack = Stack(transition_type="slide-left-right", h_expand=True, v_expand=True, v_align="fill")
+        self.lists_stack = Stack(
+            transition_type="slide-left-right", h_expand=True, v_expand=True, v_align="fill",
+        )
 
         self.connected_box = Box(spacing=2, orientation="vertical")
         self.avail_box = Box(spacing=2, orientation="vertical")
-        
-        self.avail_empty = Box(orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True)
+
+        self.avail_empty = Box(
+            orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True,
+        )
         self.avail_empty.set_margin_top(24)
         self.avail_empty.set_margin_bottom(24)
-        
+
         empty_icon = Label(markup=f"<span size='32768'>{icons.radar}</span>")
         empty_icon.get_style_context().add_class("bluetooth-off-icon")
         self.avail_empty.add(empty_icon)
-        
+
         empty_lbl = Label(label="No devices found")
         empty_lbl.get_style_context().add_class("bluetooth-off-label")
         self.avail_empty.add(empty_lbl)
-        
+
         btn_scan = Button(label="Scan", h_align="center", on_clicked=self._on_scan_toggle)
         btn_scan.get_style_context().add_class("bluetooth-turn-on-btn")
         set_pointer_cursor(btn_scan)
         self.avail_empty.add(btn_scan)
-        
+
         self.avail_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
         self.avail_stack.add_named(self.avail_box, "list")
         self.avail_stack.add_named(self.avail_empty, "empty")
-        
-        self.avail_section = Box(orientation="v", spacing=4, children=(Label(label="Available Devices", h_align="start", name="section-title"), self.avail_stack))
+
+        self.avail_section = Box(
+            orientation="v",
+            spacing=4,
+            children=(
+                Label(label="Available Devices", h_align="start", name="section-title"),
+                self.avail_stack,
+            ),
+        )
 
         self.main_scroll = ScrolledWindow(
-            name="bluetooth-devices", min_content_size=(-1, -1),
+            name="bluetooth-devices",
+            min_content_size=(-1, -1),
             child=Box(spacing=4, orientation="vertical", children=[self.connected_box, self.avail_section]),
-            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False
+            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
         )
         self.main_scroll.set_overlay_scrolling(False)
 
         self.saved_box = Box(spacing=2, orientation="vertical")
-        self.saved_section = Box(orientation="v", spacing=4, children=(Label(label="Saved Devices", h_align="start", name="section-title"), self.saved_box))
-
+        self.saved_section = Box(
+            orientation="v",
+            spacing=4,
+            children=(
+                Label(label="Saved Devices", h_align="start", name="section-title"),
+                self.saved_box,
+            ),
+        )
         self.saved_scroll = ScrolledWindow(
-            name="bluetooth-devices", min_content_size=(-1, -1),
+            name="bluetooth-devices",
+            min_content_size=(-1, -1),
             child=Box(spacing=4, orientation="vertical", children=[self.saved_section]),
-            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False
+            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
         )
         self.saved_scroll.set_overlay_scrolling(False)
 
@@ -270,17 +342,21 @@ class BluetoothConnections(Box):
         settings_box.set_margin_end(12)
 
         actions_box = Box(orientation="horizontal", spacing=8, h_align="center", h_expand=True)
-        
-        lbl_forget = Label(markup=f"<span size='large'>{icons.trash}</span> Удалить")
+
+        lbl_forget = Label(markup=f"<span size='large'>{icons.trash}</span> Remove")
         self.btn_bt_forget = Button(child=lbl_forget, on_clicked=self._do_forget)
         self.btn_bt_forget.get_style_context().add_class("net-action-btn")
         self.btn_bt_forget.get_style_context().add_class("net-forget")
-        set_pointer_cursor(self.btn_bt_forget) 
+        set_pointer_cursor(self.btn_bt_forget)
 
-        self.lbl_bt_disconnect = Label(markup=f"<span size='large'>{icons.cancel}</span> Отключить")
-        self.btn_bt_disconnect = Button(child=self.lbl_bt_disconnect, on_clicked=self._do_disconnect_or_connect)
+        self.lbl_bt_disconnect = Label(
+            markup=f"<span size='large'>{icons.cancel}</span> Disconnect",
+        )
+        self.btn_bt_disconnect = Button(
+            child=self.lbl_bt_disconnect, on_clicked=self._do_disconnect_or_connect,
+        )
         self.btn_bt_disconnect.get_style_context().add_class("net-action-btn")
-        set_pointer_cursor(self.btn_bt_disconnect) 
+        set_pointer_cursor(self.btn_bt_disconnect)
 
         actions_box.add(self.btn_bt_forget)
         actions_box.add(self.btn_bt_disconnect)
@@ -301,79 +377,104 @@ class BluetoothConnections(Box):
             row.pack_end(val_widget, False, False, 0)
             info_group.add(row)
 
-        add_row("MAC-адрес", self.lbl_bt_addr)
-        add_row("Сопряжено", self.lbl_bt_paired)
-        add_row("Доверенное", self.lbl_bt_trusted)
+        add_row("MAC Address", self.lbl_bt_addr)
+        add_row("Paired", self.lbl_bt_paired)
+        add_row("Trusted", self.lbl_bt_trusted)
 
         settings_box.add(info_group)
 
         scroll = ScrolledWindow(
-            name="bluetooth-devices", min_content_size=(-1, -1),
-            child=settings_box, h_expand=True, v_expand=True,
-            propagate_width=False, propagate_height=False
+            name="bluetooth-devices",
+            min_content_size=(-1, -1),
+            child=settings_box,
+            h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
         )
         scroll.set_overlay_scrolling(False)
         return scroll
 
     def open_settings(self, slot):
+        if not slot or not slot.dev:
+            return
+
         self._previous_page = self.lists_stack.get_visible_child_name()
         self.current_settings_dev = slot.dev
-        
+
         self.header_title.set_label(slot.name_lbl.get_label())
-        
+
         is_conn = getattr(slot.dev, "connected", False)
         if is_conn:
-            self.lbl_bt_disconnect.set_markup(f"<span size='large'>{icons.cancel}</span> Отключить")
+            self.lbl_bt_disconnect.set_markup(
+                f"<span size='large'>{icons.cancel}</span> Disconnect",
+            )
         else:
-            self.lbl_bt_disconnect.set_markup(f"<span size='large'>{icons.accept}</span> Подключить")
+            self.lbl_bt_disconnect.set_markup(
+                f"<span size='large'>{icons.accept}</span> Connect",
+            )
 
         self.lbl_bt_addr.set_label(getattr(slot.dev, "address", "Unknown"))
-        self.lbl_bt_paired.set_label("Да" if getattr(slot.dev, "paired", False) else "Нет")
-        self.lbl_bt_trusted.set_label("Да" if getattr(slot.dev, "trusted", False) else "Нет")
+        self.lbl_bt_paired.set_label("Yes" if getattr(slot.dev, "paired", False) else "No")
+        self.lbl_bt_trusted.set_label("Yes" if getattr(slot.dev, "trusted", False) else "No")
 
         self._sc_btn.set_visible(False)
         self.saved_btn.set_visible(False)
         self.lists_stack.set_visible_child_name("settings")
 
-    def _do_forget(self, _):
-        if self.current_settings_dev:
-            addr = self.current_settings_dev.address
-            _run_bt_cmd(f"bluetoothctl disconnect {addr} ; bluetoothctl untrust {addr} ; bluetoothctl remove {addr}", self._req_ref)
-            self._on_back_click(None)
-
-    def _do_disconnect_or_connect(self, _):
-        if not self.current_settings_dev: return
-        addr = self.current_settings_dev.address
-        is_conn = getattr(self.current_settings_dev, "connected", False)
-        known = getattr(self.current_settings_dev, "paired", False) or getattr(self.current_settings_dev, "trusted", False)
-        
-        if is_conn:
-            _run_bt_cmd(f"bluetoothctl disconnect {addr}", self._req_ref)
-        else:
-            if known:
-                _run_bt_cmd(f"bluetoothctl connect {addr}", self._req_ref)
-            else:
-                _run_bt_cmd(f"bluetoothctl pair {addr} ; bluetoothctl trust {addr} ; bluetoothctl connect {addr}", self._req_ref)
-            
+    def _do_forget(self, _btn):
+        if not self.current_settings_dev:
+            return
+        addr = getattr(self.current_settings_dev, "address", None)
+        if not addr:
+            return
+        _run_bt_cmd(
+            f"bluetoothctl disconnect {addr} ; bluetoothctl untrust {addr} ; bluetoothctl remove {addr}",
+            self._req_ref,
+        )
         self._on_back_click(None)
 
-    def _on_back_click(self, btn):
+    def _do_disconnect_or_connect(self, _btn):
+        if not self.current_settings_dev:
+            return
+        addr = getattr(self.current_settings_dev, "address", None)
+        if not addr:
+            return
+
+        is_conn = getattr(self.current_settings_dev, "connected", False)
+        known = (
+            getattr(self.current_settings_dev, "paired", False)
+            or getattr(self.current_settings_dev, "trusted", False)
+        )
+
+        if is_conn:
+            _run_bt_cmd(f"bluetoothctl disconnect {addr}", self._req_ref)
+        elif known:
+            _run_bt_cmd(f"bluetoothctl connect {addr}", self._req_ref)
+        else:
+            _run_bt_cmd(
+                f"bluetoothctl pair {addr} && bluetoothctl trust {addr} && bluetoothctl connect {addr}",
+                self._req_ref,
+            )
+
+        self._on_back_click(None)
+
+    def _on_back_click(self, _btn):
         curr = self.lists_stack.get_visible_child_name()
         if curr == "settings":
             self.lists_stack.set_visible_child_name(self._previous_page)
-            self.header_title.set_label("Saved Devices" if self._previous_page == "saved" else "Bluetooth")
-            self._sc_btn.set_visible(True)
-            self.saved_btn.set_visible(True)
             if self._previous_page == "saved":
+                self.header_title.set_label("Saved Devices")
                 self.saved_btn.add_style_class("pressed")
             else:
+                self.header_title.set_label("Bluetooth")
                 self.saved_btn.remove_style_class("pressed")
+            self._sc_btn.set_visible(True)
+            self.saved_btn.set_visible(True)
         elif curr == "saved":
             self.lists_stack.set_visible_child_name("main")
             self.header_title.set_label("Bluetooth")
             self.saved_btn.remove_style_class("pressed")
         else:
-            if self._w: self._w.show_notif()
+            if self._w:
+                self._w.show_notif()
 
     def _on_saved_toggle(self, btn):
         if self.lists_stack.get_visible_child_name() == "main":
@@ -386,14 +487,27 @@ class BluetoothConnections(Box):
             btn.remove_style_class("pressed")
 
     def _attach_dev_signals(self, dev):
-        if not hasattr(dev, "_signals_attached"):
-            dev._signals_attached = []
-            for sig in ("notify::connected", "notify::paired", "notify::trusted", "notify::name", "notify::alias"):
-                try: dev._signals_attached.append(dev.connect(sig, self._sched))
-                except TypeError: pass
+        if getattr(dev, "_bt_signals_connected", False):
+            return
+        try:
+            dev._bt_signals_connected = True
+        except (AttributeError, TypeError):
+            return
+        for sig in (
+            "notify::connected",
+            "notify::paired",
+            "notify::trusted",
+            "notify::name",
+            "notify::alias",
+        ):
+            try:
+                dev.connect(sig, self._sched)
+            except (TypeError, Exception):
+                pass
 
-    def _sched(self, *_):
-        if not self._rid: self._rid = GLib.timeout_add(300, self._ref)
+    def _sched(self, *_args):
+        if self._rid is None:
+            self._rid = GLib.timeout_add(300, self._ref)
 
     def _req_ref(self):
         self._sched()
@@ -401,86 +515,115 @@ class BluetoothConnections(Box):
 
     def _ref(self):
         self._rid = None
-        en = self._get_pwr()
-        
-        self.stack.set_visible_child_name("on" if en else "off")
-        if not en: return False
 
-        devs = getattr(self._cl, "devices", {})
+        if not self._cl:
+            return False
+
+        enabled = self._get_pwr()
+        self.stack.set_visible_child_name("on" if enabled else "off")
+        if not enabled:
+            return False
+
+        devs = getattr(self._cl, "devices", None)
+        if devs is None:
+            return False
+
         dev_list = devs.values() if isinstance(devs, dict) else devs
 
-        cd, ad, sd = [], [], []
-        
+        connected_devs, available_devs, saved_devs = [], [], []
+
         for dev in dev_list:
-            real_name = _get_dev_name(dev)
-            if not real_name: continue
-                
+            if not _get_dev_name(dev):
+                continue
+
             self._attach_dev_signals(dev)
-            
-            c = getattr(dev, "connected", False)
+
+            is_conn = getattr(dev, "connected", False)
             known = getattr(dev, "paired", False) or getattr(dev, "trusted", False)
 
-            if c: cd.append(dev)
-            if known: sd.append(dev)
-            if not c and not known: ad.append(dev)
+            if is_conn:
+                connected_devs.append(dev)
+            if known:
+                saved_devs.append(dev)
+            if not is_conn and not known:
+                available_devs.append(dev)
 
-        cd.sort(key=lambda d: (_get_dev_name(d) or "").lower())
-        sd.sort(key=lambda d: (not getattr(d, 'connected', False), (_get_dev_name(d) or "").lower()))
-        ad.sort(key=lambda d: (_get_dev_name(d) or "").lower())
+        name_key = lambda d: (_get_dev_name(d) or "").lower()
+        connected_devs.sort(key=name_key)
+        available_devs.sort(key=name_key)
+        saved_devs.sort(key=lambda d: (not getattr(d, "connected", False), (_get_dev_name(d) or "").lower()))
 
-        self._ubox(self.connected_box, self._slots["connected"], cd, "connected")
-        self._ubox(self.avail_box, self._slots["avail"], ad, "avail")
-        self._ubox(self.saved_box, self._slots["saved"], sd, "saved")
+        self._ubox(self.connected_box, self._slots["connected"], connected_devs, "connected")
+        self._ubox(self.avail_box, self._slots["avail"], available_devs, "avail")
+        self._ubox(self.saved_box, self._slots["saved"], saved_devs, "saved")
 
         self._update_visibility()
         return False
 
     def _ubox(self, box, pool, data, list_type):
-        n, e = len(data), len(pool)
-        while len(pool) < n:
+        needed = len(data)
+
+        while len(pool) < needed:
             slot = BTSlot(self._cl, self)
             pool.append(slot)
             box.add(slot)
-        for i in range(n, e):
+
+        for i in range(needed, len(pool)):
             pool[i].hide()
+
         for i, dev in enumerate(data):
             pool[i].update(dev, list_type)
             pool[i].show_all()
-            pool[i]._upd() 
+            pool[i]._upd()
 
     def _update_visibility(self):
-        def count_vis(box): return sum(1 for child in box.get_children() if child.get_visible())
-        
-        self.connected_box.set_visible(count_vis(self.connected_box) > 0)
+        def count_visible(box):
+            return sum(1 for c in box.get_children() if c.get_visible())
+
+        self.connected_box.set_visible(count_visible(self.connected_box) > 0)
         self.avail_section.set_visible(True)
-        
-        if count_vis(self.avail_box) > 0:
+
+        if count_visible(self.avail_box) > 0:
             self.avail_stack.set_visible_child_name("list")
         else:
             self.avail_stack.set_visible_child_name("empty")
 
     def _get_pwr(self):
         try:
-            bd = "/sys/class/rfkill/"
-            for d in os.listdir(bd):
-                if os.path.exists(t_p := os.path.join(bd, d, "type")):
-                    with open(t_p, "r") as f:
-                        if f.read().strip() == "bluetooth":
-                            with open(os.path.join(bd, d, "state"), "r") as sf: return sf.read().strip() == "1"
-        except Exception: pass
+            rfkill_dir = "/sys/class/rfkill/"
+            if not os.path.isdir(rfkill_dir):
+                return False
+            for entry in os.listdir(rfkill_dir):
+                type_path = os.path.join(rfkill_dir, entry, "type")
+                state_path = os.path.join(rfkill_dir, entry, "state")
+                if not os.path.exists(type_path):
+                    continue
+                with open(type_path, "r") as f:
+                    if f.read().strip() != "bluetooth":
+                        continue
+                if not os.path.exists(state_path):
+                    continue
+                with open(state_path, "r") as sf:
+                    return sf.read().strip() == "1"
+        except Exception:
+            pass
         return False
 
-    def _turn_on_bt(self, *_):
-        if self._btns and hasattr(self._btns, '_on_toggle_click'):
-            if not self._btns._en: self._btns._on_toggle_click()
+    def _turn_on_bt(self, *_args):
+        if self._btns and hasattr(self._btns, "_on_toggle_click"):
+            if not getattr(self._btns, "_en", True):
+                self._btns._on_toggle_click()
         else:
-            try: GLib.spawn_command_line_async("rfkill unblock bluetooth")
-            except Exception: pass
+            try:
+                GLib.spawn_command_line_async("rfkill unblock bluetooth")
+            except Exception:
+                pass
         GLib.timeout_add(350, self._on_en)
 
-    def _on_scan_toggle(self, *_):
-        if self._scan: return
-        
+    def _on_scan_toggle(self, *_args):
+        if self._scan:
+            return
+
         if not self._get_pwr():
             self._turn_on_bt()
             GLib.timeout_add(800, self._do_scan)
@@ -491,9 +634,12 @@ class BluetoothConnections(Box):
         self._scan = True
         self._sc_lbl.get_style_context().add_class("scanning")
         self._sc_btn.get_style_context().add_class("scanning")
-        
-        GLib.spawn_command_line_async("bluetoothctl --timeout 4 scan on")
-        
+
+        try:
+            GLib.spawn_command_line_async("bluetoothctl --timeout 4 scan on")
+        except Exception:
+            pass
+
         GLib.timeout_add(4000, self._stop_scan)
         return False
 
@@ -501,25 +647,37 @@ class BluetoothConnections(Box):
         self._scan = False
         self._sc_lbl.get_style_context().remove_class("scanning")
         self._sc_btn.get_style_context().remove_class("scanning")
-        
-        GLib.spawn_command_line_async("bluetoothctl scan off")
+
+        try:
+            GLib.spawn_command_line_async("bluetoothctl scan off")
+        except Exception:
+            pass
         return False
 
-    def _on_en(self, *_):
-        en = self._get_pwr()
-        self.stack.set_visible_child_name("on" if en else "off")
-        
-        if en:
+    def _on_en(self, *_args):
+        enabled = self._get_pwr()
+        self.stack.set_visible_child_name("on" if enabled else "off")
+
+        if enabled:
             self._sched()
-            
-        if self._btns and hasattr(self._btns, 'update_state'): GLib.idle_add(self._btns.update_state)
+
+        if self._btns and hasattr(self._btns, "update_state"):
+            GLib.idle_add(self._btns.update_state)
         return False
 
     def cleanup(self):
-        if self._rid: 
+        if self._rid:
             GLib.source_remove(self._rid)
             self._rid = None
+
         for pool in self._slots.values():
-            for slot in pool: slot.destroy()
+            for slot in pool:
+                try:
+                    slot.destroy()
+                except Exception:
+                    pass
             pool.clear()
-        self._cl = self._w = self._btns = None
+
+        self._cl = None
+        self._w = None
+        self._btns = None
