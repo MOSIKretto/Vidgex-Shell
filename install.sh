@@ -176,6 +176,31 @@ declare -A MSG_RU=(
   ["retry_skipping"]="Пропуск шага"
   ["retry_aborting"]="Установка прервана пользователем."
   ["retry_success"]="Шаг выполнен успешно"
+  # ── NEW: Network / Packages ──
+  ["net_checking"]="Проверка подключения к интернету..."
+  ["net_ok"]="Интернет доступен"
+  ["net_waiting"]="Ожидание подключения к сети..."
+  ["net_unavailable"]="Нет подключения к интернету"
+  ["pacman_locked"]="База pacman заблокирована, ожидание..."
+  ["pacman_lock_removed"]="Блокировка pacman снята принудительно"
+  ["pkg_sync_db"]="Синхронизация базы пакетов..."
+  ["pkg_sync_ok"]="База пакетов синхронизирована"
+  ["pkg_bulk_install"]="Массовая установка пакетов..."
+  ["pkg_checking_installed"]="Проверка установленных пакетов..."
+  ["pkg_already_ok"]="Все пакеты уже установлены!"
+  ["pkg_missing_count"]="Не установлено пакетов:"
+  ["pkg_retrying_singles"]="Повторная установка пакетов по одному..."
+  ["pkg_single_attempt"]="Установка"
+  ["pkg_single_ok"]="установлен ✓"
+  ["pkg_single_fail"]="не удалось установить"
+  ["pkg_final_verify"]="Финальная проверка всех пакетов..."
+  ["pkg_all_ok"]="Все пакеты установлены и верифицированы!"
+  ["pkg_still_missing"]="Не удалось установить пакеты:"
+  ["pkg_net_retry"]="Нет сети — повтор через"
+  ["download_attempt"]="Скачивание (попытка"
+  ["shell_not_found"]="main.py не найден"
+  ["shell_started"]="Vidgex-Shell запущен!"
+  ["shell_failed"]="Не удалось запустить Vidgex-Shell"
 )
 
 declare -A MSG_EN=(
@@ -271,6 +296,31 @@ declare -A MSG_EN=(
   ["retry_skipping"]="Skipping step"
   ["retry_aborting"]="Installation aborted by user."
   ["retry_success"]="Step completed successfully"
+  # ── NEW: Network / Packages ──
+  ["net_checking"]="Checking internet connection..."
+  ["net_ok"]="Internet available"
+  ["net_waiting"]="Waiting for network connection..."
+  ["net_unavailable"]="No internet connection"
+  ["pacman_locked"]="Pacman database is locked, waiting..."
+  ["pacman_lock_removed"]="Pacman lock removed forcefully"
+  ["pkg_sync_db"]="Syncing package database..."
+  ["pkg_sync_ok"]="Package database synced"
+  ["pkg_bulk_install"]="Bulk installing packages..."
+  ["pkg_checking_installed"]="Checking installed packages..."
+  ["pkg_already_ok"]="All packages already installed!"
+  ["pkg_missing_count"]="Missing packages:"
+  ["pkg_retrying_singles"]="Retrying missing packages individually..."
+  ["pkg_single_attempt"]="Installing"
+  ["pkg_single_ok"]="installed ✓"
+  ["pkg_single_fail"]="failed to install"
+  ["pkg_final_verify"]="Final verification of all packages..."
+  ["pkg_all_ok"]="All packages installed and verified!"
+  ["pkg_still_missing"]="Failed to install packages:"
+  ["pkg_net_retry"]="No network — retrying in"
+  ["download_attempt"]="Downloading (attempt"
+  ["shell_not_found"]="main.py not found"
+  ["shell_started"]="Vidgex-Shell started!"
+  ["shell_failed"]="Failed to start Vidgex-Shell"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -293,6 +343,145 @@ print_error()   { echo -e "${RED}[✗]${NC} $1"; }
 print_step()    { echo -e "\n${PURPLE}[→]${NC} ${BOLD}$1${NC}"; }
 print_separator() {
   echo -e "${GRAY}══════════════════════════════════════════════════════════════════${NC}"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# СЕТЕВЫЕ УТИЛИТЫ — проверка и ожидание интернета
+# ═══════════════════════════════════════════════════════════════════════════════
+
+check_network() {
+  local hosts=("archlinux.org" "github.com" "google.com" "1.1.1.1")
+  for h in "${hosts[@]}"; do
+    if ping -c1 -W3 "$h" &>/dev/null; then
+      return 0
+    fi
+  done
+  # fallback через curl
+  if curl -sf --max-time 5 https://archlinux.org >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+wait_for_network() {
+  local max_wait="${1:-120}"
+  local interval=5
+  local waited=0
+
+  if check_network; then return 0; fi
+
+  print_warning "$(msg "net_waiting")"
+  while [ $waited -lt $max_wait ]; do
+    sleep $interval
+    waited=$((waited + interval))
+    if check_network; then
+      print_success "$(msg "net_ok")"
+      return 0
+    fi
+    echo -e "  ${GRAY}…${waited}s / ${max_wait}s${NC}"
+  done
+
+  print_error "$(msg "net_unavailable") (${max_wait}s timeout)"
+  return 1
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PACMAN УТИЛИТЫ — блокировка, синхронизация базы
+# ═══════════════════════════════════════════════════════════════════════════════
+
+wait_for_pacman_lock() {
+  local lock="/var/lib/pacman/db.lck"
+  local max_wait=300
+  local waited=0
+
+  while [ -f "$lock" ] && [ $waited -lt $max_wait ]; do
+    if [ $waited -eq 0 ]; then
+      print_warning "$(msg "pacman_locked")"
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+
+  if [ -f "$lock" ]; then
+    print_warning "$(msg "pacman_lock_removed")"
+    sudo rm -f "$lock"
+  fi
+}
+
+sync_package_database() {
+  local max=5
+  for ((i=1; i<=max; i++)); do
+    wait_for_pacman_lock
+    if sudo pacman -Syy --noconfirm 2>/dev/null; then
+      print_success "$(msg "pkg_sync_ok")"
+      return 0
+    fi
+    print_warning "pacman -Syy failed ($i/$max)"
+    sleep $((i * 2))
+    wait_for_network 30 || true
+  done
+  print_error "$(msg "pkg_sync_db") — all attempts failed"
+  return 1
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ПАКЕТНЫЕ УТИЛИТЫ — проверка, одиночная установка
+# ═══════════════════════════════════════════════════════════════════════════════
+
+is_package_installed() {
+  pacman -Qq "$1" &>/dev/null 2>&1
+}
+
+install_single_package() {
+  local pkg="$1"
+  local max_attempts="${2:-5}"
+
+  if is_package_installed "$pkg"; then return 0; fi
+
+  for ((a=1; a<=max_attempts; a++)); do
+    echo -ne "  ${CYAN}[$a/$max_attempts]${NC} $(msg "pkg_single_attempt") ${BOLD}$pkg${NC} … "
+
+    if ! check_network; then
+      echo ""
+      print_warning "$(msg "pkg_net_retry") 10s …"
+      wait_for_network 30 || true
+    fi
+
+    wait_for_pacman_lock
+
+    if $aur_helper -S --needed --noconfirm "$pkg" >/dev/null 2>&1; then
+      echo -e "${GREEN}$(msg "pkg_single_ok")${NC}"
+      return 0
+    fi
+
+    echo -e "${RED}✗${NC}"
+
+    # прогрессивная задержка
+    if [ $a -lt $max_attempts ]; then
+      sleep $((a * 3))
+    fi
+  done
+
+  print_error "$pkg — $(msg "pkg_single_fail") ($max_attempts attempts)"
+  return 1
+}
+
+download_with_retry() {
+  local url="$1"
+  local output="$2"
+  local max="${3:-5}"
+
+  for ((a=1; a<=max; a++)); do
+    print_info "$(msg "download_attempt") $a/$max) …"
+    if curl -L --fail --retry 3 --retry-delay 5 \
+            --connect-timeout 15 --max-time 300 \
+            -o "$output" "$url"; then
+      return 0
+    fi
+    wait_for_network 30 || true
+    sleep $((a * 2))
+  done
+  return 1
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -479,7 +668,7 @@ show_animated_banner() {
       glitched="$(printf '█%.0s' {1..105})"
     else
       glitched="${line// /█}"
-      glitched="${glitched//���/▓}"
+      glitched="${glitched//═/▓}"
       glitched="${glitched//║/▒}"
     fi
 
@@ -567,6 +756,9 @@ step_install_git() {
     return 0
   fi
 
+  wait_for_network 60 || { print_error "$(msg "net_unavailable")"; return 1; }
+  wait_for_pacman_lock
+
   print_info "$(msg "installing_git")"
   if ! sudo pacman -S --noconfirm git; then
     print_error "Failed to install git"
@@ -589,6 +781,8 @@ step_clone_repo() {
   print_step "$(msg "cloning_repo")"
   echo -e "         ${GRAY}$REPO_URL${NC}"
   echo -e "         ${GRAY}branch: ${CYAN}$REPO_BRANCH${NC}"
+
+  wait_for_network 60 || { print_error "$(msg "net_unavailable")"; return 1; }
 
   if [ -d "$INSTALL_DIR" ]; then
     print_warning "$(msg "repo_exists")"
@@ -633,6 +827,12 @@ step_clone_repo() {
     echo -e "         ${GRAY}→ $INSTALL_DIR${NC}"
   fi
 
+  if [ ! -f "$INSTALL_DIR/main.py" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
+    print_error "Repository directory exists but looks empty/broken"
+    rm -rf "$INSTALL_DIR"
+    return 1
+  fi
+
   return 0
 }
 
@@ -654,10 +854,13 @@ step_install_aur_helper() {
     return 0
   fi
 
+  wait_for_network 60 || { print_error "$(msg "net_unavailable")"; return 1; }
+
   print_info "$(msg "installing_yay")"
 
   if ! pacman -Qq base-devel &>/dev/null; then
     print_info "Installing base-devel..."
+    wait_for_pacman_lock
     if ! sudo pacman -S --needed --noconfirm base-devel; then
       print_error "Failed to install base-devel"; return 1
     fi
@@ -687,18 +890,90 @@ step_install_aur_helper() {
   return 0
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 4: ПАКЕТЫ
-# ═══════════════════════════════════════════════════════════════════════════════
 step_install_packages() {
   print_step "$(msg "installing_packages")"
-  echo -e "         ${GRAY}hyprland, fabric, tesseract, python-evdev...${NC}"
+  local total=${#PACKAGES[@]}
+  echo -e "         ${GRAY}Packages to process: ${WHITE}${total}${NC}"
 
-  if ! $aur_helper -Syy --needed --noconfirm "${PACKAGES[@]}"; then
-    print_error "Package installation failed"
+  wait_for_network 60 || { print_error "$(msg "net_unavailable")"; return 1; }
+  wait_for_pacman_lock
+
+  print_info "$(msg "pkg_sync_db")"
+  sync_package_database || {
+    print_warning "DB sync had issues, continuing anyway…"
+  }
+
+  print_info "$(msg "pkg_checking_installed")"
+  local already=0
+  local need_install=()
+  for pkg in "${PACKAGES[@]}"; do
+    if is_package_installed "$pkg"; then
+      already=$((already + 1))
+    else
+      need_install+=("$pkg")
+    fi
+  done
+
+  echo -e "  ${GREEN}✓ Installed:${NC} $already / $total"
+  echo -e "  ${YELLOW}↓ To install:${NC} ${#need_install[@]} / $total"
+
+  if [ ${#need_install[@]} -eq 0 ]; then
+    print_success "$(msg "pkg_already_ok")"
+    return 0
+  fi
+
+  print_info "$(msg "pkg_bulk_install")"
+  wait_for_pacman_lock
+  $aur_helper -S --needed --noconfirm "${need_install[@]}" 2>&1 || true
+
+  print_info "$(msg "pkg_checking_installed")"
+  local still_missing=()
+  for pkg in "${need_install[@]}"; do
+    if ! is_package_installed "$pkg"; then
+      still_missing+=("$pkg")
+    fi
+  done
+
+  if [ ${#still_missing[@]} -eq 0 ]; then
+    print_success "$(msg "pkg_all_ok")"
+    return 0
+  fi
+
+  echo -e "  ${YELLOW}$(msg "pkg_missing_count")${NC} ${RED}${#still_missing[@]}${NC}"
+  for pkg in "${still_missing[@]}"; do
+    echo -e "    ${RED}•${NC} $pkg"
+  done
+
+  print_info "$(msg "pkg_retrying_singles")"
+  local final_failed=()
+
+  for pkg in "${still_missing[@]}"; do
+    if ! install_single_package "$pkg" 5; then
+      final_failed+=("$pkg")
+    fi
+  done
+
+  print_info "$(msg "pkg_final_verify")"
+  local verify_failed=()
+  for pkg in "${PACKAGES[@]}"; do
+    if ! is_package_installed "$pkg"; then
+      if ! $aur_helper -S --needed --noconfirm "$pkg" >/dev/null 2>&1; then
+        verify_failed+=("$pkg")
+      fi
+    fi
+  done
+
+  if [ ${#verify_failed[@]} -gt 0 ]; then
+    echo ""
+    print_error "$(msg "pkg_still_missing") (${#verify_failed[@]}):"
+    for pkg in "${verify_failed[@]}"; do
+      echo -e "    ${RED}✗${NC} $pkg"
+    done
     return 1
   fi
 
+  echo ""
+  echo -e "  ${GREEN}${BOLD}$total / $total${NC} ${GREEN}$(msg "pkg_all_ok")${NC}"
   print_success "$(msg "installing_packages")"
   return 0
 }
@@ -759,6 +1034,7 @@ step_detect_gpu() {
   case "$gpu_vendor" in
     nvidia)
       print_info "$(msg "gpu_installing_nvidia")"
+      wait_for_pacman_lock
       if ! $aur_helper -S --needed --noconfirm nvidia-utils 2>/dev/null; then
         print_warning "$(msg "gpu_nvidia_failed")"; return 1
       fi
@@ -776,6 +1052,7 @@ step_detect_gpu() {
       if pacman -Qq intel-gpu-tools &>/dev/null; then
         intel_installed=true
       else
+        wait_for_pacman_lock
         if sudo pacman -S --needed --noconfirm intel-gpu-tools 2>/dev/null; then
           intel_installed=true
         else
@@ -840,6 +1117,7 @@ step_install_fonts() {
 
   if ! command -v ouch &>/dev/null; then
     print_info "Installing ouch for archive extraction..."
+    wait_for_pacman_lock
     if ! $aur_helper -S --needed --noconfirm ouch; then
       print_error "Failed to install ouch"; return 1
     fi
@@ -852,9 +1130,11 @@ step_install_fonts() {
   local temp_zip="/tmp/zed-sans-1.2.0.zip"
 
   if [ ! -d "$font_dir" ]; then
+    wait_for_network 60 || { print_error "$(msg "net_unavailable")"; return 1; }
+
     print_info "$(msg "downloading_fonts")"
-    if ! curl -L -o "$temp_zip" "$font_url"; then
-      print_error "Failed to download Zed Sans"; return 1
+    if ! download_with_retry "$font_url" "$temp_zip" 5; then
+      print_error "Failed to download Zed Sans after retries"; return 1
     fi
 
     print_info "$(msg "extracting_fonts")"
@@ -1054,6 +1334,11 @@ HYPR_EOF
     print_error "Failed to write hyprland.conf"; return 1
   fi
 
+  if ! grep -qF "Vidgex-Shell" "$HYPRLAND_CONF" 2>/dev/null; then
+    print_error "Verification failed: config was not written correctly"
+    return 1
+  fi
+
   print_success "$(msg "hyprland_created")"
   echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
   return 0
@@ -1170,6 +1455,32 @@ SVCEOF
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ШАГ 10: ЗАПУСК VIDGEX-SHELL
+# ═══════════════════════════════════════════════════════════════════════════════
+step_start_shell() {
+  print_step "$(msg "starting_shell")"
+
+  killall vidgex-shell 2>/dev/null || true
+
+  if [ ! -f "$INSTALL_DIR/main.py" ]; then
+    print_error "$(msg "shell_not_found"): $INSTALL_DIR/main.py"
+    return 1
+  fi
+
+  python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
+  disown
+
+  sleep 2
+  if pgrep -f "$INSTALL_DIR/main.py" >/dev/null 2>&1; then
+    print_success "$(msg "shell_started")"
+    return 0
+  fi
+
+  print_warning "$(msg "shell_failed") — process not detected (may start on Hyprland reload)"
+  return 0   # не фатально, заработает после перелогина
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ОСНОВНОЙ СКРИПТ
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1187,7 +1498,7 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ПОСЛЕДОВАТЕЛЬНЫЙ ЗАПУСК С RETRY (без пауз)
+# ПОСЛЕДОВАТЕЛЬНЫЙ ЗАПУСК С RETRY
 # ═══════════════════════════════════════════════════════════════════════════════
 
 retry_step  "Git"                     step_install_git          5
@@ -1199,27 +1510,7 @@ retry_step  "Fonts"                   step_install_fonts        5
 retry_step  "Network"                 step_configure_network    5
 retry_step  "Hyprland config"         step_configure_hyprland   5
 retry_step  "Autolayout"              step_configure_autolayout 5
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 10: ЗАПУСК VIDGEX-SHELL
-# ═══════════════════════════════════════════════════════════════════════════════
-print_step "$(msg "starting_shell")"
-
-  killall vidgex-shell 2>/dev/null || true
-
-  if [ ! -f "$INSTALL_DIR/main.py" ]; then
-    print_error "main.py not found at $INSTALL_DIR/main.py"
-    return 1
-  fi
-
-  python "$INSTALL_DIR/main.py" >/dev/null 2>&1 &
-  disown
-
-  sleep 1
-  if pgrep -f "$INSTALL_DIR/main.py" >/dev/null 2>&1; then
-    print_success "Vidgex-Shell started!"
-    return 0
-  fi
+retry_step  "Start Vidgex-Shell"      step_start_shell          5
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ЗАВЕРШЕНИЕ
