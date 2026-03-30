@@ -10,9 +10,12 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.eventbox import EventBox
 
+import gi
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk
 
 from modules.Notch.MainWindow.Dashboard.buttons import AutolayoutButton
+from modules.Bar.powerMenu import PowerMenu
 from modules.Bar.metrics import Battery, MetricsSmall
 from modules.Bar.systemtray import SystemTray
 from modules.Bar.workspaces import TopWorkspaces, SideBarWindow, _hov
@@ -22,35 +25,28 @@ import services.icons as icons
 
 
 def _hand_cursor(widget):
-    widget.add_events(
-        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-    )
-    _cursors = [None, None]
+    def _set(w, _):
+        win = w.get_window()
+        if win: win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
+        return False
 
-    def _ensure(w):
-        if _cursors[0] is None:
-            d = w.get_display()
-            _cursors[0] = Gdk.Cursor.new_from_name(d, "pointer")
-            _cursors[1] = Gdk.Cursor.new_from_name(d, "default")
+    def _reset(w, _):
+        win = w.get_window()
+        if win: win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "default"))
+        return False
 
-    def _set(w, idx):
-        _ensure(w)
-        top = w.get_toplevel()
-        if top and top.get_window():
-            top.get_window().set_cursor(_cursors[idx])
-
-    widget.connect("enter-notify-event",
-                   lambda w, e: (e.detail != Gdk.NotifyType.INFERIOR and _set(w, 0)) or False)
-    widget.connect("leave-notify-event",
-                   lambda w, e: (e.detail != Gdk.NotifyType.INFERIOR and _set(w, 1)) or False)
-    widget.connect("clicked", lambda w, *_: _set(w, 1))
+    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK | Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+    widget.connect("enter-notify-event", _set)
+    widget.connect("leave-notify-event", _reset)
+    widget.connect("button-press-event", _set)
+    widget.connect("button-release-event", _set)
 
 
 class Bar(Window):
     __slots__ = (
         "mid", "notch", "lang", "conn", "ws", "wsc",
         "tray", "rl", "met", "rr", "ll", "dt", "bat", "bp",
-        "sidebar"
+        "sidebar", "power_menu"
     )
 
     def __init__(self, monitor_id=0, **kwargs):
@@ -65,6 +61,8 @@ class Bar(Window):
 
         self.sidebar = SideBarWindow(conn=self.conn, monitor_id=self.mid)
         self.sidebar.show_all()
+
+        self.power_menu = PowerMenu(monitor=self.mid)
 
         self._build()
         self.lang.connect("notify::label", self._lchg)
@@ -95,6 +93,8 @@ class Bar(Window):
         )
         _hov(self.bp)
         _hand_cursor(self.bp)
+        
+        self.power_menu.set_trigger_button(self.bp)
 
         self.ll = Label(name="lang-label")
 
@@ -144,13 +144,19 @@ class Bar(Window):
             self.ll.set_label(l[:3].upper())
 
     def _pwr(self, *_):
-        if self.notch:
-            self.notch.open_notch("power")
+        if self.power_menu.is_open():
+            self.power_menu.close()
+        else:
+            self.power_menu.open()
 
     def cleanup(self):
         if self.sidebar:
             self.sidebar.destroy()
             self.sidebar = None
+        if self.power_menu:
+            self.power_menu.cleanup()
+            self.power_menu.destroy()
+            self.power_menu = None
         if hasattr(self.tray, 'cleanup'): self.tray.cleanup()
         if hasattr(self.bat, 'cleanup'): self.bat.cleanup()
         self.notch = self.conn = self.lang = None

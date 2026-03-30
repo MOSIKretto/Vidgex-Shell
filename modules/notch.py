@@ -17,7 +17,6 @@ from modules.Notch.mainWindow import MainWindow
 from modules.Notch.clipHist import ClipHistory
 from modules.Notch.appLauncher import AppLauncher
 from modules.Notch.overview import Overview
-from modules.Notch.powerMenu import PowerMenu
 from modules.Notch.toolBox import ToolBox
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
@@ -42,23 +41,24 @@ WIDGET_REGISTRY = {
     "launcher":    (AppLauncher, (480, 244)),
     "cliphist":    (ClipHistory, (480, 244)),
     "overview":    (Overview, None),
-    "power":       (PowerMenu, None),
     "tools":       (ToolBox, None),
 }
-NOTCH_INJECTED = {"main_window", "launcher", "power", "cliphist", "tools"}
+NOTCH_INJECTED = {"main_window", "launcher", "cliphist", "tools"}
 
 APPLET_MAP = {
     "network_applet": "network_connections",
     "bluetooth": "bluetooth",
     "dashboard": "notification_history",
 }
-SIMPLE_VIEWS = {"overview", "power", "tools"}
+SIMPLE_VIEWS = {"overview", "tools"}
 DASHBOARD_SECTIONS = {"wallpapers", "player"}
 
 _apps, _app_map, _theme = [], {}, Gtk.IconTheme.get_default()
 
+
 def _norm(name):
     return name.lower().strip().rsplit(".", 1)[-1] if name else ""
+
 
 def _refresh():
     global _apps
@@ -68,6 +68,7 @@ def _refresh():
         for k in filter(None, (app.name, app.display_name)):
             _app_map.setdefault(k.lower(), app)
             _app_map.setdefault(_norm(k), app)
+
 
 def _find(name):
     if not name:
@@ -81,10 +82,12 @@ def _find(name):
             if seg in _app_map:
                 return _app_map[seg]
     for app in _apps:
-        an, ad = (app.name or "").lower(), (app.display_name or "").lower()
+        an = (app.name or "").lower()
+        ad = (app.display_name or "").lower()
         if n in an or an in n or n in ad or ad in n:
             return app
     return None
+
 
 def _icon(cls, size):
     app = _find(cls)
@@ -103,6 +106,7 @@ def _icon(cls, size):
         except Exception:
             pass
     return None
+
 
 _refresh()
 
@@ -136,7 +140,12 @@ class Notch(Window):
 
     def _get_or_create(self, key):
         if key not in self._wc:
-            cls, size = WIDGET_REGISTRY[key]
+            entry = WIDGET_REGISTRY.get(key)
+            if not entry:
+                return None
+            cls, size = entry
+            if cls is None:
+                return None
             w = cls(notch=self) if key in NOTCH_INJECTED else cls()
             if size:
                 w.set_size_request(*size)
@@ -144,23 +153,43 @@ class Notch(Window):
             self._wc[key] = w
         return self._wc[key]
 
+    def register_widget(self, name, widget, size=None):
+        if name in self._wc:
+            return
+        if size:
+            widget.set_size_request(*size)
+        self.stack.add_named(widget, name)
+        self._wc[name] = widget
+
     @property
-    def main_window(self): return self._get_or_create("main_window")
+    def main_window(self):
+        return self._get_or_create("main_window")
+
     @property
-    def launcher(self): return self._get_or_create("launcher")
+    def launcher(self):
+        return self._get_or_create("launcher")
+
     @property
-    def overview(self): return self._get_or_create("overview")
+    def overview(self):
+        return self._get_or_create("overview")
+
     @property
-    def power(self): return self._get_or_create("power")
+    def cliphist(self):
+        return self._get_or_create("cliphist")
+
     @property
-    def cliphist(self): return self._get_or_create("cliphist")
-    @property
-    def tools(self): return self._get_or_create("tools")
+    def tools(self):
+        return self._get_or_create("tools")
 
     def _build(self):
-        self.win_ic = Image(name="notch-window-icon", icon_name=FALLBACK_ICON, icon_size=ICON_SIZE)
+        self.win_ic = Image(
+            name="notch-window-icon", icon_name=FALLBACK_ICON, icon_size=ICON_SIZE,
+        )
         self.ws_lbl = Label(name="workspace-label", label="Workspace 1")
-        self.awc = Box(name="active-window-container", spacing=SPACING, children=[self.win_ic, self.ws_lbl])
+        self.awc = Box(
+            name="active-window-container", spacing=SPACING,
+            children=[self.win_ic, self.ws_lbl],
+        )
         self.awb = Box(name="active-window-box", h_align="center", children=[self.awc])
 
         self.cs = Stack(name="notch-compact-stack", transition_type="slide-up-down")
@@ -168,18 +197,28 @@ class Notch(Window):
 
         self.ctrl = ControlSmall()
         self.ctrl_rev = Revealer(
-            name="control-revealer", transition_type="slide-down",
-            transition_duration=TRANSITION_MS, child_revealed=False,
-            child=Box(name="control-revealer-box", h_align="center", children=[self.ctrl]),
+            name="control-revealer",
+            transition_type="slide-down",
+            transition_duration=TRANSITION_MS,
+            child_revealed=False,
+            child=Box(
+                name="control-revealer-box", h_align="center", children=[self.ctrl],
+            ),
         )
 
         self.compact = Gtk.EventBox(name="notch-compact")
         self.compact.set_visible(True)
-        self.compact.add(Box(name="compact-content", orientation="v", children=[self.cs, self.ctrl_rev]))
+        self.compact.add(
+            Box(
+                name="compact-content", orientation="v",
+                children=[self.cs, self.ctrl_rev],
+            ),
+        )
         self.compact.set_size_request(COMPACT_WIDTH, -1)
 
         self.stack = Stack(
-            name="notch-content", transition_type="crossfade",
+            name="notch-content",
+            transition_type="crossfade",
             transition_duration=TRANSITION_MS,
         )
         self.stack.add_named(self.compact, "compact")
@@ -192,9 +231,15 @@ class Notch(Window):
 
         self.nb = CenterBox(
             name="notch-box",
-            start_children=Box(name="notch-corner-left", orientation="v", h_align="start", children=[MyCorner("top-right")]),
+            start_children=Box(
+                name="notch-corner-left", orientation="v", h_align="start",
+                children=[MyCorner("top-right")],
+            ),
             center_children=self.stack,
-            end_children=Box(name="notch-corner-right", orientation="v", h_align="end", children=[MyCorner("top-left")]),
+            end_children=Box(
+                name="notch-corner-right", orientation="v", h_align="end",
+                children=[MyCorner("top-left")],
+            ),
         )
         self.nb.add_style_class("notch")
 
@@ -203,13 +248,18 @@ class Notch(Window):
 
         self.heb = Gtk.EventBox(name="notch-hover-eventbox")
         self.heb.set_halign(Gtk.Align.CENTER)
-        self.heb.add(Box(name="notch-wrap", h_align="center", children=[
-            Box(name="notch-complete", children=[self.nr]),
-        ]))
+        self.heb.add(
+            Box(
+                name="notch-wrap", h_align="center",
+                children=[Box(name="notch-complete", children=[self.nr])],
+            ),
+        )
         self.heb.set_visible(True)
         self.heb.set_size_request(COMPACT_WIDTH, HOVER_HEIGHT)
 
-        self.add(Box(name="notch-root-container", h_align="center", children=[self.heb]))
+        self.add(
+            Box(name="notch-root-container", h_align="center", children=[self.heb]),
+        )
 
     def _bind(self):
         self.compact.connect("button-press-event", self._wclick)
@@ -218,7 +268,9 @@ class Notch(Window):
         self.compact.connect("scroll-event", self._cscr)
         self.awb.connect("button-press-event", self._wclick)
 
-        self.heb.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.heb.add_events(
+            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK,
+        )
         self.heb.connect("enter-notify-event", lambda *_: False)
         self.heb.connect("leave-notify-event", lambda *_: False)
 
@@ -240,7 +292,8 @@ class Notch(Window):
                 lambda *_, p=prop, a=attr: self._bind_dev(p, a),
             )
 
-        if (b := self._br.screen_brightness) != -1:
+        b = self._br.screen_brightness
+        if b != -1:
             self._lb = b
             self._br.connect("screen", self._brchg)
 
@@ -260,11 +313,12 @@ class Notch(Window):
         if not dev:
             return
         cur = dev.volume
-        if getattr(self, attr) is not None and abs(cur - getattr(self, attr)) > VOLUME_THRESHOLD:
+        prev = getattr(self, attr, None)
+        if prev is not None and abs(cur - prev) > VOLUME_THRESHOLD:
             self._showctrl()
         setattr(self, attr, cur)
 
-    def _brchg(self, *_):
+    def _brchg(self, *_args):
         if not self._init:
             return
         cur = self._br.screen_brightness
@@ -299,7 +353,10 @@ class Notch(Window):
         self._open(name)
 
     def toggle_notch(self, name):
-        self.close_notch() if self._cw == name else self._open(name)
+        if self._cw == name:
+            self.close_notch()
+        else:
+            self._open(name)
 
     def _open(self, name):
         self._cancel_ctrl()
@@ -312,33 +369,45 @@ class Notch(Window):
         if name in APPLET_MAP:
             self._show_dashboard(APPLET_MAP[name])
         elif name in DASHBOARD_SECTIONS:
-            self.stack.set_visible_child(self.main_window)
-            self.main_window.go_to_section(name)
+            mw = self.main_window
+            if mw:
+                self.stack.set_visible_child(mw)
+                mw.go_to_section(name)
         elif name in SIMPLE_VIEWS:
-            self.stack.set_visible_child(getattr(self, name))
+            widget = getattr(self, name, None)
+            if widget:
+                self.stack.set_visible_child(widget)
         elif name == "cliphist":
             ch = self.cliphist
-            self.stack.set_visible_child(ch)
-            ch.open()
+            if ch:
+                self.stack.set_visible_child(ch)
+                ch.open()
         elif name == "launcher":
             ln = self.launcher
-            self.stack.set_visible_child(ln)
-            ln.open()
-            if ent := getattr(ln, "ent", None):
-                ent.set_text("")
-                ent.grab_focus()
+            if ln:
+                self.stack.set_visible_child(ln)
+                ln.open()
+                ent = getattr(ln, "ent", None)
+                if ent:
+                    ent.set_text("")
+                    ent.grab_focus()
+        elif name in self._wc:
+            self.stack.set_visible_child(self._wc[name])
 
         self._cw = name
         self._setbar(False)
 
     def _show_dashboard(self, applet):
         mw = self.main_window
+        if not mw:
+            return
         self.stack.set_visible_child(mw)
         mw.go_to_section("dashboard")
         try:
-            tgt = getattr(mw.dashboard, applet, None)
+            db = mw.dashboard
+            tgt = getattr(db, applet, None)
             if tgt:
-                mw.dashboard.applet_stack.set_visible_child(tgt)
+                db.applet_stack.set_visible_child(tgt)
         except AttributeError:
             pass
 
@@ -360,52 +429,57 @@ class Notch(Window):
         self.stack.set_visible_child(self.compact)
         self._updwin()
 
-    def _setbar(self, v):
+    def _setbar(self, visible):
         if not self._bar:
             return
-        for a in ("rr", "rl"):
-            if r := getattr(self._bar, a, None):
-                r.set_reveal_child(v)
+        for attr in ("rr", "rl"):
+            rev = getattr(self._bar, attr, None)
+            if rev:
+                rev.set_reveal_child(visible)
 
-    def _wclick(self, *_):
+    def _wclick(self, *_args):
         self._cancel_ctrl()
         self.ctrl_rev.set_reveal_child(False)
         self.toggle_notch("dashboard")
         return True
 
-    def _bent(self, w, _):
-        if win := w.get_window():
+    def _bent(self, w, _event):
+        win = w.get_window()
+        if win:
             if not self._pointer_cursor:
-                self._pointer_cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
+                self._pointer_cursor = Gdk.Cursor.new_from_name(
+                    w.get_display(), "pointer",
+                )
             win.set_cursor(self._pointer_cursor)
         return True
 
-    def _blev(self, w, e):
-        if e.detail == Gdk.NotifyType.INFERIOR:
+    def _blev(self, w, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        if win := w.get_window():
+        win = w.get_window()
+        if win:
             win.set_cursor(None)
         return True
 
-    def _cscr(self, _, e):
-        ch = self.cs.get_children()
-        if not ch:
+    def _cscr(self, _widget, event):
+        children = self.cs.get_children()
+        if not children:
             return False
         try:
-            idx = ch.index(self.cs.get_visible_child())
+            idx = children.index(self.cs.get_visible_child())
         except ValueError:
             idx = 0
-        if e.direction == Gdk.ScrollDirection.UP:
-            idx = (idx - 1) % len(ch)
-        elif e.direction == Gdk.ScrollDirection.DOWN:
-            idx = (idx + 1) % len(ch)
+        if event.direction == Gdk.ScrollDirection.UP:
+            idx = (idx - 1) % len(children)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            idx = (idx + 1) % len(children)
         else:
             return False
-        self.cs.set_visible_child(ch[idx])
+        self.cs.set_visible_child(children[idx])
         return True
 
-    def _kp(self, _, e):
-        if e.keyval == Gdk.KEY_Escape:
+    def _kp(self, _widget, event):
+        if event.keyval == Gdk.KEY_Escape:
             self.close_notch()
             return True
         return False
@@ -439,9 +513,9 @@ class Notch(Window):
             self.awc.set_spacing(0)
 
     def toggle_hidden(self):
-        v = self.get_visible()
-        self.set_visible(not v)
-        if not v:
+        visible = self.get_visible()
+        self.set_visible(not visible)
+        if not visible:
             self._updwin()
 
     def cleanup(self):
@@ -454,8 +528,18 @@ class Notch(Window):
         self._sigs.clear()
         for w in self._wc.values():
             if hasattr(w, "cleanup"):
-                w.cleanup()
+                try:
+                    w.cleanup()
+                except Exception:
+                    pass
         self._wc.clear()
         if hasattr(self.ctrl, "cleanup"):
-            self.ctrl.cleanup()
-        self._conn = self._bar = self.audio = self._br = self._pointer_cursor = None
+            try:
+                self.ctrl.cleanup()
+            except Exception:
+                pass
+        self._conn = None
+        self._bar = None
+        self.audio = None
+        self._br = None
+        self._pointer_cursor = None

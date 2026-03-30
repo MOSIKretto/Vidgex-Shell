@@ -27,7 +27,6 @@ class UPowerManager:
         self.props_iface = "org.freedesktop.DBus.Properties"
 
     def _get_prop(self, path, iface, prop):
-        """Минималистичный помощник для получения свойств."""
         obj = self.bus.get_object(self.up_name, path)
         return obj.Get(iface, prop, dbus_interface=self.props_iface)
 
@@ -46,7 +45,6 @@ class UPowerManager:
     def get_full_device_information(self, battery):
         obj = self.bus.get_object(self.up_name, battery)
         all_props = obj.GetAll(f"{self.up_name}.Device", dbus_interface=self.props_iface)
-        # Используем заранее созданный словарь _DEFAULTS для скорости
         return {key: all_props.get(key, default) for key, default in self._DEFAULTS.items()}
     
     def is_lid_present(self):

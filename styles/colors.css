@@ -1,18 +1,18 @@
 :vars {
-    --foreground: #e6e1e9;
-    --background: #141318;
-    --cursor: #e6e1e9;
-    --primary: #cebdfe;
-    --on-primary: #35275d;
+    --foreground: #e9e3ef;
+    --background: #0f0d12;
+    --cursor: #e9e3ef;
+    --primary: #ccc0ec;
+    --on-primary: #443b5f;
     --secondary: #cbc3dc;
-    --on-secondary: #332e41;
-    --tertiary: #efb8c9;
-    --on-tertiary: #492533;
-    --surface: #141318;
-    --surface-bright: #3a383e;
-    --error: #ffb4ab;
-    --error-dim: #b57c53;
-    --outline: #938f99;
+    --on-secondary: #433d51;
+    --tertiary: #ffdbf3;
+    --on-tertiary: #6e4765;
+    --surface: #0f0d12;
+    --surface-bright: #2d2b34;
+    --error: #f97386;
+    --error-dim: #c45a69;
+    --outline: #78747e;
     --shadow: #000000;
-    --green: #64e29f;
+    --green: #2bb24b;
 }
