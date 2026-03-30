@@ -6,7 +6,7 @@ from fabric.widgets.revealer import Revealer
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, GLib
 
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
