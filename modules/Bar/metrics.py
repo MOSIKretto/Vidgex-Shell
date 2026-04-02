@@ -493,23 +493,25 @@ class BatteryButton(Button):
 
 
 class Battery(Box):
-    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low')
+    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low', '_auto_htim', '_pending_mode')
 
     def __init__(self, **kwargs):
         super().__init__(orientation='h', spacing=0, **kwargs)
         self.set_name('battery-container')
         self.auto, self.manual, self.last_chg, self.is_low = True, False, None, False
         self.mode, self.htim = 'balanced', None
+        self._auto_htim = None
+        self._pending_mode = None
         self.bs = self.bb = self.bp = None
         self.pmb = Box(name='power-mode-switcher', orientation='h', spacing=2)
-        
+
         threading.Thread(target=self._init_pm_async, daemon=True).start()
-        
+
         self.btn = BatteryButton(on_battery_changed=self._on_bat)
         self.pmr = Revealer(name='metrics-power-modes-revealer', transition_duration=250, transition_type='slide-left', child=self.pmb, child_revealed=False)
         self.add(self.btn)
         self.add(self.pmr)
-        
+
         for w in (self, self.btn, self.pmb):
             w.connect('enter-notify-event', self._ent)
             w.connect('leave-notify-event', self._lv)
@@ -535,7 +537,7 @@ class Battery(Box):
             _hov(btn)
             self.pmb.add(btn)
             setattr(self, 'bs' if mode == 'power-saver' else 'bb' if mode == 'balanced' else 'bp', btn)
-        
+
         self.pmb.show_all()
         self._upd_styles()
 
@@ -545,7 +547,7 @@ class Battery(Box):
             self.last_chg, self.manual = chg, False
         self.is_low = lvl <= 30
         if self.manual: return
-        
+
         tgt = ('performance' if self.bp else 'balanced') if chg else (('power-saver' if self.bs else 'balanced') if self.is_low else 'balanced')
         if tgt != self.mode: self._set(tgt, manual=False)
 
@@ -553,6 +555,10 @@ class Battery(Box):
         self._set(mode, manual=True)
 
     def _ent(self, *_):
+        if self._auto_htim:
+            GLib.source_remove(self._auto_htim)
+            self._auto_htim = None
+        self._pending_mode = None
         if self.htim:
             GLib.source_remove(self.htim)
             self.htim = None
@@ -566,16 +572,54 @@ class Battery(Box):
         return False
 
     def _hide(self):
+        if self._auto_htim or self._pending_mode:
+            self.htim = None
+            return False
         self.btn.rev.set_reveal_child(False)
         self.pmr.set_reveal_child(False)
         self.htim = None
         return False
 
     def _set(self, mode, manual=True):
-        if manual: self.manual = True
+        if manual:
+            self.manual = True
+            self.mode = mode
+            self._upd_styles()
+            exec_shell_command_async(f'powerprofilesctl set {mode}')
+        else:
+            self._auto_switch(mode)
+
+    def _auto_switch(self, mode):
+        if self._auto_htim:
+            GLib.source_remove(self._auto_htim)
+            self._auto_htim = None
+
+        self._pending_mode = mode
+
+        self.btn.rev.set_reveal_child(True)
+        self.pmr.set_reveal_child(True)
+
+        self._auto_htim = GLib.timeout_add(400, self._auto_apply)
+
+    def _auto_apply(self):
+        self._auto_htim = None
+        if not self._pending_mode:
+            return False
+
+        mode = self._pending_mode
+        self._pending_mode = None
         self.mode = mode
         self._upd_styles()
         exec_shell_command_async(f'powerprofilesctl set {mode}')
+
+        self._auto_htim = GLib.timeout_add(1500, self._auto_hide)
+        return False
+
+    def _auto_hide(self):
+        self._auto_htim = None
+        self.btn.rev.set_reveal_child(False)
+        self.pmr.set_reveal_child(False)
+        return False
 
     def _upd_styles(self):
         for btn in (self.bs, self.bb, self.bp):
