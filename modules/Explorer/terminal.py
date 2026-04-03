@@ -69,10 +69,9 @@ class TerminalMixin:
 
     @staticmethod
     def _algo_resolve_shell() -> str:
-        for shell in ["fish", "zsh", "bash"]:
-            path = shutil.which(shell)
-        if path:
-            return path
+        fish_path = shutil.which("fish")
+        if fish_path:
+            return fish_path
         return "/bin/bash"
 
     @staticmethod
