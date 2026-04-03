@@ -11,8 +11,7 @@ from fabric.widgets.circularprogressbar import CircularProgressBar
 from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.scale import Scale
-from fabric.utils import exec_shell_command_async
-from gi.repository import Gdk, GLib
+from gi.repository import Gdk, GLib, Gio
 
 from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 from modules.Bar.Metrics.upower import UPowerManager
@@ -493,22 +492,44 @@ class BatteryButton(Button):
 
 
 class Battery(Box):
-    __slots__ = ('btn', 'pmb', 'pmr', 'bs', 'bb', 'bp', 'mode', 'htim', 'auto', 'manual', 'last_chg', 'is_low', '_auto_htim', '_pending_mode')
+    __slots__ = (
+        'btn', 'pmb', 'pmr', 'mode', 'auto', 'manual', 
+        'last_chg', 'is_low', '_timer_id', '_auto_pending_mode', 
+        '_mode_btns', '_is_hovered', '_ui_ready', '_current_lvl', '_current_chg'
+    )
 
     def __init__(self, **kwargs):
         super().__init__(orientation='h', spacing=0, **kwargs)
         self.set_name('battery-container')
-        self.auto, self.manual, self.last_chg, self.is_low = True, False, None, False
-        self.mode, self.htim = 'balanced', None
-        self._auto_htim = None
-        self._pending_mode = None
-        self.bs = self.bb = self.bp = None
-        self.pmb = Box(name='power-mode-switcher', orientation='h', spacing=2)
+        
+        self.auto = True
+        self.manual = False
+        self.last_chg = None
+        self.is_low = False
+        self.mode = 'balanced'
+        
+        self._ui_ready = False
+        self._current_lvl = None
+        self._current_chg = None
+        
+        self._timer_id = None
+        self._auto_pending_mode = None
+        self._is_hovered = False
+        self._mode_btns = {} 
 
+        self.pmb = Box(name='power-mode-switcher', orientation='h', spacing=2)
+        
         threading.Thread(target=self._init_pm_async, daemon=True).start()
 
         self.btn = BatteryButton(on_battery_changed=self._on_bat)
-        self.pmr = Revealer(name='metrics-power-modes-revealer', transition_duration=250, transition_type='slide-left', child=self.pmb, child_revealed=False)
+        self.pmr = Revealer(
+            name='metrics-power-modes-revealer', 
+            transition_duration=250, 
+            transition_type='slide-left', 
+            child=self.pmb, 
+            child_revealed=False
+        )
+        
         self.add(self.btn)
         self.add(self.pmr)
 
@@ -518,114 +539,177 @@ class Battery(Box):
 
     def _init_pm_async(self):
         try:
-            out = subprocess.run(['powerprofilesctl', 'get'], capture_output=True, text=True).stdout.strip()
+            proc = subprocess.Popen(
+                ['powerprofilesctl', 'get'], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+            out, _ = proc.communicate()
+            out = out.strip()
             if out in ('power-saver', 'balanced', 'performance'):
                 self.mode = out
-        except Exception: pass
+        except Exception: 
+            pass
         GLib.idle_add(self._build_pm_ui)
 
     def _build_pm_ui(self):
-        for mode, name, icon, tip in (
+        profiles = (
             ('power-saver', 'battery-save', icons.power_saving, 'Saving'),
             ('balanced', 'battery-balanced', icons.power_balanced, 'Balanced'),
             ('performance', 'battery-performance', icons.power_performance, 'Performance')
-        ):
+        )
+
+        for mode, name, icon, tip in profiles:
             btn = Button(name=name, child=Label(name=f'{name}-label', markup=icon), tooltip_text=tip)
             btn.connect('clicked', self._on_mode_btn_clicked, mode)
             btn.connect('enter-notify-event', self._ent)
             btn.connect('leave-notify-event', self._lv)
             _hov(btn)
+            
             self.pmb.add(btn)
-            setattr(self, 'bs' if mode == 'power-saver' else 'bb' if mode == 'balanced' else 'bp', btn)
+            self._mode_btns[mode] = btn
 
         self.pmb.show_all()
+        self._ui_ready = True
+        
+        if self._current_chg is not None:
+            self._sync_initial_state()
+        else:
+            self._upd_styles()
+
+    def _sync_initial_state(self):
+        self.last_chg = self._current_chg
+        self.is_low = self._current_lvl <= 30
+        
+        tgt = 'performance' if self._current_chg else ('power-saver' if self.is_low else 'balanced')
+        
+        if self.mode != tgt:
+            self.mode = tgt
+            try:
+                Gio.Subprocess.new(['powerprofilesctl', 'set', tgt], Gio.SubprocessFlags.NONE)
+            except Exception:
+                pass
+                
         self._upd_styles()
 
     def _on_bat(self, lvl, chg):
-        if not self.auto: return
-        if self.last_chg is not chg:
-            self.last_chg, self.manual = chg, False
-        self.is_low = lvl <= 30
-        if self.manual: return
+        self._current_lvl = lvl
+        self._current_chg = chg
+        
+        if not self._ui_ready: 
+            return
+            
+        if self.last_chg is None:
+            self._sync_initial_state()
+            return
 
-        tgt = ('performance' if self.bp else 'balanced') if chg else (('power-saver' if self.bs else 'balanced') if self.is_low else 'balanced')
-        if tgt != self.mode: self._set(tgt, manual=False)
+        if not self.auto: 
+            return
+            
+        is_currently_low = lvl <= 30
+        hardware_triggered = False
+        
+        if self.last_chg is not chg:
+            self.last_chg = chg
+            self.manual = False
+            hardware_triggered = True 
+            
+        if not chg and is_currently_low and not self.is_low:
+            self.manual = False
+            hardware_triggered = True
+            
+        self.is_low = is_currently_low
+        
+        if self.manual and not hardware_triggered: 
+            return
+
+        tgt = 'performance' if chg else ('power-saver' if self.is_low else 'balanced')
+
+        if tgt != self.mode and tgt != self._auto_pending_mode: 
+            self._start_auto_switch_sequence(tgt)
+
+    def _start_auto_switch_sequence(self, mode):
+        if self._timer_id:
+            GLib.source_remove(self._timer_id)
+            
+        self._auto_pending_mode = mode
+        
+        self.btn.rev.set_reveal_child(True)
+        self.pmr.set_reveal_child(True)
+        
+        self._timer_id = GLib.timeout_add(300, self._apply_auto_switch)
+
+    def _apply_auto_switch(self):
+        if not self._auto_pending_mode:
+            return False
+            
+        mode = self._auto_pending_mode
+        self.mode = mode
+        self._upd_styles() 
+        
+        try:
+            Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
+        except Exception: 
+            pass
+            
+        self._auto_pending_mode = None
+        
+        if not self._is_hovered:
+            self._timer_id = GLib.timeout_add(2000, self._hide)
+        return False
 
     def _on_mode_btn_clicked(self, btn, mode):
-        self._set(mode, manual=True)
+        if self.mode == mode:
+            return
+            
+        self.manual = True
+        self.mode = mode
+        self._upd_styles()
+        
+        try:
+            Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
+        except Exception: 
+            pass
 
     def _ent(self, *_):
-        if self._auto_htim:
-            GLib.source_remove(self._auto_htim)
-            self._auto_htim = None
-        self._pending_mode = None
-        if self.htim:
-            GLib.source_remove(self.htim)
-            self.htim = None
+        self._is_hovered = True
+        
+        if self._timer_id:
+            GLib.source_remove(self._timer_id)
+            self._timer_id = None
+            
+        if self._auto_pending_mode:
+            self._apply_auto_switch()
+            
         self.btn.rev.set_reveal_child(True)
         self.pmr.set_reveal_child(True)
         return False
 
     def _lv(self, *_):
-        if self.htim: GLib.source_remove(self.htim)
-        self.htim = GLib.timeout_add(300, self._hide)
+        self._is_hovered = False
+        
+        if self._timer_id: 
+            GLib.source_remove(self._timer_id)
+            
+        self._timer_id = GLib.timeout_add(300, self._hide)
         return False
 
     def _hide(self):
-        if self._auto_htim or self._pending_mode:
-            self.htim = None
+        if self._auto_pending_mode or self._is_hovered:
             return False
+            
         self.btn.rev.set_reveal_child(False)
         self.pmr.set_reveal_child(False)
-        self.htim = None
-        return False
-
-    def _set(self, mode, manual=True):
-        if manual:
-            self.manual = True
-            self.mode = mode
-            self._upd_styles()
-            exec_shell_command_async(f'powerprofilesctl set {mode}')
-        else:
-            self._auto_switch(mode)
-
-    def _auto_switch(self, mode):
-        if self._auto_htim:
-            GLib.source_remove(self._auto_htim)
-            self._auto_htim = None
-
-        self._pending_mode = mode
-
-        self.btn.rev.set_reveal_child(True)
-        self.pmr.set_reveal_child(True)
-
-        self._auto_htim = GLib.timeout_add(400, self._auto_apply)
-
-    def _auto_apply(self):
-        self._auto_htim = None
-        if not self._pending_mode:
-            return False
-
-        mode = self._pending_mode
-        self._pending_mode = None
-        self.mode = mode
-        self._upd_styles()
-        exec_shell_command_async(f'powerprofilesctl set {mode}')
-
-        self._auto_htim = GLib.timeout_add(1500, self._auto_hide)
-        return False
-
-    def _auto_hide(self):
-        self._auto_htim = None
-        self.btn.rev.set_reveal_child(False)
-        self.pmr.set_reveal_child(False)
+        self._timer_id = None
         return False
 
     def _upd_styles(self):
-        for btn in (self.bs, self.bb, self.bp):
-            if btn: btn.remove_style_class('active')
-        tb = self.bs if self.mode == 'power-saver' else self.bb if self.mode == 'balanced' else self.bp
-        if tb: tb.add_style_class('active')
+        for mode, btn in self._mode_btns.items():
+            if mode == self.mode:
+                btn.add_style_class('active')
+            else:
+                btn.remove_style_class('active')
 
 
 class NetworkApplet(Button):

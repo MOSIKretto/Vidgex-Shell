@@ -107,7 +107,7 @@ class Dashboard(Box):
                 w.cleanup()
             except AttributeError:
                 pass
-                
+
         self.notch = None
         self.time_widget = None
         self.calendar = None
