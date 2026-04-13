@@ -100,7 +100,9 @@ class WifiSlot(Gtk.Box):
         set_pointer_cursor(self.btn_pw_reveal)
 
         self.pw_entry = Gtk.Entry(
-            visibility=False, invisible_char="•", placeholder_text="Password...",
+            visibility=False,
+            invisible_char=ord('•'), 
+            placeholder_text="Password...",
         )
         self.pw_entry.set_hexpand(True)
         self.pw_entry.get_style_context().add_class("pw-entry-naked")

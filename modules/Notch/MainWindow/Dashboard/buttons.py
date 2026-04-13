@@ -200,7 +200,7 @@ class NetworkButton(Box):
         if wifi.state == "activated" and wifi.ssid != "Отключено":
             self._stop_anim()
             s = wifi.ssid
-            self.network_ssid.set_label(s[:10].rstrip() + "..." if len(s) > 10 else s)    
+            self.network_ssid.set_label(s[:8].rstrip() + "..." if len(s) > 10 else s)    
                     
             st = wifi.strength
             ic = _WI[0] if st < _TH[0] else (_WI[1] if st < _TH[1] else (_WI[2] if st < _TH[2] else _WI[3]))
