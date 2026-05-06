@@ -170,6 +170,9 @@ class ArtistGroup(Box):
         self._header_btn.connect("clicked", self._on_toggle)
         _hover(self._header_btn)
 
+        self._header_btn.connect("enter-notify-event", self._on_btn_enter)
+        self._header_btn.connect("leave-notify-event", self._on_btn_leave)
+
         self._header_box = Box(
             name="artist-group-header", orientation="h",
             h_expand=True, h_align="fill",
@@ -187,6 +190,14 @@ class ArtistGroup(Box):
 
         self.add(self._header_box)
         self.add(self._revealer)
+
+    def _on_btn_enter(self, _widget, _event):
+        self._header_box.add_style_class("hover")
+        return False
+
+    def _on_btn_leave(self, _widget, _event):
+        self._header_box.remove_style_class("hover")
+        return False
 
     def set_expanded(self, expanded: bool):
         self.is_expanded = expanded

@@ -13,7 +13,7 @@ from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 import services.icons as icons
-from modules.Notifications.NotificationBox.image import CustomImage
+from modules.Notch.Notifications.NotificationBox.image import CustomImage
 
 
 PERSISTENT_DIR = f"{GLib.get_user_cache_dir()}/vidgex-shell/notifications"

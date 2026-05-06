@@ -13,8 +13,8 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 
-from modules.Notifications.history import get_shared_history
-from modules.Notifications.glyph import SideGlyph 
+from modules.Notch.Notifications.history import get_shared_history
+from modules.Notch.Notifications.glyph import SideGlyph 
 
 from modules.Notch.mainWindow import MainWindow
 from modules.Notch.clipHist import ClipHistory

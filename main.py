@@ -5,7 +5,7 @@ import setproctitle
 from fabric import Application
 from fabric.utils import get_relative_path
 
-from modules.notifications import Notifications
+from modules.Notch.notifications import Notifications
 from modules.notch import Notch
 from modules.bar import Bar
 from modules.corners import Corners

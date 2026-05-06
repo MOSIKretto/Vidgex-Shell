@@ -1414,6 +1414,9 @@ class MediaPlayer(Box):
         self._repl = False
         for btn in self.switcher.get_children():
             if isinstance(btn, Gtk.ToggleButton) and btn.get_visible():
+                if not getattr(btn, '_hovered', False):
+                    _hover(btn)
+                    btn._hovered = True
                 for c in btn.get_children():
                     if isinstance(c, Gtk.Label) and c.get_text() != icons.disc:
                         btn.remove(c)

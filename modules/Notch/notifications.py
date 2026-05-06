@@ -1,6 +1,6 @@
 from fabric.widgets.box import Box
 
-from modules.Notifications.history import NotificationContainer, get_shared_history
+from modules.Notch.Notifications.history import NotificationContainer, get_shared_history
 
 from services.wayland import WaylandWindow as Window
 

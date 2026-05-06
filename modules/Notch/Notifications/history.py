@@ -22,7 +22,7 @@ from .notificationBox import (
     NOTIFICATION_WIDTH,
 )
 import services.icons as icons
-from modules.Notifications.NotificationBox.image import CustomImage
+from modules.Notch.Notifications.NotificationBox.image import CustomImage
 
 
 class NotificationHistory(Box):
