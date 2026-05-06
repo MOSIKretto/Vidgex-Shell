@@ -1,32 +1,58 @@
-#power-menu-button {
-  border-radius: 24px; 
-  min-width: 52px;
-  min-height: 52px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+/* ── Power Menu Dropdown ─────────────────────────────── */
+#power-menu-window {
+    background-color: transparent;
+}
+#power-menu-wrapper {
+    background-color: transparent;
+}
+#power-menu-icons {
+    padding: 4px; 
 }
 
-#power-menu-button label {
-  font-size: 24px;
-  color: var(--foreground);
-  transition: color 0.25s ease;
+/* ── icon buttons ── */
+.power-icon-btn {
+    border-radius: 12px;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background-image: none;
+    text-shadow: none;
+    
+    margin: 0px;
+    padding: 0px; 
+    
+    background-color: var(--shadow);
+    color: var(--primary);
+    
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#power-menu-button:hover,
-#power-menu-button:focus {
-  border-radius: 12px; 
-  background-color: var(--surface-bright);
+.power-icon-btn label {
+    font-size: 20px;
+    color: var(--primary);
+    transition: color 0.25s ease;
 }
 
-#power-menu-button:hover label,
-#power-menu-button:focus label {
-  color: var(--primary);
+.power-icon-btn:hover {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+.power-icon-btn:hover label {
+    color: var(--shadow);
 }
 
-#power-menu-button:active {
-  border-radius: 12px; 
-  background-color: var(--primary);
+
+/* Hover — подсветка как у кнопок в меню */
+#button-bar:hover {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+#button-bar:hover #button-bar-label {
+    background-color: var(--primary);
+    color: var(--shadow);
 }
 
-#power-menu-button:active label {
-  color: var(--shadow);
+#button-bar.power-active #button-bar-label {
+    background-color: var(--primary);
+    color: var(--shadow);
 }

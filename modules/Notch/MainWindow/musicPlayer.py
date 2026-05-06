@@ -90,13 +90,25 @@ class Player(Box):
             )
 
         self.audio = audio
-        out = self._out = MixerSection("Outputs")
-        inp = self._inp = MixerSection("Inputs")
+
+        # ✅ ПЕРЕДАЁМ audio И is_input
+        out = self._out = MixerSection(
+            "Outputs",
+            audio=audio,
+            is_input=False,
+        )
+
+        inp = self._inp = MixerSection(
+            "Inputs",
+            audio=audio,
+            is_input=True,
+        )
 
         upd = self._upd
         sigs_append = self._sigs.append
         for sig in _AUDIO_SIGNALS:
             sigs_append((audio, audio.connect(sig, upd)))
+
         upd()
 
         return Box(
@@ -105,7 +117,7 @@ class Player(Box):
             spacing=_GAP,
             h_expand=True,
             v_expand=True,
-            homogeneous=True,
+            homogeneous=False,   # ← ВАЖНО
             children=(out, inp),
         )
 
@@ -129,21 +141,33 @@ class Player(Box):
     def _on_realize(self, _widget):
         if self._toplevel_click_sig:
             return
+
         toplevel = self.get_toplevel()
         if isinstance(toplevel, Gtk.Window):
             toplevel.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-            self._toplevel_click_sig = toplevel.connect(
-                "button-press-event", self._on_toplevel_click,
+
+            self._toplevel_click_sig = toplevel.connect_after(
+                "button-press-event",
+                self._on_toplevel_click,
             )
 
     def _on_toplevel_click(self, widget, event):
         track_list = self.track_list
-        search = track_list._search_entry
+
+        search = getattr(track_list, "_search_entry", None)
+        if not search:
+            return False
+
+        is_click_on_search = getattr(track_list, "_is_click_on_search", None)
+        if not callable(is_click_on_search):
+            return False
+
         if (
             search.has_focus()
-            and not track_list._is_click_on_search(widget, event.x, event.y)
+            and not is_click_on_search(widget, event.x, event.y)
         ):
             widget.set_focus(None)
+
         return False
 
     def cleanup(self):

@@ -22,7 +22,7 @@ from .notificationBox import (
     NOTIFICATION_WIDTH,
 )
 import services.icons as icons
-from modules.Notifications.NotificationBox.image import CustomImage
+from modules.Notch.Notifications.NotificationBox.image import CustomImage
 
 
 class NotificationHistory(Box):
@@ -34,6 +34,9 @@ class NotificationHistory(Box):
         "_save_timer_id",
         "_dnd_handler",
         "header_switch",
+        "glyphs_switch",
+        "glyphs_enabled",
+        "trigger_glyphs_callback",
         "do_not_disturb_enabled",
         "notifications_list",
         "no_notifications_box",
@@ -61,6 +64,9 @@ class NotificationHistory(Box):
         self._dnd_handler = None
         self._is_destroyed = False
         self.do_not_disturb_enabled = False
+        
+        self.glyphs_enabled = False 
+        self.trigger_glyphs_callback = None
 
         self._build_ui()
         GLib.idle_add(self._start_loading, priority=GLib.PRIORITY_LOW)
@@ -72,8 +78,14 @@ class NotificationHistory(Box):
         self._dnd_handler = self.header_switch.connect(
             "notify::active", self._on_dnd_changed
         )
-
         set_pointer_cursor(self.header_switch)
+
+        self.glyphs_switch = Gtk.Switch(
+            name="dnd-switch", vexpand=False, valign=Gtk.Align.CENTER
+        )
+        self.glyphs_switch.set_active(False)
+        self.glyphs_switch.connect("notify::active", self._on_glyphs_changed)
+        set_pointer_cursor(self.glyphs_switch)
 
         clear_history_btn = Button(
             name="nhh-button",
@@ -85,8 +97,26 @@ class NotificationHistory(Box):
         header = CenterBox(
             name="notification-history-header",
             start_children=[
-                self.header_switch,
-                Label(name="dnd-label", markup=icons.notifications_off),
+                Box(
+                    orientation="h",
+                    spacing=12,
+                    children=[
+                        Box(
+                            orientation="h",
+                            children=[
+                                self.header_switch,
+                                Label(name="dnd-label", markup=icons.notifications_off)
+                            ]
+                        ),
+                        Box(
+                            orientation="h",
+                            children=[
+                                self.glyphs_switch,
+                                Label(name="dnd-label", markup=icons.bulb)
+                            ]
+                        )
+                    ]
+                )
             ],
             center_children=[
                 Label(
@@ -138,6 +168,9 @@ class NotificationHistory(Box):
 
     def _on_dnd_changed(self, switch, _):
         self.do_not_disturb_enabled = switch.get_active()
+
+    def _on_glyphs_changed(self, switch, _):
+        self.glyphs_enabled = switch.get_active()
 
     def _update_empty_state(self):
         has_items = (
@@ -723,7 +756,7 @@ class NotificationContainer(Box):
         for b in (self.prev_button, self.close_all_button, self.next_button):
             b.connect("enter-notify-event", self._on_nav_enter)
             b.connect("leave-notify-event", self._on_nav_leave)
-            set_pointer_cursor(b)  # ← ДОБАВЛЕНО
+            set_pointer_cursor(b)
 
         nav = Box(
             name="notification-navigation",
@@ -791,6 +824,10 @@ class NotificationContainer(Box):
         self.navigation_revealer.set_reveal_child(count > 1)
 
     def _on_new_notification(self, fabric_notif, notif_id):
+        if self.notification_history.glyphs_enabled:
+            if self.notification_history.trigger_glyphs_callback:
+                self.notification_history.trigger_glyphs_callback()
+
         if self._is_destroying:
             self._is_destroying = False
             if self._reset_timeout_id is not None:

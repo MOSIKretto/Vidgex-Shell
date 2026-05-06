@@ -2,7 +2,6 @@ from fabric.widgets.box import Box
 from fabric.widgets.stack import Stack
 
 import gi
-gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gtk, Gdk
 
