@@ -203,6 +203,7 @@ detach: str = "&#xea99;"
 robot: str = "&#xf219;"
 brain: str = "&#xeac3;"
 bulb: str = "&#xea3f;"
+bulb_off: str = "&#xea50;"
 sparkles: str = "&#xf6d7;"
 wand: str = "&#xebcb;"
 
@@ -634,6 +635,7 @@ dice_6: str = "&#xf090;"
 # ══════════════════════════════════════════════════════════════════════════════
 #  TRANSFORM / EDIT
 # ══════════════════════════════════════════════════════════════════════════════
+photo: str = "&#xfca8;"
 pencil: str = "&#xeb04;"
 pencil_off: str = "&#xf15f;"
 highlight: str = "&#xeac5;"

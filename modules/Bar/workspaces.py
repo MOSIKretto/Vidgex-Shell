@@ -251,7 +251,8 @@ class SideBarWindow(Window):
 
     def _init_ui(self):
         self.ws = LeftWorkspaces(self.conn, v_align="start", h_align="start")
-        self.wrapper = Box(name="bar-inner", children=[self.ws], v_expand=True, orientation="v")
+        
+        self.wrapper = Box(name="bar-inner", children=[self.ws], orientation="v")
         self.wrapper.connect("size-allocate", self._on_size_allocate)
 
         self.content_eb = EventBox()
@@ -269,12 +270,7 @@ class SideBarWindow(Window):
         self.activator = EventBox()
         self.activator.add(Box(style="background: transparent;"))
 
-        display = Gdk.Display.get_default()
-        monitor = display.get_monitor(self.monitor_id) if display else None
-        mon_h = monitor.get_geometry().height if monitor else 1080
-
-        self.activator.set_size_request(15, mon_h)
-        self.activator.set_valign(Gtk.Align.FILL)
+        self.activator.set_size_request(15, -1)
 
         self.activator.connect("enter-notify-event", self._on_hover_enter)
         self.activator.connect("leave-notify-event", self._on_hover_leave)

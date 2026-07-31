@@ -1,0 +1,77 @@
+#systray {
+  background-color: var(--shadow);
+  border: 3px solid var(--surface);
+  border-radius: 12px;
+  padding: 2px 6px;
+  min-height: 26px;
+  min-width: 48px;
+}
+
+#systray-inner {
+  background-color: transparent;
+}
+
+#systray-action-bar {
+  background-color: transparent;
+  border: none;
+  padding: 0 4px;
+  margin: 0;
+}
+
+#systray-item {
+  background-color: transparent;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px;
+  margin: 0;
+  transition: background-color 150ms ease;
+}
+
+#systray-item:hover  { background-color: var(--surface-bright); }
+#systray-item:active { background-color: var(--primary); }
+#systray-item:focus  { outline: none; box-shadow: none; }
+
+
+#systray-close-btn {
+  background-color: var(--surface);
+  border: 1px solid var(--surface-bright);
+  border-radius: 24px;
+  padding: 2px 10px;
+  margin: 0;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+#systray-close-btn label {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: bold;
+  font-size: 9pt;
+  transition: color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+#systray-close-btn:hover {
+  background-color: var(--surface);
+  border-color: var(--error);
+}
+
+#systray-close-btn:hover label {
+  color: var(--error);
+}
+
+#systray-close-btn:active {
+  background-color: var(--surface);
+  border-color: var(--error);
+  border-radius: 12px;
+}
+
+#systray-close-btn:active label {
+  color: var(--error);
+}
+
+#systray-close-btn:focus {
+  outline: none;
+  box-shadow: none;
+}

@@ -8,7 +8,6 @@ from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 from fabric.widgets.button import Button
 from fabric.widgets.datetime import DateTime
-from fabric.widgets.revealer import Revealer
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.eventbox import EventBox
 
@@ -16,11 +15,10 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk
 
-from modules.Notch.MainWindow.Dashboard.buttons import AutolayoutButton
 from modules.Bar.powerMenu import PowerMenu
-from modules.Bar.metrics import Battery, MetricsSmall
-from modules.Bar.systemtray import SystemTray
+from modules.Bar.toolBox import ToolBox
 from modules.Bar.workspaces import TopWorkspaces, SideBarWindow, _hov
+from modules.Bar.battery import Battery
 
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
@@ -47,6 +45,7 @@ class Bar(Window):
         self.sidebar.show_all()
 
         self.power_menu = PowerMenu(monitor=self.mid)
+        self.toolbox_menu = ToolBox(monitor=self.mid)
 
         self._build()
         self._lang_sig_id = self.lang.connect("notify::label", self._lchg)
@@ -94,26 +93,22 @@ class Bar(Window):
 
     def _build(self):
         self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")
-        self.tray = SystemTray()
-        self.met = MetricsSmall()
 
-        self.rl = Revealer(
-            name="bar-revealer",
-            transition_type="slide-right",
-            child_revealed=True,
-            child=Box(name="bar-revealer-box", spacing=4, children=[self.tray]),
-        )
-
-        self.rr = Revealer(
-            name="bar-revealer",
-            transition_type="slide-left",
-            child_revealed=True,
-            child=Box(name="bar-revealer-box", spacing=4, children=[self.met]),
-        )
-
-        self.dt = DateTime(name="date-time", formatters=["%H:%M"])
+        self.dt  = DateTime(name="date-time", formatters=["%H:%M"])
         self.bat = Battery()
 
+        # Кнопка ToolBox
+        self.bt = Button(
+            name="button-bar",
+            tooltip_markup="<b>Tools</b>",
+            on_clicked=self._tools,
+            child=Label(name="button-bar-label", markup=icons.tools),
+        )
+        _hov(self.bt)
+        self._hand_cursor(self.bt)
+        self.toolbox_menu.set_trigger_button(self.bt)
+
+        # Кнопка Power Menu
         self.bp = Button(
             name="button-bar",
             tooltip_markup="<b>Power menu</b>",
@@ -125,20 +120,12 @@ class Bar(Window):
         self.power_menu.set_trigger_button(self.bp)
 
         self.ll = Label(name="lang-label")
-        self.autolayout_btn = AutolayoutButton()
-
-        self.lang_revealer = Revealer(
-            name="lang-revealer",
-            transition_type="slide-right",
-            child_revealed=False,
-            child=self.autolayout_btn,
-        )
 
         self.lang_eb = EventBox(
             child=Box(
                 name="language-indicator",
                 spacing=4,
-                children=[self.lang_revealer, self.ll],
+                children=[self.ll],
             )
         )
 
@@ -151,19 +138,15 @@ class Bar(Window):
                 start_children=Box(
                     name="start-container",
                     spacing=4,
-                    children=[
-                        self.ws,
-                        Box(name="boxed-revealer", children=[self.rl]),
-                    ],
+                    children=[self.ws],
                 ),
                 end_children=Box(
                     name="end-container",
                     spacing=4,
                     children=[
-                        Box(name="boxed-revealer", children=[self.rr]),
                         Box(
                             name="power-battery-container",
-                            children=[self.dt, self.lang_eb, self.bat, self.bp],
+                            children=[self.dt, self.lang_eb, self.bat, self.bt, self.bp],
                         ),
                     ],
                 ),
@@ -171,13 +154,9 @@ class Bar(Window):
         )
 
     def _lang_enter(self, w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self.lang_revealer.set_reveal_child(True)
         return False
 
     def _lang_leave(self, w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self.lang_revealer.set_reveal_child(False)
         return False
 
     def _lchg(self, *_):
@@ -197,6 +176,14 @@ class Bar(Window):
             else:
                 pm.open()
 
+    def _tools(self, *_):
+        tm = self.toolbox_menu
+        if tm:
+            if tm.is_open():
+                tm.close()
+            else:
+                tm.open()
+
     def cleanup(self):
         if self.lang and self._lang_sig_id:
             self.lang.disconnect(self._lang_sig_id)
@@ -211,8 +198,11 @@ class Bar(Window):
             self.power_menu.destroy()
             self.power_menu = None
 
-        if hasattr(self.tray, "cleanup"):
-            self.tray.cleanup()
+        if self.toolbox_menu:
+            self.toolbox_menu.cleanup()
+            self.toolbox_menu.destroy()
+            self.toolbox_menu = None
+
         if hasattr(self.bat, "cleanup"):
             self.bat.cleanup()
 

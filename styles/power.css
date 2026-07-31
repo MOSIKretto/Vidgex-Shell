@@ -56,3 +56,43 @@
     background-color: var(--primary);
     color: var(--shadow);
 }
+
+#power-battery-container {
+  background-color: var(--shadow);
+  padding: 0;
+  border-radius: 12px;
+  min-height: 36px;
+}
+
+#power-battery-container #language-indicator {
+  background-color: transparent;
+  padding: 0 8px;
+  border-radius: 12px 0 0 12px;
+  min-height: 36px;
+}
+
+#power-battery-container #language-indicator #lang-label {
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--primary);
+  padding: 0 4px;
+}
+
+#power-battery-container #date-time {
+  background-color: transparent;
+  padding: 0 8px;
+  min-height: 36px;
+}
+
+#power-battery-container #date-time label {
+  font-weight: bold;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+#power-battery-container #battery {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 12px;
+  min-height: 36px;
+}

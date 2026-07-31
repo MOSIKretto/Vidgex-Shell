@@ -1275,17 +1275,11 @@ decoration {
     }
 }
 
-dwindle {
-    pseudotile = true
-    preserve_split = true
-}
-
 master {
     mfact = 0.5
 }
 
 misc {
-    vfr = true
     vrr = 2
 
     animate_manual_resizes = false

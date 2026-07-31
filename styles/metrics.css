@@ -1,6 +1,13 @@
-#metrics-small {
+/* ── Battery ─────────────────────────────────────────────── */
+
+#battery-container {
   background-color: var(--shadow);
+  padding: 4px;
   border-radius: 12px;
+}
+
+#battery-container * {
+  background-color: transparent;
 }
 
 #metrics-circle {
@@ -20,24 +27,6 @@
 #metrics-level {
   font-weight: bold;
   margin: 0 4px;
-}
-
-#metrics-sep {
-  min-width: 4px;
-}
-
-#network-icon-label {
-  color: var(--foreground);
-  font-size: 20px;
-  padding: 4px;
-  border-radius: 12px;
-  transition: all 0.1s ease;
-}
-
-#battery-container {
-  background-color: var(--shadow);
-  padding: 4px;
-  border-radius: 12px;
 }
 
 #metrics-bat-revealer,
@@ -91,8 +80,4 @@
 #battery-balanced.active #battery-balanced-label,
 #battery-performance.active #battery-performance-label {
   color: var(--shadow);
-}
-
-#battery-container * {
-  background-color: transparent;
 }

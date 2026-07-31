@@ -1,30 +1,52 @@
-#toolbox-button {
-  border-radius: 24px;
-  min-width: 52px;
-  min-height: 52px;
-  transition: all 0.2s;
+/* ── ToolBox Dropdown ─────────────────────────────── */
+#toolbox-menu-window {
+    background-color: transparent;
+}
+#toolbox-menu-wrapper {
+    background-color: transparent;
+}
+#toolbox-menu-icons {
+    padding: 4px;
 }
 
-#toolbox-button label {
-  font-size: 24px;
-  color: var(--foreground);
+/* ── icon buttons ── */
+.toolbox-icon-btn {
+    border-radius: 12px;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background-image: none;
+    text-shadow: none;
+
+    margin: 0px;
+    padding: 0px;
+
+    background-color: var(--shadow);
+    color: var(--primary);
+
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#toolbox-button:hover,
-#toolbox-button:focus {
-  border-radius: 12px;
-  background-color: var(--surface-bright);
+.toolbox-icon-btn label {
+    font-size: 20px;
+    color: var(--primary);
+    transition: color 0.25s ease;
 }
 
-#toolbox-button:hover label,
-#toolbox-button:focus label {
-  color: var(--primary);
+.toolbox-icon-btn:hover {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+.toolbox-icon-btn:hover label {
+    color: var(--shadow);
 }
 
-#tool-sep {
-  min-width: 4px;
-  min-height: 4px;
-  margin: 0 4px;
-  border-radius: 12px;
-  background-color: var(--surface-bright);
+.toolbox-icon-btn.active,
+.toolbox-icon-btn.active:hover {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+.toolbox-icon-btn.active label,
+.toolbox-icon-btn.active:hover label {
+    color: var(--shadow);
 }

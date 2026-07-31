@@ -16,9 +16,9 @@ from fabric.widgets.label import Label
 from fabric.widgets.overlay import Overlay
 
 from modules.Dock.visibility import Visibility
-from modules.Dock.pin import Pin
+from modules.Dock.SessionManager.pin import Pin
 from modules.Dock.windowNavigator import WindowNavigator
-from modules.Dock.restore import AppResolver as RestoreAppResolver
+from modules.Dock.SessionManager.restore import AppResolver
 from modules.Dock.DnD import Dnd
 from modules.corners import MyCorner
 
@@ -129,7 +129,7 @@ class Dock(Window):
         resolver = _resolver()
         self._pin_mgr = Pin(session_manager, resolver)
         self._nav = WindowNavigator(self.conn, self._parse)
-        self._restorer = RestoreAppResolver(resolver)
+        self._restorer = AppResolver(resolver)
         self._dnd = Dnd(self)
 
         self._init_ui()

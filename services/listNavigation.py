@@ -51,39 +51,3 @@ class ListNavigationMixin:
 
     def _nav_clear(self):
         [c.destroy() for c in self.vp.get_children()]; self.sel = -1
-
-
-class HorizontalNavigationMixin:
-    _H_KEYS = {Gdk.KEY_Left: -1, Gdk.KEY_Up: -1, Gdk.KEY_Right: 1, Gdk.KEY_Down: 1}
-
-    def _hnav_init(self):
-        self._nav_idx = getattr(self, '_nav_idx', 0)
-        self._nav_items = getattr(self, '_nav_items', [])
-
-    def _hnav_key(self, _, e):
-        k = e.keyval
-        if k in self._H_KEYS: return self._hnav_mov(self._H_KEYS[k]) or True
-        if k in (Gdk.KEY_Return, Gdk.KEY_KP_Enter): return self._hnav_activate() or True
-        if k == Gdk.KEY_Escape: return self._hnav_close() or True
-        return k == Gdk.KEY_space
-
-    def _hnav_mov(self, d):
-        if self._nav_items and (n := max(0, min(self._nav_idx + d, len(self._nav_items) - 1))) != self._nav_idx:
-            self._hnav_usel(n)
-
-    def _hnav_usel(self, i):
-        if not self._nav_items or not 0 <= i < len(self._nav_items): return
-        if 0 <= self._nav_idx < len(self._nav_items):
-            self._nav_items[self._nav_idx].get_style_context().remove_class("focused")
-        self._nav_idx, btn = i, self._nav_items[i]
-        btn.get_style_context().add_class("focused"); btn.grab_focus()
-
-    def _hnav_activate(self):
-        if self._nav_items and 0 <= self._nav_idx < len(self._nav_items):
-            self._nav_items[self._nav_idx].clicked()
-
-    def _hnav_close(self):
-        if n := getattr(self, 'notch', None): n.close_notch()
-
-    def _hnav_focus_first(self):
-        if self._nav_items: self._hnav_usel(0)

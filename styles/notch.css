@@ -29,10 +29,8 @@
 #active-window-box { margin: 10px; }
 
 #app-launcher,
-#toolbox,
 #dashboard,
-#clip-history,
-#overview {
+#clip-history {
   background-color: var(--shadow);
   padding: 14px;
   border-radius: 0 0 12px 12px;
@@ -41,19 +39,6 @@
 #bar-inner {
   margin: 8px;
   opacity: 1;
-  border-radius: 12px;
-}
-
-#network-container {
-  background-color: var(--shadow);
-  min-height: 36px;
-  padding: 0 0px;
-  border-radius: 12px;
-}
-
-#systray {
-  background-color: var(--shadow);
-  padding: 8px;
   border-radius: 12px;
 }
 
@@ -78,80 +63,6 @@ tooltip {
   border-radius: 12px;
 }
 
-#power-battery-container {
-  background-color: var(--shadow);
-  padding: 0;
-  border-radius: 12px;
-  min-height: 36px;
-}
-
-#power-battery-container #language-indicator {
-  background-color: transparent;
-  padding: 0 8px;
-  border-radius: 12px 0 0 12px;
-  min-height: 36px;
-}
-
-#power-battery-container #language-indicator #lang-label {
-  font-weight: bold;
-  font-size: 14px;
-  color: var(--primary);
-  padding: 0 4px;
-}
-
-#power-battery-container #date-time {
-  background-color: transparent;
-  padding: 0 8px;
-  min-height: 36px;
-}
-
-#power-battery-container #date-time label {
-  font-weight: bold;
-  color: var(--primary);
-  font-size: 14px;
-}
-
-#power-battery-container #battery {
-  background-color: transparent;
-  padding: 0;
-  border-radius: 12px;
-  min-height: 36px;
-}
-
-#power-battery-container #button-bar {
-  background-color: transparent;
-  padding: 0;
-  border-radius: 0 12px 12px 0;
-  min-height: 36px;
-  min-width: 36px;
-}
-
-#workspaces,
-#workspaces-num {
-  background-color: var(--shadow);
-  padding: 4px;
-  border-radius: 12px;
-}
-
-#workspaces button,
-#workspaces-num button {
-  background-color: transparent;
-  border-radius: 12px;
-  min-width: 28px;
-  min-height: 28px;
-}
-
-#workspaces button.active,
-#workspaces-num button.active {
-  background-color: var(--primary);
-}
-
-#workspaces button.active label,
-#workspaces-num button.active label {
-  color: var(--shadow);
-  font-weight: bold;
-}
-
 #control,
 #metrics {
   background-color: var(--shadow);
@@ -160,14 +71,11 @@ tooltip {
   min-height: 36px;
 }
 
-#network label,
 #control label,
 #metrics label,
 #battery label,
 #compact-user label,
 #notch-compact-stack label,
-#workspaces button label,
-#workspaces-num button label,
 menu > menuitem > label,
 tooltip > * {
   font-weight: bold;

@@ -1,17 +1,22 @@
-import sys
-import signal
-import threading
+import sys, signal, threading
+
+if len(sys.argv) > 1 and sys.argv[1] == "--canvas-toggle":
+    from modules.Desktop.infinite_desktop import toggle_mode
+    toggle_mode()
+    sys.exit(0)
+
 import setproctitle
+
 from fabric import Application
 from fabric.utils import get_relative_path
 
-from modules.Notch.notifications import Notifications
 from modules.notch import Notch
 from modules.bar import Bar
-from modules.corners import Corners
 from modules.dock import Dock
-from modules.explorer import Explorer
-from modules.Dock.restore import SessionManager
+from modules.corners import Corners
+
+from modules.Dock.SessionManager.restore import SessionManager
+from modules.Desktop.infinite_desktop import start_canvas_daemon
 
 
 def run():
@@ -23,20 +28,18 @@ def run():
     notch = Notch()
     dock = Dock(session_manager=session_manager)
     corners = Corners()
-    explorer = Explorer()
 
     bar.notch = notch
     notch.bar = bar
 
-    widgets = getattr(getattr(notch, 'dashboard', None), 'widgets', None)
-    notification = Notifications(widgets=widgets)
-
-    app_widgets = [bar, notch, dock, corners, notification, explorer]
+    app_widgets = [bar, notch, dock, corners]
 
     app = Application("vidgex-shell", *app_widgets)
     css_path = get_relative_path("main.css")
     app.set_stylesheet_from_file(css_path)
     app.set_css = lambda: app.set_stylesheet_from_file(css_path)
+
+    start_canvas_daemon()
 
     restore_thread = threading.Thread(
         target=session_manager.restore,
@@ -45,16 +48,12 @@ def run():
     )
     restore_thread.start()
 
-    def on_shutdown(sig, frame):
-        app.quit()
-
-    signal.signal(signal.SIGINT, on_shutdown)
-    signal.signal(signal.SIGTERM, on_shutdown)
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
 
     import __main__ as main_module
     main_module.app = app
     main_module.notch = notch
-    main_module.explorer = explorer
 
     return app.run()
 

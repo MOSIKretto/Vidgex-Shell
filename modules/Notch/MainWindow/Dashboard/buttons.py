@@ -29,7 +29,7 @@ def _lv(w, _):
 
 def _hover(w):
     w.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    w._cursor = None 
+    w._cursor = None
     w.connect("enter-notify-event", _ent)
     w.connect("leave-notify-event", _lv)
 
@@ -78,14 +78,14 @@ def _content(ic, ti, st):
 
 
 class NetworkButton(Box):
-    __slots__ = ('_w', '_n', '_cl', '_aid', '_uid', '_ast', '_sw',
+    __slots__ = ('_w', '_cl', '_aid', '_uid', '_ast', '_sw',
                  'network_icon', 'network_label', 'network_ssid',
-                 'network_status_button', 'network_menu_button', 'network_menu_label', 
+                 'network_status_button', 'network_menu_button', 'network_menu_label',
                  '_last_ico', '_en_hid', '_ssid_hid')
 
-    def __init__(self, widgets=None, notch=None):
+    def __init__(self, widgets=None):
         super().__init__()
-        self._w, self._n = widgets, notch
+        self._w = widgets
         self._aid = self._uid = None
         self._ast = 0
         self._last_ico = None
@@ -129,8 +129,8 @@ class NetworkButton(Box):
         )
 
     def _menu_click(self, *_):
-        if self._n: self._n.open_notch("network_applet")
-        elif self._w and hasattr(self._w, 'show_network_applet'): self._w.show_network_applet()
+        if self._w and hasattr(self._w, 'show_network_applet'):
+            self._w.show_network_applet()
 
     def _ready(self, *_):
         if wifi := self._cl.wifi_device:
@@ -170,7 +170,7 @@ class NetworkButton(Box):
         if not wifi or not wifi.enabled or (wifi.state == "activated" and wifi.ssid != "Отключено"):
             self._stop_anim()
             return False
-        
+
         self._set_icon(_AN[self._ast])
         self._ast = (self._ast + 1) % 6
         return True
@@ -200,8 +200,8 @@ class NetworkButton(Box):
         if wifi.state == "activated" and wifi.ssid != "Отключено":
             self._stop_anim()
             s = wifi.ssid
-            self.network_ssid.set_label(s[:8].rstrip() + "..." if len(s) > 10 else s)    
-                    
+            self.network_ssid.set_label(s[:8].rstrip() + "..." if len(s) > 10 else s)
+
             st = wifi.strength
             ic = _WI[0] if st < _TH[0] else (_WI[1] if st < _TH[1] else (_WI[2] if st < _TH[2] else _WI[3]))
             self._set_icon(ic)
@@ -214,36 +214,36 @@ class NetworkButton(Box):
         if self._uid:
             GLib.source_remove(self._uid)
             self._uid = None
-            
+
         if self._cl and getattr(self._cl, 'wifi_device', None):
             try:
                 if self._en_hid: self._cl.wifi_device.disconnect(self._en_hid)
                 if self._ssid_hid: self._cl.wifi_device.disconnect(self._ssid_hid)
             except Exception: pass
-            
-        self._cl = self._w = self._n = None
+
+        self._cl = self._w = None
 
 
 class BluetoothButton(Box):
-    __slots__ = ('_w', '_n', '_en', '_cl', '_sw', '_pending',
+    __slots__ = ('_w', '_en', '_cl', '_sw', '_pending',
                  'bluetooth_icon', 'bluetooth_label', 'bluetooth_status_text',
                  'bluetooth_status_button', 'bluetooth_menu_button', 'bluetooth_menu_label')
 
-    def __init__(self, widgets=None, notch=None):
+    def __init__(self, widgets=None):
         super().__init__()
-        self._w, self._n = widgets, notch
+        self._w = widgets
         self._en = self._pending = False
-        
+
         try:
             self._cl = BluetoothClient()
         except Exception:
             self._cl = None
 
         self._build()
-        
+
         if self._cl:
             self._cl.connect("notify::enabled", self.update_state)
-            
+
         GLib.idle_add(self.update_state)
 
     def _build(self):
@@ -289,18 +289,18 @@ class BluetoothButton(Box):
     def _on_toggle_click(self, *_):
         if self._pending: return
         self._pending = True
-        
+
         en = self._get_pwr()
-        
+
         if en:
             cmd = "bluetoothctl power off ; rfkill block bluetooth"
         else:
             cmd = "rfkill unblock bluetooth ; sleep 0.2 ; bluetoothctl power on"
-            
+
         try:
             GLib.spawn_command_line_async(f"/bin/sh -c '{cmd}'")
         except Exception: pass
-        
+
         self._upd_ui(not en)
         GLib.timeout_add(1000, self._clear_pending)
 
@@ -322,12 +322,11 @@ class BluetoothButton(Box):
         return False
 
     def _open_menu(self, *_):
-        if self._n: self._n.open_notch("bluetooth")
-        elif self._w and hasattr(self._w, 'show_bt'): self._w.show_bt()
-        else: exec_shell_command_async("blueman-manager")
+        if self._w and hasattr(self._w, 'show_bt'):
+            self._w.show_bt()
 
     def cleanup(self):
-        self._cl = self._w = self._n = None
+        self._cl = self._w = None
 
 
 class _ToggleBtn(Button):
@@ -340,8 +339,8 @@ class _ToggleBtn(Button):
         self._st = Label(name=f"{self.NAME}-status", label=_OFF, justification="left")
 
         super().__init__(
-            name=f"{self.NAME}-button", h_expand=True, 
-            child=_content(self._ic, self._ti, self._st), 
+            name=f"{self.NAME}-button", h_expand=True,
+            child=_content(self._ic, self._ti, self._st),
             on_clicked=self._click
         )
 
@@ -376,7 +375,7 @@ class NightModeButton(_ToggleBtn):
 
 class _ScriptToggleBtn(_ToggleBtn):
     __slots__ = ('_pid',)
-    
+
     def __init__(self):
         self._pid = None
         super().__init__()
@@ -406,7 +405,7 @@ class _ScriptToggleBtn(_ToggleBtn):
             except Exception:
                 exec_shell_command_async(self.START)
                 self._pid = None
-                
+
         GLib.idle_add(spawn_on_main)
         return True
 
@@ -430,36 +429,10 @@ class EyesHandsButton(_ScriptToggleBtn):
     NAME, ICON, TEXT = "eyes-hands", icons.spy, "Eyes-Hands"
 
 
-class AutolayoutButton(_ScriptToggleBtn):
-    PAT = "vidgex-autolanguage" 
-    START = 'python ~/.config/Vidgex-Shell/scripts/autoLanguage.py'
-    STOP = "pkill -f vidgex-autolanguage"
-    NAME = "autolanguage"
-
-    def __init__(self):
-        super().__init__()
-        self.set_tooltip_text("Auto Language")
-        self.set_hexpand(False)
-        
-        if self.get_child():
-            self.remove(self.get_child())
-            
-        self._ic = Label(name=f"{self.NAME}-icon", markup=icons.keyboard)
-        self.add(Box(h_align="center", v_align="center", children=(self._ic,)))
-        self.show_all()
-
-    def _upd(self, en):
-        if en:
-            self.add_style_class("active")
-        else:
-            self.remove_style_class("active")
-        return False
-
-
 class Buttons(Gtk.Grid):
-    def __init__(self, widgets=None, notch=None):
+    def __init__(self, widgets=None):
         super().__init__(name="buttons-grid")
-        
+
         self.set_row_homogeneous(True)
         self.set_column_homogeneous(True)
         self.set_row_spacing(4)
@@ -467,8 +440,8 @@ class Buttons(Gtk.Grid):
         self.set_vexpand(False)
 
         btns = (
-            NetworkButton(widgets, notch),
-            BluetoothButton(widgets, notch),
+            NetworkButton(widgets),
+            BluetoothButton(widgets),
             NightModeButton(),
             CaffeineButton(),
             EyesHandsButton()
@@ -477,11 +450,11 @@ class Buttons(Gtk.Grid):
         for i, btn in enumerate(btns):
             self.attach(btn, i, 0, 1, 1)
 
-        (self.network_button, self.bluetooth_button, self.night_mode_button, 
+        (self.network_button, self.bluetooth_button, self.night_mode_button,
          self.caffeine_button, self.eyes_hands_button) = btns
 
         self.show_all()
-        
+
     def cleanup(self):
         for child in self.get_children():
             try:

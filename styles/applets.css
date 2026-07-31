@@ -14,7 +14,6 @@
   padding: 8px;
   margin: 2px;
   border: 1px solid var(--surface-bright);
-  /* Очень плавная кривая анимации без эффекта пружины */
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   font-weight: bold;
 }
@@ -28,7 +27,6 @@
   border-radius: 12px;
 }
 
-/* --- ОСТАЛЬНЫЕ ШИРОКИЕ КНОПКИ --- */
 #bluetooth-connect,
 #wifi-connect,
 #wifi-delete,
@@ -79,7 +77,6 @@
   font-size: 20px;
 }
 
-/* --- HOVER STATES --- */
 #bluetooth-scan:hover,
 #bluetooth-back:hover,
 #bluetooth-saved:hover,
@@ -133,19 +130,28 @@
   color: var(--primary);
 }
 
-/* --- PRIMARY BACKGROUND STATE (ACTIVE / PRESSED) --- */
-#bluetooth-scan.pressed, #bluetooth-back.pressed, #bluetooth-saved.pressed,
-#network-scan.pressed, #network-back.pressed, #network-saved.pressed,
-#bluetooth-connect.pressed, #wifi-connect.pressed {
+#bluetooth-scan.pressed, 
+#bluetooth-back.pressed, 
+#bluetooth-saved.pressed,
+#network-scan.pressed, 
+#network-back.pressed, 
+#network-saved.pressed,
+#bluetooth-connect.pressed, 
+#wifi-connect.pressed {
   background-color: var(--primary);
   border-color: var(--primary);
   color: var(--on-primary);
   border-radius: 12px;
 }
 
-#bluetooth-scan:active, #bluetooth-back:active, #bluetooth-saved:active,
-#network-scan:active, #network-back:active, #network-saved:active,
-#bluetooth-connect:active, #wifi-connect:active {
+#bluetooth-scan:active, 
+#bluetooth-back:active, 
+#bluetooth-saved:active,
+#network-scan:active, 
+#network-back:active, 
+#network-saved:active,
+#bluetooth-connect:active, 
+#wifi-connect:active {
   background-color: var(--primary);
   border-color: var(--primary);
   color: var(--on-primary);
@@ -170,7 +176,6 @@
   color: var(--on-primary);
 }
 
-/* --- RED BACKGROUND STATE (DELETE BUTTONS) --- */
 #wifi-delete.pressed, #bluetooth-delete.pressed,
 #wifi-delete:active, #bluetooth-delete:active,
 #wifi-delete:hover, #bluetooth-delete:hover {
@@ -200,9 +205,6 @@
   color: var(--cursor);
 }
 
-/* =========================================================
-   PIXEL UI: СТИЛИ ДЛЯ BLUETOOTH И WI-FI АППЛЕТОВ
-   ========================================================= */
 
 .section-title {
   font-size: 13px;
@@ -219,7 +221,6 @@
   font-weight: normal;
 }
 
-/* --- КРУГЛАЯ КНОПКА НАСТРОЕК СЕТИ --- */
 .pixel-icon-button {
   background-color: transparent;
   color: var(--outline);
@@ -304,9 +305,6 @@
   font-size: 20px;
 }
 
-/* =========================================================
-   SCANNING ANIMATIONS
-   ========================================================= */
 #bluetooth-scan.scanning,
 #network-scan.scanning {
   color: var(--primary);
@@ -324,10 +322,6 @@
   50% { background-position: -200% 0; border-width: 2px; }
   100% { background-position: 200% 0; border-width: 1px; }
 }
-
-/* =========================================================
-   PASSWORD ENTRY CONTAINER (PIXEL PILL DESIGN)
-   ========================================================= */
 
 #pw-wrapper {
   background-color: transparent;
@@ -367,7 +361,6 @@
   box-shadow: none;
 }
 
-/* --- КРУГЛЫЕ КНОПКИ ГЛАЗА И ГАЛОЧКИ ДЛЯ ПАРОЛЯ --- */
 .pw-reveal-btn {
   background-color: transparent;
   border-radius: 24px;
@@ -444,9 +437,6 @@
   border-radius: 12px;
 }
 
-/* =========================================================
-   SCROLL FIXES
-   ========================================================= */
 #bluetooth-devices,
 #bluetooth-devices viewport {
   background: transparent;
@@ -471,10 +461,6 @@ scrollbar slider:hover {
 scrollbar slider:active {
   background-color: var(--primary);
 }
-
-/* =========================================================
-   NETWORK SETTINGS PAGE (SEAMLESS PIXEL UI)
-   ========================================================= */
 
 .net-info-group {
   background-color: transparent;
@@ -519,7 +505,6 @@ scrollbar slider:active {
   color: var(--primary);
 }
 
-/* Состояния при КЛИКЕ (:active) */
 .net-action-btn:active:not(:disabled),
 .net-action-btn.active {
   background-color: var(--primary);
@@ -532,7 +517,6 @@ scrollbar slider:active {
   color: var(--on-primary);
 }
 
-/* Отдельные стили для кнопки УДАЛИТЬ (красные тона) */
 .net-action-btn.net-forget:hover {
   border-color: var(--error);
   color: var(--error);
@@ -564,7 +548,6 @@ scrollbar slider:active {
   color: var(--outline);
 }
 
-/* --- QR Code Share Section --- */
 .qr-container {
   background-color: transparent;
   padding: 12px;
@@ -587,10 +570,6 @@ scrollbar slider:active {
   border-radius: 100px;
   margin-top: 16px;
 }
-
-/* =========================================================
-   OFF STATE (DISABLED SCREEN) FOR WI-FI & BLUETOOTH
-   ========================================================= */
 
 .wifi-off-icon,
 .bluetooth-off-icon {

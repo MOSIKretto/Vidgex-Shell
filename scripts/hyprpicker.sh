@@ -1,79 +1,48 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 sleep 0.5
 
-pick_rgb(){
+ICON_PATH="/tmp/picked_color.png"
 
-# Execute hyprpicker with RGB format and save the output to a variable
-hyprpicker -a -n -f rgb && sleep 0.1
+pick_color() {
+    local format="$1"
+    local title="$2"
+    local color=""
+    local full_color=""
 
-# Create a temporal 64x64 PNG file with the color in /tmp using convert
-magick -size 64x64 xc:"rgb($(wl-paste))" /tmp/color.png
+    color=$(hyprpicker -n -f "$format")
 
-# Send a notification using the file as an icon
-notify-send "RGB color picked" "rgb($(wl-paste))" -i /tmp/color.png -a "Hyprpicker"
+    if [[ -z "$color" ]]; then
+        notify-send -a "Vidgex-Shell" "Color Picker Canceled" "No color selected"
+        exit 1
+    fi
 
-# Remove the temporal file
-rm /tmp/color.png
+    if [[ "$format" == "hex" ]]; then
+        full_color="$color"
+    else
+        full_color="${format}(${color})"
+    fi
 
-# Exit
-exit 0
+    echo -n "$full_color" | wl-copy
 
+    magick -size 64x64 "xc:${full_color}" "$ICON_PATH" 2>/dev/null
+
+    if [[ -f "$ICON_PATH" ]]; then
+        notify-send -a "Vidgex-Shell" -i "$ICON_PATH" "${title} Success" "${full_color} Copied to Clipboard"
+    else
+        notify-send -a "Vidgex-Shell" "${title} Success" "${full_color} Copied to Clipboard"
+    fi
 }
-
-
-pick_hex(){
-
-# Execute hyprpicker and save the output to a variable
-hyprpicker -a -n -f hex && sleep 0.1
-
-# Create a temporal 64x64 PNG file with the color in /tmp using convert
-magick -size 64x64 xc:"$(wl-paste)" /tmp/color.png
-
-# Send a notification using the file as an icon
-notify-send "HEX color picked" "$(wl-paste)" -i /tmp/color.png -a "Hyprpicker"
-
-# Remove the temporal file
-rm /tmp/color.png
-
-# Exit
-exit 0
-
-}
-
-
-pick_hsv(){
-
-# Copy the color to the clipboard
-echo -n "$(hyprpicker -n -f hsv)" | wl-copy -n
-
-# Create a temporal 64x64 PNG file with the color in /tmp using convert
-magick -size 64x64 xc:"hsv($(wl-paste))" /tmp/color.png
-
-# Send a notification using the file as an icon
-notify-send "HSV color picked" "hsv($(wl-paste))" -i /tmp/color.png -a "Hyprpicker"
-
-# Remove the temporal file
-rm /tmp/color.png
-
-# Exit
-exit 0
-
-}
-
-
 
 case "$1" in
 -rgb)
-    pick_rgb
+    pick_color "rgb" "RGB"
     ;;
 -hsv)
-    pick_hsv
+    pick_color "hsv" "HSV"
     ;;
 -hex)
-    pick_hex
+    pick_color "hex" "HEX"
     ;;
-
 *)
     echo "Usage: $0 [-rgb|-hex|-hsv]"
     exit 1
