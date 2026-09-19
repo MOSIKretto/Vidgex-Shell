@@ -1204,9 +1204,9 @@ step_configure_hyprland() {
 
   # Записываем Lua-конфиг
   if ! cat > "$HYPRLAND_CONF" <<'HYPR_EOF'
--- ##################################
--- ### LAZARETTO HYPERLAND CONFIG ###
--- ##################################
+-- ###############################
+-- ### ARLOTT HYPERLAND CONFIG ###
+-- ###############################
 
 
 -- ################
@@ -1219,7 +1219,6 @@ hl.monitor({
     scale = "auto",
 })
 
-
 -- ########################
 -- ### АНИМАЦИИ И ЦВЕТА ###
 -- ########################
@@ -1227,7 +1226,6 @@ hl.config({
     decoration = {
         rounding = 12,
         inactive_opacity = 0.8,
-
         blur = {
             enabled = true,
             size = 1,
@@ -1236,7 +1234,6 @@ hl.config({
             brightness = 1,
         },
     },
-
     misc = {
         vrr = 2,
         animate_manual_resizes = false,
@@ -1253,11 +1250,9 @@ hl.config({
         enable_swallow = true,
         background_color = "0x111111",
     },
-
     cursor = {
         no_warps = true,
     },
-
     xwayland = {
         force_zero_scaling = true,
     }
@@ -1271,9 +1266,12 @@ hl.bind("SUPER + SHIFT + Q", hl.dsp.window.close())
 -- Запуск приложений
 hl.bind("SUPER + ALT + T", hl.dsp.exec_cmd("kitty"))
 hl.bind("SUPER + F", hl.dsp.exec_cmd("firefox"))
+hl.bind("SUPER + V", hl.dsp.exec_cmd("code"))
+hl.bind("SUPER + T", hl.dsp.exec_cmd("AyuGram"))
+hl.bind("SUPER + N", hl.dsp.exec_cmd("nautilus"))
 
 -- Vidgex Shell
-require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")
+require("Vidgex-Shell/vidgex-shell-conf/vidgex-shell")
 HYPR_EOF
   then
     print_error "Failed to write hyprland.lua"; return 1
