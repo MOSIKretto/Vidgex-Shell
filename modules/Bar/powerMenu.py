@@ -16,7 +16,7 @@ class PowerMenu(Window):
     _ACTIONS = (
         (icons.shutdown, "Shutdown", "systemctl poweroff"),
         (icons.reboot,   "Reboot",   "systemctl reboot"),
-        (icons.logout,   "Logout",   "hyprctl dispatch exit"),
+        (icons.logout,   "Logout",   'hyprctl dispatch "hl.dsp.exit()"'),
         (icons.suspend,  "Suspend",  "systemctl suspend"),
     )
     
