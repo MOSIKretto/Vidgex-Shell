@@ -21,14 +21,14 @@ def _get_cursors(display: Gdk.Display):
 
 
 def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    if win := widget.get_window():
-        win.set_cursor(_get_cursors(win.get_display())[0])
+    win = widget.get_window()
+    win.set_cursor(_get_cursors(win.get_display())[0])
     return False
 
 
 def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    if win := widget.get_window():
-        win.set_cursor(_get_cursors(win.get_display())[1])
+    win = widget.get_window()
+    win.set_cursor(_get_cursors(win.get_display())[1])
     return False
 
 
@@ -41,8 +41,8 @@ def _setup_pointer_cursor(widget: Gtk.Widget):
 class Calendar(Gtk.Box):
     __slots__ = (
         'view_mode', 'first_weekday', 'ty', 'tm', 'td', 'sy', 'sm', 'sd',
-        '_pb', '_nb', '_ml', '_hdr', '_wr', 'stack', 
-        '_active_page', '_grids', '_labels'
+        '_pb', '_nb', '_ml', 'stack',
+        '_active_page', '_labels'
     )
 
     _M = (
@@ -57,9 +57,8 @@ class Calendar(Gtk.Box):
 
         self.view_mode = view_mode
         self.first_weekday = first_weekday
-        
+
         self._active_page = 0
-        self._grids = []
         self._labels = [[], []]
 
         if view_mode == "month":
@@ -73,7 +72,6 @@ class Calendar(Gtk.Box):
 
         now = datetime.date.today()
         self.ty, self.tm, self.td = now.year, now.month, now.day
-        self.sy = self.sm = self.sd = 0
         self._rst()
 
         self._pb = Gtk.Button(name="prev-month-button", child=Label(name="month-button-label", markup=icons.chevron_left))
@@ -86,26 +84,24 @@ class Calendar(Gtk.Box):
         _setup_pointer_cursor(self._pb)
         _setup_pointer_cursor(self._nb)
 
-        self._hdr = CenterBox(
+        self.add(CenterBox(
             spacing=4, name="header",
             start_children=(self._pb,), center_children=(self._ml,), end_children=(self._nb,)
-        )
-        self.add(self._hdr)
+        ))
 
-        self._wr = Gtk.Box(spacing=4, name="weekday-row")
+        weekday_row = Gtk.Box(spacing=4, name="weekday-row")
         fw = first_weekday
-
         for n in self._D[fw:] + self._D[:fw]:
-            self._wr.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
-        self.pack_start(self._wr, False, False, 0)
+            weekday_row.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
+        self.pack_start(weekday_row, False, False, 0)
 
         self.stack = Gtk.Stack(name="calendar-stack")
         self.stack.set_transition_duration(300)
         self.pack_start(self.stack, True, True, 0)
 
-        rows = 6 if self.view_mode == "month" else 1
-        grid_name = "calendar-grid" if self.view_mode == "month" else "calendar-grid-week-view"
-        
+        rows = 6 if view_mode == "month" else 1
+        grid_name = "calendar-grid" if view_mode == "month" else "calendar-grid-week-view"
+
         for i in range(2):
             grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name=grid_name)
             for r in range(rows):
@@ -114,10 +110,9 @@ class Calendar(Gtk.Box):
                     grid.attach(lbl, c, r, 1, 1)
                     self._labels[i].append(lbl)
             self.stack.add_named(grid, f"page_{i}")
-            self._grids.append(grid)
 
         self.show_all()
-        
+
         self._upd(transition=Gtk.StackTransitionType.NONE)
 
     def _rst(self):
@@ -145,7 +140,7 @@ class Calendar(Gtk.Box):
             self.stack.set_visible_child_full(page_name, transition)
         else:
             self.stack.set_visible_child_name(page_name)
-            
+
         self._active_page = target_page
 
     def _um(self, labels):
@@ -159,8 +154,7 @@ class Calendar(Gtk.Box):
 
         for i, lbl in enumerate(labels):
             ctx = lbl.get_style_context()
-            if ctx.has_class("current-day"): 
-                ctx.remove_class("current-day")
+            ctx.remove_class("current-day")
 
             day = i - off + 1
 
@@ -187,8 +181,8 @@ class Calendar(Gtk.Box):
             lbl.set_name("day-label")
 
             ctx = lbl.get_style_context()
-            if ctx.has_class("current-day"): ctx.remove_class("current-day")
-            if ctx.has_class("dim-label"): ctx.remove_class("dim-label")
+            ctx.remove_class("current-day")
+            ctx.remove_class("dim-label")
 
             if d == td and m == tm and y == ty:
                 ctx.add_class("current-day")
@@ -222,12 +216,9 @@ class Calendar(Gtk.Box):
         self._upd(transition=Gtk.StackTransitionType.SLIDE_LEFT)
 
     def cleanup(self):
-        if self.stack:
-            self.stack.destroy()
-        
-        self._pb = self._nb = self._ml = None
-        self._hdr = self._wr = self.stack = None
-        
-        self._grids.clear()
+        self.stack.destroy()
+
+        self._pb = self._nb = self._ml = self.stack = None
+
         self._labels[0].clear()
         self._labels[1].clear()

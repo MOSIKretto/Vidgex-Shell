@@ -87,6 +87,8 @@ class DeviceDropdown(Gtk.Box):
         self._is_input = is_input
         self._open = False
         self._header_ref = None
+        self._init_retries = 0
+        self._audio_sig_ids = []
 
         self._btn = Gtk.Button()
         self._btn.set_name("mixer-ctrl-btn")
@@ -129,8 +131,29 @@ class DeviceDropdown(Gtk.Box):
         self._rev.set_hexpand(False)
         self._rev.set_reveal_child(False)
 
-        GLib.timeout_add(300, self._deferred_refresh)
+        self._bind_audio_signals()
+
+        # Попытка быстрого обновления при запуске
+        self.refresh_label()
+        GLib.timeout_add(100, self._deferred_refresh)
         self.show_all()
+
+    def _bind_audio_signals(self):
+        if not self._audio:
+            return
+        signals = (
+            ("speaker-changed", "speakers-changed") if not self._is_input
+            else ("microphone-changed", "microphones-changed")
+        ) + ("changed",)
+
+        for sig in signals:
+            try:
+                sig_id = self._audio.connect(
+                    sig, lambda *_: GLib.idle_add(self.refresh_label)
+                )
+                self._audio_sig_ids.append(sig_id)
+            except Exception:
+                pass
 
     def register_revealer(self, overlay: Gtk.Overlay, header_box: Gtk.Box):
         self._header_ref = header_box
@@ -138,6 +161,12 @@ class DeviceDropdown(Gtk.Box):
         overlay.set_overlay_pass_through(self._rev, False)
 
     def _deferred_refresh(self):
+        # Если устройство ещё не загружено — продолжаем цикличный опрос
+        dev = self._default_device()
+        if dev is None and not self._devices():
+            self._init_retries += 1
+            if self._init_retries < 50:  # Опрашиваем до ~5 секунд
+                return True
         self.refresh_label()
         return False
 
@@ -179,8 +208,10 @@ class DeviceDropdown(Gtk.Box):
                     or "Unknown"
                 )
                 self._dev_lbl.set_label(_truncate(name, _MAX_DEVICE_CHARS))
+                self._btn.set_tooltip_text(name)
             else:
                 self._dev_lbl.set_label("No device")
+                self._btn.set_tooltip_text("No device found")
         return False
 
     def _on_clicked(self, _w):
@@ -316,10 +347,18 @@ class DeviceDropdown(Gtk.Box):
                 ctrl.set_default_sink(stream)
         except Exception as e:
             print(f"[DeviceDropdown] switch error: {e}")
-        GLib.timeout_add(200, self.refresh_label)
+        GLib.timeout_add(150, self.refresh_label)
 
     def cleanup(self):
         self._collapse()
+        if self._audio:
+            for sig_id in self._audio_sig_ids:
+                try:
+                    self._audio.disconnect(sig_id)
+                except Exception:
+                    pass
+        self._audio_sig_ids.clear()
+
         old = self._rev.get_child()
         if old:
             self._rev.remove(old)

@@ -250,3 +250,64 @@
   opacity: 1;
   border-color: var(--primary);
 }
+
+/* ── Новые элементы: Время у крестика и Разделители дат ───────────────────── */
+
+/* Метка времени слева от кнопки закрытия уведомления */
+#notif-time-label {
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--outline);
+  margin-right: 8px;
+}
+
+/* Контейнер разделителя дат ("Сегодня", "Вчера" и т.д.) */
+#notification-date-box {
+  margin-top: 10px;
+  margin-bottom: 4px;
+  padding: 0 6px;
+}
+
+/* Заголовок даты ("Сегодня", "Вчера", "15 октября") */
+#notification-date-header {
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--primary);
+}
+
+
+#matugen-switcher,
+#dnd-switch {
+    min-width: 40px;
+    min-height: 20px;
+    background-color: var(--surface);
+    border-radius: 12px;
+    padding: 2px;
+    transition: background-color 0.3s ease;
+}
+
+#matugen-switcher slider,
+#dnd-switch slider {
+    background-color: var(--primary);
+    border-radius: 12px;
+    min-width: 16px;
+    min-height: 8px;
+    transition:
+        background-color 0.1s cubic-bezier(0.5, 0.25, 0, 1.25),
+        transform 0.25s cubic-bezier(0.5, 0.25, 0, 1.25);
+}
+
+#matugen-switcher:checked,
+#dnd-switch:checked {
+    background-color: var(--primary);
+}
+
+#matugen-switcher:checked slider,
+#dnd-switch:checked slider {
+    background-color: var(--shadow);
+}
+
+#matugen-switcher:checked image,
+#dnd-switch:checked image {
+    color: var(--shadow);
+}

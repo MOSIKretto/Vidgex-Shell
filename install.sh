@@ -24,14 +24,11 @@ LIGHT_BLUE='\033[1;34m'
 # ═══════════════════════════════════════════════════════════════════════════════
 # КОНФИГУРАЦИЯ
 # ═══════════════════════════════════════════════════════════════════════════════
-INSTALL_DIR="$HOME/.config/Vidgex-Shell"
+INSTALL_DIR="$HOME/.config/hypr/Vidgex-Shell"
 REPO_URL="https://github.com/MOSIKretto/Vidgex-Shell.git"
 REPO_BRANCH="main"
-HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
+HYPRLAND_CONF="$HOME/.config/hypr/hyprland.lua"
 LANG_CHOICE="EN"
-
-AUTOLAYOUT_SCRIPT="$INSTALL_DIR/autolayout.py"
-AUTOLAYOUT_SERVICE="$HOME/.config/systemd/user/autolayout.service"
 
 aur_helper="yay"
 
@@ -53,7 +50,6 @@ PACKAGES=(
   brightnessctl
   cliphist
   libnotify
-  swappy
   gpu-screen-recorder
   tesseract
   tesseract-data-eng
@@ -69,9 +65,7 @@ PACKAGES=(
   python-psutil
   python-numpy
   python-pillow
-  python-opencv
   python-pywayland
-  python-onnxruntime-cpu
   python-dbus
   python-evdev
   python-mutagen
@@ -119,7 +113,7 @@ declare -A MSG_RU=(
   ["hyprland_no_backup"]="Старый конфиг не найден, бэкап не требуется."
   ["hyprland_creating"]="Применение конфигурации Vidgex-Shell..."
   ["hyprland_created"]="Конфигурация Hyprland применена!"
-  ["hyprland_already_configured"]="Vidgex-Shell уже настроен в hyprland.conf"
+  ["hyprland_already_configured"]="Vidgex-Shell уже настроен в hyprland.lua"
   ["hyprland_skip"]="Пропуск перезаписи конфигурации."
   ["starting_shell"]="Запуск Vidgex-Shell..."
   ["install_complete"]="Установка завершена!"
@@ -146,23 +140,6 @@ declare -A MSG_RU=(
   ["gpu_amd_sysfs"]="Используется встроенная поддержка через sysfs"
   ["gpu_amd_sysfs_ok"]="Интерфейс sysfs доступен"
   ["gpu_amd_sysfs_not_found"]="Интерфейс gpu_busy_percent не найден"
-  ["autolayout_title"]="Настройка Autolayout (переключатель раскладки)..."
-  ["autolayout_adding_group"]="Добавление пользователя в группу input..."
-  ["autolayout_group_exists"]="Пользователь уже в группе input."
-  ["autolayout_group_added"]="Пользователь добавлен в группу input!"
-  ["autolayout_udev_rule"]="Создание udev-правила для /dev/uinput..."
-  ["autolayout_udev_exists"]="udev-правило уже существует."
-  ["autolayout_udev_created"]="udev-правило создано!"
-  ["autolayout_module_load"]="Загрузка модуля ядра uinput..."
-  ["autolayout_module_exists"]="Модуль uinput уже загружен."
-  ["autolayout_module_loaded"]="Модуль uinput загружен и добавлен в автозагрузку!"
-  ["autolayout_udev_reload"]="Применение udev-правил..."
-  ["autolayout_udev_reloaded"]="udev-правила применены!"
-  ["autolayout_service"]="Создание systemd user-сервиса autolayout..."
-  ["autolayout_service_exists"]="Сервис autolayout уже создан."
-  ["autolayout_service_created"]="Сервис autolayout создан и включён!"
-  ["autolayout_done"]="Autolayout настроен! (права применятся после перелогина)"
-  ["autolayout_note"]="Примечание: группа input применится после перезагрузки/перелогина"
   # ── Retry ──
   ["retry_attempt"]="Попытка"
   ["retry_of"]="из"
@@ -239,7 +216,7 @@ declare -A MSG_EN=(
   ["hyprland_no_backup"]="No old config found, backup not needed."
   ["hyprland_creating"]="Applying Vidgex-Shell configuration..."
   ["hyprland_created"]="Hyprland configuration applied!"
-  ["hyprland_already_configured"]="Vidgex-Shell already configured in hyprland.conf"
+  ["hyprland_already_configured"]="Vidgex-Shell already configured in hyprland.lua"
   ["hyprland_skip"]="Skipping configuration overwrite."
   ["starting_shell"]="Starting Vidgex-Shell..."
   ["install_complete"]="Installation complete!"
@@ -266,23 +243,6 @@ declare -A MSG_EN=(
   ["gpu_amd_sysfs"]="Using built-in sysfs support"
   ["gpu_amd_sysfs_ok"]="sysfs interface available"
   ["gpu_amd_sysfs_not_found"]="gpu_busy_percent interface not found"
-  ["autolayout_title"]="Configuring Autolayout (keyboard layout switcher)..."
-  ["autolayout_adding_group"]="Adding user to input group..."
-  ["autolayout_group_exists"]="User is already in input group."
-  ["autolayout_group_added"]="User added to input group!"
-  ["autolayout_udev_rule"]="Creating udev rule for /dev/uinput..."
-  ["autolayout_udev_exists"]="udev rule already exists."
-  ["autolayout_udev_created"]="udev rule created!"
-  ["autolayout_module_load"]="Loading uinput kernel module..."
-  ["autolayout_module_exists"]="uinput module already loaded."
-  ["autolayout_module_loaded"]="uinput module loaded and added to autostart!"
-  ["autolayout_udev_reload"]="Reloading udev rules..."
-  ["autolayout_udev_reloaded"]="udev rules reloaded!"
-  ["autolayout_service"]="Creating systemd user service for autolayout..."
-  ["autolayout_service_exists"]="Autolayout service already created."
-  ["autolayout_service_created"]="Autolayout service created and enabled!"
-  ["autolayout_done"]="Autolayout configured! (permissions apply after re-login)"
-  ["autolayout_note"]="Note: input group takes effect after reboot/re-login"
   # ── Retry ──
   ["retry_attempt"]="Attempt"
   ["retry_of"]="of"
@@ -890,6 +850,9 @@ step_install_aur_helper() {
   return 0
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ШАГ 4: ПАКЕТЫ
+# ═══════════════════════════════════════════════════════════════════════════════
 step_install_packages() {
   print_step "$(msg "installing_packages")"
   local total=${#PACKAGES[@]}
@@ -1204,18 +1167,19 @@ step_configure_network() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 8: HYPRLAND КОНФИГ
+# ШАГ 8: HYPRLAND КОНФИГ (Lua)
 # ═══════════════════════════════════════════════════════════════════════════════
 step_configure_hyprland() {
   print_step "$(msg "config_hyprland")"
 
+  # ~/.config/hypr гарантированно существует (создан в step_clone_repo)
   if [ ! -d "$HOME/.config/hypr" ]; then
     mkdir -p "$HOME/.config/hypr" || { print_error "Cannot create ~/.config/hypr"; return 1; }
     print_info "Created ~/.config/hypr directory"
   fi
 
   if [ -f "$HYPRLAND_CONF" ]; then
-    if grep -qF "source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf" "$HYPRLAND_CONF" 2>/dev/null; then
+    if grep -qF 'require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")' "$HYPRLAND_CONF" 2>/dev/null; then
       print_success "$(msg "hyprland_already_configured")"
       print_info "$(msg "hyprland_skip")"
       echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
@@ -1223,6 +1187,7 @@ step_configure_hyprland() {
     fi
   fi
 
+  # Резервная копия старого конфига
   if [ -f "$HYPRLAND_CONF" ]; then
     local backup_file="${HYPRLAND_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
     print_info "$(msg "hyprland_backup")"
@@ -1237,98 +1202,85 @@ step_configure_hyprland() {
 
   print_info "$(msg "hyprland_creating")"
 
+  # Записываем Lua-конфиг
   if ! cat > "$HYPRLAND_CONF" <<'HYPR_EOF'
-#################################
-### LAZARETTO HYPRLAND CONFIG ###
-#################################
+-- ##################################
+-- ### LAZARETTO HYPERLAND CONFIG ###
+-- ##################################
 
-################
-### МОНИТОРЫ ###
-################
-monitor = ,preferred,auto,1
 
-########################
-### АНИМАЦИИ И ЦВЕТА ###
-########################
+-- ################
+-- ### МОНИТОРЫ ###
+-- ################
+hl.monitor({
+    output = "",
+    mode = "preferred",
+    position = "auto",
+    scale = "auto",
+})
 
-decoration {
-    rounding = 12
 
-    active_opacity = 1.0
-    inactive_opacity = 0.8
+-- ########################
+-- ### АНИМАЦИИ И ЦВЕТА ###
+-- ########################
+hl.config({
+    decoration = {
+        rounding = 12,
+        inactive_opacity = 0.8,
 
-    blur {
-        enabled = yes
-        size = 1
-        passes = 3
-        new_optimizations = yes
-        contrast = 1
-        brightness = 1
+        blur = {
+            enabled = true,
+            size = 1,
+            passes = 3,
+            contrast = 1,
+            brightness = 1,
+        },
+    },
+
+    misc = {
+        vrr = 2,
+        animate_manual_resizes = false,
+        animate_mouse_windowdragging = false,
+        disable_splash_rendering = true,
+        disable_hyprland_logo = true,
+        force_default_wallpaper = 0,
+        allow_session_lock_restore = true,
+        middle_click_paste = false,
+        focus_on_activate = false,
+        session_lock_xray = true,
+        mouse_move_enables_dpms = true,
+        key_press_enables_dpms = true,
+        enable_swallow = true,
+        background_color = "0x111111",
+    },
+
+    cursor = {
+        no_warps = true,
+    },
+
+    xwayland = {
+        force_zero_scaling = true,
     }
+})
 
-    shadow {
-        enabled = true
-        range = 30
-        render_power = 5
-        offset = 0 5
-        color = rgba(00000070)
-    }
-}
+-- ################################
+-- ### НАСТРОЙКИ ГОРЯЧИХ КЛАВИШ ###
+-- ################################
+hl.bind("SUPER + SHIFT + Q", hl.dsp.window.close())
 
-master {
-    mfact = 0.5
-}
+-- Запуск приложений
+hl.bind("SUPER + ALT + T", hl.dsp.exec_cmd("kitty"))
+hl.bind("SUPER + F", hl.dsp.exec_cmd("firefox"))
 
-misc {
-    vrr = 2
-
-    animate_manual_resizes = false
-    animate_mouse_windowdragging = false
-
-    disable_splash_rendering = true
-    disable_hyprland_logo = true
-    force_default_wallpaper = 0
-
-    allow_session_lock_restore = true
-    middle_click_paste = false
-    focus_on_activate = false
-    session_lock_xray = true
-
-    mouse_move_enables_dpms = true
-    key_press_enables_dpms = true
-    enable_swallow = true
-
-	background_color = rgb(1f1e1e)
-}
-
-cursor {
-    no_warps = true
-}
-
-xwayland {
-    enabled = true
-    force_zero_scaling = true
-}
-
-################################
-### НАСТРОЙКИ ГОРЯЧИХ КЛАВИШ ###
-################################
-bind = SUPER SHIFT, Q, killactive
-bind = SUPER ALT, T, exec, kitty
-bind = SUPER, F, exec, firefox
-
-debug {
-    damage_tracking = 2
-}
-
-# Vidgex Shell
-source = ~/.config/Vidgex-Shell/vidgex-shell-conf/vidgex-shell.conf
+-- Vidgex Shell
+require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")
 HYPR_EOF
   then
-    print_error "Failed to write hyprland.conf"; return 1
+    print_error "Failed to write hyprland.lua"; return 1
   fi
 
-  if ! grep -qF "Vidgex-Shell" "$HYPRLAND_CONF" 2>/dev/null; then
+  # Верификация
+  if ! grep -qF 'require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")' "$HYPRLAND_CONF" 2>/dev/null; then
     print_error "Verification failed: config was not written correctly"
     return 1
   fi
@@ -1339,117 +1291,7 @@ HYPR_EOF
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 9: AUTOLAYOUT
-# ═══════════════════════════════════════════════════════════════════════════════
-step_configure_autolayout() {
-  print_step "$(msg "autolayout_title")"
-
-  local current_user
-  current_user=$(whoami)
-  local needs_relogin=false
-
-  print_info "$(msg "autolayout_adding_group")"
-  if id -nG "$current_user" | grep -qw "input"; then
-    print_success "$(msg "autolayout_group_exists")"
-  else
-    if ! sudo usermod -aG input "$current_user"; then
-      print_error "Failed to add user to input group"; return 1
-    fi
-    print_success "$(msg "autolayout_group_added")"
-    needs_relogin=true
-  fi
-
-  local udev_rule_file="/etc/udev/rules.d/99-uinput.rules"
-  local udev_rule_content='KERNEL=="uinput", GROUP="input", MODE="0660"'
-
-  print_info "$(msg "autolayout_udev_rule")"
-  if [ -f "$udev_rule_file" ] && grep -qF "$udev_rule_content" "$udev_rule_file" 2>/dev/null; then
-    print_success "$(msg "autolayout_udev_exists")"
-  else
-    if ! echo "$udev_rule_content" | sudo tee "$udev_rule_file" > /dev/null; then
-      print_error "Failed to create udev rule"; return 1
-    fi
-    print_success "$(msg "autolayout_udev_created")"
-    echo -e "         ${GRAY}→ $udev_rule_file${NC}"
-  fi
-
-  local modules_file="/etc/modules-load.d/uinput.conf"
-
-  print_info "$(msg "autolayout_module_load")"
-  if lsmod | grep -q "^uinput"; then
-    print_success "$(msg "autolayout_module_exists")"
-  else
-    if ! sudo modprobe uinput; then
-      print_error "Failed to load uinput module"; return 1
-    fi
-    print_success "modprobe uinput ✓"
-  fi
-
-  if [ -f "$modules_file" ] && grep -qF "uinput" "$modules_file" 2>/dev/null; then
-    print_success "autoload uinput ✓"
-  else
-    if ! echo "uinput" | sudo tee "$modules_file" > /dev/null; then
-      print_error "Failed to write $modules_file"; return 1
-    fi
-    print_success "$(msg "autolayout_module_loaded")"
-    echo -e "         ${GRAY}→ $modules_file${NC}"
-  fi
-
-  print_info "$(msg "autolayout_udev_reload")"
-  if ! sudo udevadm control --reload-rules; then
-    print_error "Failed to reload udev rules"; return 1
-  fi
-  if ! sudo udevadm trigger; then
-    print_error "Failed to trigger udev"; return 1
-  fi
-  print_success "$(msg "autolayout_udev_reloaded")"
-
-  print_info "$(msg "autolayout_service")"
-  mkdir -p "$HOME/.config/systemd/user"
-
-  if [ -f "$AUTOLAYOUT_SERVICE" ]; then
-    print_success "$(msg "autolayout_service_exists")"
-  else
-    if ! cat > "$AUTOLAYOUT_SERVICE" <<SVCEOF
-[Unit]
-Description=Autolayout - smart keyboard layout switcher
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 ${AUTOLAYOUT_SCRIPT}
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=graphical-session.target
-SVCEOF
-    then
-      print_error "Failed to write autolayout.service"; return 1
-    fi
-
-    if ! systemctl --user daemon-reload; then
-      print_error "Failed to daemon-reload"; return 1
-    fi
-    if ! systemctl --user enable autolayout.service; then
-      print_error "Failed to enable autolayout.service"; return 1
-    fi
-
-    print_success "$(msg "autolayout_service_created")"
-    echo -e "         ${GRAY}→ $AUTOLAYOUT_SERVICE${NC}"
-  fi
-
-  echo ""
-  print_success "$(msg "autolayout_done")"
-  if [ "$needs_relogin" = true ]; then
-    print_warning "$(msg "autolayout_note")"
-  fi
-
-  return 0
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ШАГ 10: ЗАПУСК VIDGEX-SHELL
+# ШАГ 9: ЗАПУСК VIDGEX-SHELL
 # ═══════════════════════════════════════════════════════════════════════════════
 step_start_shell() {
   print_step "$(msg "starting_shell")"
@@ -1503,7 +1345,6 @@ retry_step  "GPU detection & setup"   step_detect_gpu           5
 retry_step  "Fonts"                   step_install_fonts        5
 retry_step  "Network"                 step_configure_network    5
 retry_step  "Hyprland config"         step_configure_hyprland   5
-retry_step  "Autolayout"              step_configure_autolayout 5
 retry_step  "Start Vidgex-Shell"      step_start_shell          5
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1520,9 +1361,8 @@ echo -e "${GREEN}${BOLD}╚═════════════════�
 echo ""
 echo -e "${GRAY}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.conf${NC}                    ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Autolayout:${NC}   ${CYAN}systemctl --user status autolayout${NC}              ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/hypr/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.lua${NC}                    ${GRAY}║${NC}"
 echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                            ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"

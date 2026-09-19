@@ -136,10 +136,12 @@ class Visibility:
             clients = dock._parse("j/clients")
 
         for w in clients:
-            if w.get("hidden") or w.get("minimized"):
+            # Обновлено под v0.55+: минимизированные окна теперь строго проверяются флагом hidden
+            if w.get("hidden") or w.get("floating") is False and w.get("fullscreen", 0) > 0:
                 continue
 
             w_ws = w.get("workspace", {})
+            # Обновлено под v0.55+: в новом Lua/JSON API поле workspace гарантированно возвращает объект
             wid  = w_ws.get("id") if isinstance(w_ws, dict) else w_ws
             if wid != ws_id:
                 continue
@@ -147,9 +149,10 @@ class Visibility:
                 continue
 
             pos, size = w.get("at"), w.get("size")
-            if not pos or not size:
+            if not pos or not size or len(pos) < 2 or len(size) < 2:
                 continue
 
+            # Гарантируем корректное распаковывание индексов [0] и [1]
             wx, wy, ww, wh = pos[0], pos[1], size[0], size[1]
             if (
                 ww > 0 and wh > 0

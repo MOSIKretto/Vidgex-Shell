@@ -27,7 +27,6 @@ from modules.corners import MyCorner
 from services.wayland import WaylandWindow as Window
 
 
-# Маппинг имён аплетов на секции/атрибуты MainWindowimport json
 import threading
 
 import gi

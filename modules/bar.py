@@ -102,7 +102,7 @@ class Bar(Window):
             name="button-bar",
             tooltip_markup="<b>Tools</b>",
             on_clicked=self._tools,
-            child=Label(name="button-bar-label", markup=icons.tools),
+            child=Label(name="button-bar-label", markup=icons.photo),
         )
         _hov(self.bt)
         self._hand_cursor(self.bt)
@@ -119,12 +119,12 @@ class Bar(Window):
         self._hand_cursor(self.bp)
         self.power_menu.set_trigger_button(self.bp)
 
-        self.ll = Label(name="lang-label")
+        self.ll = Label(name="lang-label", xalign=0.5)
 
         self.lang_eb = EventBox(
             child=Box(
                 name="language-indicator",
-                spacing=4,
+                spacing=0,
                 children=[self.ll],
             )
         )
@@ -163,7 +163,7 @@ class Bar(Window):
         raw = self.lang.get_label()
         if not raw:
             return
-        short = raw[:3].upper()
+        short = raw[:2].upper()
         if short != self._last_lang:
             self._last_lang = short
             self.ll.set_label(short)

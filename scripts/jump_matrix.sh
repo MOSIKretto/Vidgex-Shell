@@ -9,8 +9,9 @@ if [[ ! $TARGET =~ ^[1-9]$ ]] || [[ -z $ACTION ]]; then exit 1; fi
 # Задержка между шагами анимации (в секундах).
 ANIM_DELAY=0.15
 
-# 1. Получаем текущий рабочий стол
-[[ $(hyprctl activeworkspace -j) =~ \"id\":\ *([0-9]+) ]] && CUR=${BASH_REMATCH[1]} || CUR=5
+# 1. Получаем текущий рабочий стол через встроенный Lua-вызов
+CUR=$(hyprctl repl 'hl.get_active_workspace().id' | tr -d '\n' | grep -oE '[0-9]+')
+CUR=${CUR:-5}
 (( CUR < 1 || CUR > 9 )) && CUR=5
 
 # Если мы уже на нужном столе - ничего не делаем
@@ -63,11 +64,36 @@ for step in "${STEPS[@]}"; do
     ws=${step#*:}
     
     if [[ $dir == "V" ]]; then
-        # Вертикальный шаг
-        hyprctl --batch "keyword animation workspaces,1,6,overshot,slidevert; dispatch $ACTION $ws; keyword animation workspaces,1,6,overshot,slide" >/dev/null
+        # Вертикальный шаг с динамической сменой всей группы анимаций
+        hyprctl eval '
+            hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "overshot", style = "slidevert" })
+            hl.animation({ leaf = "workspacesIn", enabled = true, speed = 6, bezier = "overshot", style = "slidevert" })
+            hl.animation({ leaf = "workspacesOut", enabled = true, speed = 6, bezier = "overshot", style = "slidevert" })
+        ' >/dev/null
+        
+        # Микропауза для фиксации стилей в памяти композитора
+        sleep 0.05
+        
+        # Выполняем перемещение фокуса или перенос окна по новому Lua-синтаксису dispatch
+        if [[ $ACTION == "movetoworkspace" ]]; then
+            hyprctl dispatch "hl.dsp.window.move({ workspace = \"$ws\" })" >/dev/null
+        else
+            hyprctl dispatch "hl.dsp.focus({ workspace = \"$ws\" })" >/dev/null
+        fi
+        
+        # Возвращаем горизонтальный сдвиг обратно
+        hyprctl eval '
+            hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "overshot", style = "slide" })
+            hl.animation({ leaf = "workspacesIn", enabled = true, speed = 6, bezier = "overshot", style = "slide" })
+            hl.animation({ leaf = "workspacesOut", enabled = true, speed = 6, bezier = "overshot", style = "slide" })
+        ' >/dev/null
     else
         # Горизонтальный шаг
-        hyprctl dispatch "$ACTION" "$ws" >/dev/null
+        if [[ $ACTION == "movetoworkspace" ]]; then
+            hyprctl dispatch "hl.dsp.window.move({ workspace = \"$ws\" })" >/dev/null
+        else
+            hyprctl dispatch "hl.dsp.focus({ workspace = \"$ws\" })" >/dev/null
+        fi
     fi
     
     sleep $ANIM_DELAY

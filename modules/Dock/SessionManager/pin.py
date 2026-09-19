@@ -5,10 +5,11 @@ class Pin:
         self.pinned_apps_info: dict = {}
 
     def is_pinned(self, unique_id: str) -> bool:
-        return unique_id in self.pinned_apps_info
+        return str(unique_id).lower() in self.pinned_apps_info
 
     def pin(self, unique_id: str, app, key: str, original: str):
-        self.pinned_apps_info[unique_id] = {
+        uid = str(unique_id).lower()
+        self.pinned_apps_info[uid] = {
             "app": app,
             "key": key,
             "original": original,
@@ -16,17 +17,19 @@ class Pin:
         self._save()
 
     def unpin(self, unique_id: str) -> bool:
-        if unique_id in self.pinned_apps_info:
-            del self.pinned_apps_info[unique_id]
+        uid = str(unique_id).lower()
+        if uid in self.pinned_apps_info:
+            del self.pinned_apps_info[uid]
             self._save()
             return True
         return False
 
     def toggle(self, unique_id: str, app, key: str, original: str) -> bool:
-        if self.is_pinned(unique_id):
-            self.unpin(unique_id)
+        uid = str(unique_id).lower()
+        if self.is_pinned(uid):
+            self.unpin(uid)
             return False
-        self.pin(unique_id, app, key, original)
+        self.pin(uid, app, key, original)
         return True
 
     def restore(self):
@@ -37,7 +40,7 @@ class Pin:
         for p in pinned_list:
             key = p.get("key", "")
             original = p.get("original", key)
-            uid = p.get("unique_id", key)
+            uid = str(p.get("unique_id", key)).lower()
             app = (
                 self._app_resolver.app_map.get(key)
                 or self._app_resolver.app_map.get(original.lower())
@@ -51,8 +54,10 @@ class Pin:
 
     def get_ghost_candidates(self, existing_ids: set) -> list:
         result = []
+        normalized_existing = {str(eid).lower() for eid in existing_ids}
+        
         for uid, info in self.pinned_apps_info.items():
-            if uid not in existing_ids:
+            if uid not in normalized_existing:
                 result.append(
                     {
                         "unique_id": uid,
@@ -73,7 +78,7 @@ class Pin:
             pinned_keys.add(info["key"])
             pinned_info.append(
                 {
-                    "unique_id": uid,
+                    "unique_id": str(uid).lower(),
                     "key": info["key"],
                     "original": info["original"],
                 }

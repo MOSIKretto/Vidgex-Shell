@@ -41,7 +41,6 @@
     color: var(--shadow);
 }
 
-
 /* Hover — подсветка как у кнопок в меню */
 #button-bar:hover {
     background-color: var(--primary);
@@ -66,16 +65,18 @@
 
 #power-battery-container #language-indicator {
   background-color: transparent;
-  padding: 0 8px;
+  padding: 0 4px;
   border-radius: 12px 0 0 12px;
   min-height: 36px;
 }
 
+/* ── Фиксированная ширина без запрещенного text-align ── */
 #power-battery-container #language-indicator #lang-label {
   font-weight: bold;
   font-size: 14px;
   color: var(--primary);
-  padding: 0 4px;
+  padding: 0;
+  min-width: 38px;
 }
 
 #power-battery-container #date-time {

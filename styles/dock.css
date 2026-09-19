@@ -191,9 +191,11 @@
 
 /* ── Разделитель ───────────────────── */
 #dock-separator {
-    padding: 2px;
-    border-radius: 12px;
-    background-color: var(--surface-bright);
+    min-width: 1px;
+    min-height: 32px;
+    margin: 4px 6px;
+    background-color: alpha(var(--outline), 0.25);
+    border-radius: 1px;
 }
 
 /* ── Углы ──────────────────────────── */
@@ -269,4 +271,49 @@
 #dock-app-pin-btn.active:active {
     background-color: alpha(var(--primary), 0.6);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ══════════════════════════════════════
+   DOCK — LAYOUT BUTTON
+   ══════════════════════════════════════ */
+
+#dock-app-button.layout-btn {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 6px;
+    margin-left: 0;
+    margin-right: 0;
+    /* Постоянный фон как у запущенных приложений */
+    background-color: alpha(var(--surface-bright), 0.8);
+    border: 2px solid transparent;
+    border-radius: 12px;
+}
+
+#dock-app-button.layout-btn:hover,
+#dock-app-button.layout-btn.hovered {
+    background-color: alpha(var(--outline), 0.5);
+    border-radius: 12px;
+}
+
+#dock-app-button.layout-btn:active {
+    background-color: alpha(var(--primary), 0.4);
+    border-radius: 12px;
+}
+
+/* ── Иконка layout ─────────────────── */
+#dock-layout-icon {
+    font-size: 28px;
+    color: var(--on-surface);
+    transition: color 150ms ease-out;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+#dock-app-button.layout-btn:hover #dock-layout-icon,
+#dock-app-button.layout-btn.hovered #dock-layout-icon {
+    color: var(--primary);
+}
+
+#dock-app-button.layout-btn:active #dock-layout-icon {
+    color: var(--on-primary);
 }

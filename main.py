@@ -1,10 +1,4 @@
 import sys, signal, threading
-
-if len(sys.argv) > 1 and sys.argv[1] == "--canvas-toggle":
-    from modules.Desktop.infinite_desktop import toggle_mode
-    toggle_mode()
-    sys.exit(0)
-
 import setproctitle
 
 from fabric import Application
@@ -16,7 +10,6 @@ from modules.dock import Dock
 from modules.corners import Corners
 
 from modules.Dock.SessionManager.restore import SessionManager
-from modules.Desktop.infinite_desktop import start_canvas_daemon
 
 
 def run():
@@ -38,8 +31,6 @@ def run():
     css_path = get_relative_path("main.css")
     app.set_stylesheet_from_file(css_path)
     app.set_css = lambda: app.set_stylesheet_from_file(css_path)
-
-    start_canvas_daemon()
 
     restore_thread = threading.Thread(
         target=session_manager.restore,

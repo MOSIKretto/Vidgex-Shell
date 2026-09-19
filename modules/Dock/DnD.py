@@ -8,6 +8,7 @@ from gi.repository import Gdk, Gtk, GLib
 
 class Dnd:
     _ORDER_FILE = GLib.get_user_cache_dir() + "/vidgex-shell/dock_order.json"
+    TARGET_NAME = "DOCK_APP_ROW"
 
     def __init__(self, dock, order_file: str | None = None):
         self._dock = dock
@@ -19,23 +20,27 @@ class Dnd:
         return self._custom_order
 
     def apply_order(self, candidates: list[dict]) -> list[dict]:
-        all_ids = {c["unique_id"] for c in candidates}
-
-        self._custom_order = [u for u in self._custom_order if u in all_ids]
-
+        # Добавляем новые элементы, которых ещё нет в сохранённом порядке
         for c in candidates:
             uid = c["unique_id"]
             if uid not in self._custom_order:
                 self._custom_order.append(uid)
 
-        candidates.sort(key=lambda x: self._custom_order.index(x["unique_id"]))
+        # Сортируем согласно сохраненному списку
+        candidates.sort(
+            key=lambda x: self._custom_order.index(x["unique_id"])
+            if x["unique_id"] in self._custom_order
+            else 9999
+        )
         return candidates
 
     def setup(self, container) -> None:
         main_btn = container._main_btn
         main_btn._container = container
 
-        te = Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)
+        # Создаем кастомный TargetEntry для точного совпадения типов внутри приложения
+        te = Gtk.TargetEntry.new(self.TARGET_NAME, Gtk.TargetFlags.SAME_APP, 0)
+        
         main_btn.drag_source_set(
             Gdk.ModifierType.BUTTON1_MASK, [te], Gdk.DragAction.MOVE
         )
@@ -98,9 +103,14 @@ class Dnd:
         if visibility:
             visibility.set_drag(False)
 
+        # Вызываем обновление видимости и состояния Дока
+        GLib.timeout_add(50, lambda: self._dock._schedule_update() or False)
+
     def _on_drag_data_get(self, main_btn, _ctx, sel, _info, _ts):
         uid = getattr(main_btn._container, "_unique_id", "")
-        sel.set_text(uid, -1)
+        if uid:
+            # Передаем исходный ID в виде UTF-8 байтов без изменения регистра
+            sel.set(sel.get_target(), 8, str(uid).encode("utf-8"))
 
     def _on_drag_motion(self, main_btn, context, _x, _y, time):
         main_btn.add_style_class("drag-hover")
@@ -115,17 +125,24 @@ class Dnd:
     ):
         main_btn.remove_style_class("drag-hover")
 
+        raw_data = sel_data.get_data()
+        if not raw_data:
+            context.finish(False, False, timestamp)
+            return
+
+        source_id = raw_data.decode("utf-8")
         container = main_btn._container
-        source_id = sel_data.get_text()
         target_id = getattr(container, "_unique_id", None)
 
         if not source_id or not target_id or source_id == target_id:
             context.finish(False, False, timestamp)
             return
 
-        if source_id not in self._custom_order or target_id not in self._custom_order:
-            context.finish(False, False, timestamp)
-            return
+        # Гарантируем наличие обеих кнопок в массиве порядка
+        if source_id not in self._custom_order:
+            self._custom_order.append(source_id)
+        if target_id not in self._custom_order:
+            self._custom_order.append(target_id)
 
         old_idx = self._custom_order.index(source_id)
         tgt_idx = self._custom_order.index(target_id)
@@ -133,8 +150,10 @@ class Dnd:
         view = self._dock.view
         src_container = None
         children = view.get_children()
+        
         for child in children:
-            if getattr(child, "_unique_id", "") == source_id:
+            child_id = getattr(child, "_unique_id", "")
+            if str(child_id) == source_id:
                 src_container = child
                 break
 
@@ -146,6 +165,7 @@ class Dnd:
             box_idx = children.index(container)
             alloc = main_btn.get_allocation()
 
+            # Если мышь в правой половине кнопки-цели — вставляем после неё
             if x > alloc.width / 2:
                 box_idx += 1
                 tgt_idx += 1
@@ -158,8 +178,11 @@ class Dnd:
             self._custom_order.insert(tgt_idx, source_id)
 
             self.save_order()
+            
+            # Сбрасываем кэш отпечатка дока, чтобы он принял новый порядок
+            self._dock._last_fingerprint = None
 
-        except ValueError:
+        except (ValueError, IndexError):
             pass
 
         context.finish(True, False, timestamp)
