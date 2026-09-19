@@ -46,7 +46,7 @@ PACKAGES=(
   python-gobject
   vte3
 
-  awww-git
+  awww
   brightnessctl
   cliphist
   libnotify
