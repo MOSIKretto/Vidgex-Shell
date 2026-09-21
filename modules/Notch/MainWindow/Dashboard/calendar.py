@@ -3,39 +3,9 @@ import calendar
 
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
-from gi.repository import Gdk, Gtk
+from gi.repository import Gtk
 
 import services.icons as icons
-
-
-_pointer_cursor: Gdk.Cursor | None = None
-_default_cursor: Gdk.Cursor | None = None
-
-
-def _get_cursors(display: Gdk.Display):
-    global _pointer_cursor, _default_cursor
-    if _pointer_cursor is None:
-        _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
-        _default_cursor = Gdk.Cursor.new_from_name(display, "default")
-    return _pointer_cursor, _default_cursor
-
-
-def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    win.set_cursor(_get_cursors(win.get_display())[0])
-    return False
-
-
-def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    win = widget.get_window()
-    win.set_cursor(_get_cursors(win.get_display())[1])
-    return False
-
-
-def _setup_pointer_cursor(widget: Gtk.Widget):
-    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    widget.connect("enter-notify-event", _on_btn_enter)
-    widget.connect("leave-notify-event", _on_btn_leave)
 
 
 class Calendar(Gtk.Box):
@@ -80,9 +50,6 @@ class Calendar(Gtk.Box):
 
         self._pb.connect("clicked", self._prev)
         self._nb.connect("clicked", self._next)
-
-        _setup_pointer_cursor(self._pb)
-        _setup_pointer_cursor(self._nb)
 
         self.add(CenterBox(
             spacing=4, name="header",

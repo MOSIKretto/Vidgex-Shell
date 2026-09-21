@@ -6,7 +6,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.circularprogressbar import CircularProgressBar
 from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
-from gi.repository import GLib, Gio, Gdk
+from gi.repository import GLib, Gio
 
 from modules.Bar.Battery.upower import UPowerManager
 import services.icons as icons
@@ -19,19 +19,6 @@ _bat_pct   = 0.0
 _bat_chg   = None
 _bat_time  = 0.0
 _bat_timer = None
-_cursor_hand = None
-
-
-
-def _hov(w):
-    def sc(widget, _, is_hovered):
-        global _cursor_hand
-        if not _cursor_hand:
-            _cursor_hand = Gdk.Cursor.new_from_name(widget.get_display(), "hand2")
-        if win := widget.get_window():
-            win.set_cursor(_cursor_hand if is_hovered else None)
-    w.connect("enter-notify-event", sc, True)
-    w.connect("leave-notify-event", sc, False)
 
 
 def _bat_sub(widget):
@@ -47,26 +34,16 @@ def _bat_tick():
     global _bat_pct, _bat_chg, _bat_time
     if not _bat_subs:
         return False
-    try:
-        if _dd:
-            bat = _up.get_full_device_information(_dd)
-            if bat:
-                _bat_pct  = bat['Percentage']
-                st        = bat['State']
-                _bat_chg  = st in (1, 4)
-                _bat_time = bat['TimeToFull'] if _bat_chg else bat['TimeToEmpty']
-            else:
-                _bat_pct = _bat_time = 0.0
-                _bat_chg = None
-    except Exception:
-        pass
+    if _dd:
+        bat = _up.get_full_device_information(_dd)
+        _bat_pct  = bat['Percentage']
+        st        = bat['State']
+        _bat_chg  = st in (1, 4)
+        _bat_time = bat['TimeToFull'] if _bat_chg else bat['TimeToEmpty']
 
     for widget in _bat_subs:
-        if hasattr(widget, '_upd'):
-            try:
-                widget._upd()
-            except Exception:
-                pass
+        widget._upd()
+
     return True
 
 
@@ -114,6 +91,7 @@ class BatteryButton(Button):
                 self.ic.set_style('color: #ffa500;')
                 self.cir.add_style_class('battery-low')
                 self.cir.remove_style_class('battery-normal')
+                GLib.spawn_command_line_async('notify-send -a "Vidgex-Shell" "Power Profile" "30% charge remaining"')
             else:
                 self.cir.set_style('border: 3px solid var(--green);')
                 self.ic.set_style('color: #d3d3d3;')
@@ -189,19 +167,14 @@ class Battery(Box):
             w.connect('leave-notify-event', self._lv)
 
     def _init_pm_async(self):
-        try:
-            proc = subprocess.Popen(
-                ['powerprofilesctl', 'get'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True
-            )
-            out, _ = proc.communicate()
-            out = out.strip()
-            if out in ('power-saver', 'balanced', 'performance'):
-                self.mode = out
-        except Exception:
-            pass
+        proc = subprocess.Popen(
+            ['powerprofilesctl', 'get'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        out, _ = proc.communicate()
+        self.mode = out.strip()
         GLib.idle_add(self._build_pm_ui)
 
     def _build_pm_ui(self):
@@ -220,7 +193,6 @@ class Battery(Box):
             btn.connect('clicked', self._on_mode_btn_clicked, mode)
             btn.connect('enter-notify-event', self._ent)
             btn.connect('leave-notify-event', self._lv)
-            _hov(btn)
             self.pmb.add(btn)
             self._mode_btns[mode] = btn
 
@@ -239,10 +211,7 @@ class Battery(Box):
 
         if self.mode != tgt:
             self.mode = tgt
-            try:
-                Gio.Subprocess.new(['powerprofilesctl', 'set', tgt], Gio.SubprocessFlags.NONE)
-            except Exception:
-                pass
+            Gio.Subprocess.new(['powerprofilesctl', 'set', tgt], Gio.SubprocessFlags.NONE)
 
         self._upd_styles()
 
@@ -295,14 +264,22 @@ class Battery(Box):
         if not self._auto_pending_mode:
             return False
 
-        mode      = self._auto_pending_mode
+        mode = self._auto_pending_mode
         self.mode = mode
         self._upd_styles()
 
-        try:
-            Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
-        except Exception:
-            pass
+        Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
+
+        mode_titles = {
+            'power-saver': 'Power Saver Mode',
+            'balanced': 'Balanced Mode',
+            'performance': 'Performance Mode'
+        }
+        title = mode_titles[mode]
+        Gio.Subprocess.new(
+            ['notify-send', '-a', 'Vidgex-Shell', 'Power Profile', f'Auto switched to {title}'],
+            Gio.SubprocessFlags.NONE
+        )
 
         self._auto_pending_mode = None
 
@@ -318,10 +295,7 @@ class Battery(Box):
         self.mode   = mode
         self._upd_styles()
 
-        try:
-            Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
-        except Exception:
-            pass
+        Gio.Subprocess.new(['powerprofilesctl', 'set', mode], Gio.SubprocessFlags.NONE)
 
     def _ent(self, *_):
         self._is_hovered = True

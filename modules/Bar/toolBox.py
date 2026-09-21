@@ -1,6 +1,5 @@
 import builtins
 import os
-import shutil
 import subprocess
 import threading
 import time
@@ -9,7 +8,7 @@ from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib
+from gi.repository import GLib
 
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -21,20 +20,15 @@ from services.wayland import WaylandWindow as Window
 import services.icons as icons
 
 
-# --- Вспомогательные сервисные функции ---
-
 def _get_pictures_dir() -> Path:
-    xdg = os.environ.get("XDG_PICTURES_DIR")
-    return Path(xdg) if xdg else Path.home() / "Pictures"
+    return Path(os.environ["XDG_PICTURES_DIR"])
 
 
 def _get_videos_dir() -> Path:
-    xdg = os.environ.get("XDG_VIDEOS_DIR")
-    return Path(xdg) if xdg else Path.home() / "Videos"
+    return Path(os.environ["XDG_VIDEOS_DIR"])
 
 
 def _send_notification(summary: str, body: str = "", icon: str | Path = None, actions: list[tuple[str, str]] = None) -> str:
-    """Отправляет уведомление через notify-send и возвращает выбранное действие (если есть)."""
     cmd = ["notify-send", "-a", "Vidgex-Shell", summary]
     if body:
         cmd.append(body)
@@ -49,47 +43,34 @@ def _send_notification(summary: str, body: str = "", icon: str | Path = None, ac
 
 
 def _copy_to_clipboard(file_path: Path):
-    """Копирует изображение в буфер обмена (wl-copy или xclip)."""
-    if shutil.which("wl-copy"):
-        with open(file_path, "rb") as f:
-            subprocess.run(["wl-copy"], stdin=f)
-    elif shutil.which("xclip"):
-        subprocess.run(["xclip", "-selection", "clipboard", "-t", "image/png", str(file_path)])
+    with open(file_path, "rb") as f:
+        subprocess.run(["wl-copy"], stdin=f)
 
 
 def _run_ocr():
-    """Распознавание текста (OCR через hyprshot и tesseract)."""
     time.sleep(0.5)
-    try:
-        p1 = subprocess.Popen(
-            ["hyprshot", "-m", "region", "-z", "-r", "-s"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL
-        )
-        p2 = subprocess.Popen(
-            ["tesseract", "-l", "eng+rus", "-", "-"],
-            stdin=p1.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL
-        )
-        p1.stdout.close()
-        out, _ = p2.communicate()
-        text = out.decode("utf-8", errors="ignore").strip()
+    p1 = subprocess.Popen(
+        ["hyprshot", "-m", "region", "-z", "-r", "-s"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    p2 = subprocess.Popen(
+        ["tesseract", "-l", "eng+rus", "-", "-"],
+        stdin=p1.stdout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    p1.stdout.close()
+    out, _ = p2.communicate()
+    text = out.decode("utf-8").strip()
 
-        if text:
-            if shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=text.encode("utf-8"))
-            _send_notification("OCR Success", "Text Copied to Clipboard")
-        else:
-            _send_notification("OCR Failed", "No text recognized or operation failed")
-    except Exception as e:
-        _send_notification("OCR Error", str(e))
+    subprocess.run(["wl-copy"], input=text.encode("utf-8"))
+    _send_notification("OCR Success", "Text Copied to Clipboard")
 
 
 def _run_recording():
-    """Запись экрана через gpu-screen-recorder."""
     save_dir = _get_videos_dir() / "Recordings"
-    save_dir.mkdir(parents=True, exist_ok=True)
+    save_dir.mkdir(parents=True)
 
     is_running = subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
 
@@ -98,14 +79,14 @@ def _run_recording():
         time.sleep(1)
 
         mp4_files = list(save_dir.glob("*.mp4"))
-        last_video = max(mp4_files, key=lambda f: f.stat().st_mtime, default=None)
+        last_video = max(mp4_files, key=lambda f: f.stat().st_mtime)
 
         action = _send_notification(
             "⬜ Recording stopped",
             actions=[("view", "View"), ("open", "Open folder")]
         )
 
-        if action == "view" and last_video:
+        if action == "view":
             subprocess.run(["xdg-open", str(last_video)])
         elif action == "open":
             subprocess.run(["xdg-open", str(save_dir)])
@@ -124,7 +105,7 @@ def _run_recording():
         ])
 
 
-def _wait_for_file(file_path: Path, timeout: float = 6.0) -> bool:
+def _wait_for_file(file_path: Path, timeout: float = 6.0):
     count = 0
     max_steps = int(timeout / 0.2)
     while count < max_steps:
@@ -132,29 +113,12 @@ def _wait_for_file(file_path: Path, timeout: float = 6.0) -> bool:
             lsof = subprocess.run(["lsof", str(file_path)], capture_output=True)
             if lsof.returncode != 0:
                 time.sleep(0.2)
-                return True
+                return
         time.sleep(0.2)
         count += 1
-    return False
-
-
-def _find_screenshot_fallback(save_dir: Path, expected: Path) -> Path | None:
-    if expected.is_file() and expected.stat().st_size > 0:
-        return expected
-
-    now = time.time()
-    png_files = list(save_dir.glob("*.png"))
-    if not png_files:
-        return None
-
-    newest = max(png_files, key=lambda f: f.stat().st_mtime)
-    if (now - newest.stat().st_mtime) <= 60 and newest.stat().st_size > 0:
-        return newest
-    return None
 
 
 def _apply_mockup(full_path: Path):
-    """Скругление углов и тень с помощью ImageMagick."""
     temp_file = full_path.with_name(f"{full_path.stem}_temp.png")
     mockup_file = full_path.with_name(f"{full_path.stem}_mockup.png")
 
@@ -171,28 +135,21 @@ def _apply_mockup(full_path: Path):
         "+swap", "-background", "none", "-layers", "merge", "+repage", str(mockup_file)
     ]
 
-    try:
-        if subprocess.run(cmd1, capture_output=True).returncode == 0:
-            if subprocess.run(cmd2, capture_output=True).returncode == 0 and mockup_file.is_file():
-                mockup_file.replace(full_path)
-    except Exception:
-        pass
-    finally:
-        temp_file.unlink(missing_ok=True)
-        mockup_file.unlink(missing_ok=True)
+    subprocess.run(cmd1, capture_output=True)
+    subprocess.run(cmd2, capture_output=True)
+    mockup_file.replace(full_path)
+    temp_file.unlink()
 
 
 def _run_screenshot(mode: str, mockup: bool = False):
-    """Снятие скриншота (hyprshot в тихом режиме -s)."""
     time.sleep(0.5)
 
     save_dir = _get_pictures_dir() / "Screenshots"
-    save_dir.mkdir(parents=True, exist_ok=True)
+    save_dir.mkdir(parents=True)
 
     save_file = f"{datetime.now().strftime('%y%m%d_%Hh%Mm%Ss')}_screenshot.png"
     full_path = save_dir / save_file
 
-    # Флаг "-s" отключает встроенные уведомления hyprshot
     cmd = ["hyprshot", "-s"]
     if mode == "p":
         cmd += ["-z", "-m", "output", "-o", str(save_dir), "-f", save_file]
@@ -201,33 +158,17 @@ def _run_screenshot(mode: str, mockup: bool = False):
     elif mode == "w":
         time.sleep(0.1)
         cmd += ["-m", "window", "-o", str(save_dir), "-f", save_file]
-    else:
-        return
 
-    res = subprocess.run(cmd)
+    subprocess.run(cmd)
     time.sleep(0.5)
 
-    actual_file = None
-    if _wait_for_file(full_path):
-        actual_file = full_path
-    else:
-        actual_file = _find_screenshot_fallback(save_dir, full_path)
-
-    if not actual_file or not actual_file.is_file():
-        if res.returncode != 0:
-            _send_notification("Screenshot Aborted", "Cancelled by user")
-        else:
-            _send_notification("Screenshot Failed", f"File was not created (exit: {res.returncode})")
-        return
-
-    full_path = actual_file
+    _wait_for_file(full_path)
 
     if mockup:
         _apply_mockup(full_path)
 
     _copy_to_clipboard(full_path)
 
-    # Уведомление с действиями View и Open Folder (без Edit/swappy)
     action = _send_notification(
         "Screenshot saved",
         str(full_path),
@@ -240,8 +181,6 @@ def _run_screenshot(mode: str, mockup: bool = False):
     elif action == "open":
         subprocess.run(["xdg-open", str(full_path.parent)])
 
-
-# --- Основной класс панели ---
 
 class ToolBox(Window):
     _MENU_ITEMS = (
@@ -288,9 +227,8 @@ class ToolBox(Window):
 
     def _setup_transparency(self):
         visual = self.get_screen().get_rgba_visual()
-        if visual:
-            self.set_app_paintable(True)
-            self.set_visual(visual)
+        self.set_app_paintable(True)
+        self.set_visual(visual)
 
     def _init_state(self):
         self._open_flag = False
@@ -300,8 +238,6 @@ class ToolBox(Window):
         self._trigger_btn = None
         self._trigger_sig = None
 
-        self._cursors = {"hand": None, "default": None}
-
         self._btns = []
         self._revealers = []
         self._dyn = {}
@@ -309,32 +245,6 @@ class ToolBox(Window):
     def _disable_animations(self):
         cmd = self.LAYER_RULE_CMD.format(self.WINDOW_NAME)
         exec_shell_command_async(cmd)
-
-    def _ensure_cursors(self):
-        if self._cursors["hand"] is None:
-            display = self.get_display()
-            self._cursors["hand"] = Gdk.Cursor.new_from_name(display, "pointer")
-            self._cursors["default"] = Gdk.Cursor.new_from_name(display, "default")
-
-    def _set_window_cursor(self, cursor_name):
-        self._ensure_cursors()
-        cursor = self._cursors.get(cursor_name)
-        if cursor:
-            toplevel = self.get_toplevel()
-            if toplevel:
-                window = toplevel.get_window()
-                if window:
-                    window.set_cursor(cursor)
-
-    def _on_btn_enter(self, widget, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self._set_window_cursor("hand")
-        return False
-
-    def _on_btn_leave(self, widget, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self._set_window_cursor("default")
-        return False
 
     def _create_action_button(self, icon_markup, action_tuple, tooltip, action_type):
         lbl = Label(markup=icon_markup)
@@ -344,9 +254,6 @@ class ToolBox(Window):
             can_focus=False,
         )
         btn.get_style_context().add_class(self.CSS_BTN)
-        btn.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        btn.connect("enter-notify-event", self._on_btn_enter)
-        btn.connect("leave-notify-event", self._on_btn_leave)
         btn.connect("clicked", self._on_action_clicked, action_tuple, action_type)
 
         if action_type == 1:
@@ -388,14 +295,12 @@ class ToolBox(Window):
         self._trigger_sig = btn.connect("size-allocate", self._on_trigger_size_allocate)
 
     def _disconnect_trigger(self):
-        if self._trigger_btn and self._trigger_sig:
+        if self._trigger_btn is not None:
             self._trigger_btn.disconnect(self._trigger_sig)
-            self._trigger_sig = None
+        self._trigger_sig = None
 
     def _on_trigger_size_allocate(self, widget, allocation):
         width, height = allocation.width, allocation.height
-        if width <= 0 or height <= 0:
-            return
 
         self._update_button_sizes(width, height)
         self._update_wrapper_size(width, height)
@@ -413,14 +318,8 @@ class ToolBox(Window):
 
     def _update_window_position(self, widget, width, height):
         toplevel = widget.get_toplevel()
-        if not toplevel:
-            return
 
-        coords = widget.translate_coordinates(toplevel, 0, 0)
-        if coords is None:
-            return
-
-        x, y = coords
+        x, y = widget.translate_coordinates(toplevel, 0, 0)
         toplevel_width = toplevel.get_allocated_width()
 
         margin_right = max(0, toplevel_width - x - width - self.MARGIN_RIGHT_OFFSET)
@@ -429,9 +328,6 @@ class ToolBox(Window):
         self.margin = f"{margin_top}px {margin_right}px 0px 0px"
 
     def open(self):
-        if self._open_flag:
-            return
-
         self._cancel_timers()
         self._open_flag = True
         self._set_trigger_active_state(True)
@@ -452,9 +348,6 @@ class ToolBox(Window):
     def _reveal_step(self, index):
         self._reveal_timer = None
 
-        if not self._open_flag or index >= len(self._revealers):
-            return False
-
         self._revealers[index].set_reveal_child(True)
 
         if index + 1 < len(self._revealers):
@@ -467,9 +360,6 @@ class ToolBox(Window):
         return False
 
     def close(self):
-        if not self._open_flag:
-            return
-
         self._cancel_timers()
         self._open_flag = False
         self._set_trigger_active_state(False)
@@ -481,8 +371,7 @@ class ToolBox(Window):
 
     def _hide_window(self):
         self._close_timer = None
-        if not self._open_flag:
-            self.set_visible(False)
+        self.set_visible(False)
         return False
 
     def _cancel_timers(self):
@@ -495,9 +384,6 @@ class ToolBox(Window):
             self._reveal_timer = None
 
     def _set_trigger_active_state(self, active):
-        if not self._trigger_btn:
-            return
-
         style_context = self._trigger_btn.get_style_context()
         if active:
             style_context.add_class(self.CSS_ACTIVE)
@@ -514,31 +400,28 @@ class ToolBox(Window):
         return self._open_flag
 
     def _refresh_dyn(self, *_):
-        if "record" in self._dyn:
-            is_rec = subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
+        is_rec = subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
 
-            lbl = self._dyn["record"]
-            lbl.set_markup(icons.stop if is_rec else icons.screenrecord)
+        lbl = self._dyn["record"]
+        lbl.set_markup(icons.stop if is_rec else icons.screenrecord)
 
-            btn = self._dyn.get("record_btn")
-            if btn:
-                ctx = btn.get_style_context()
-                if is_rec:
-                    ctx.add_class(self.CSS_ACTIVE)
-                    ctx.add_class("active")
-                else:
-                    ctx.remove_class(self.CSS_ACTIVE)
-                    ctx.remove_class("active")
+        btn = self._dyn["record_btn"]
+        ctx = btn.get_style_context()
+        if is_rec:
+            ctx.add_class(self.CSS_ACTIVE)
+            ctx.add_class("active")
+        else:
+            ctx.remove_class(self.CSS_ACTIVE)
+            ctx.remove_class("active")
         return False
 
     def _dispatch_action(self, action_type_name: str, *args):
-        """Запуск действия в фоновом потоке."""
         if action_type_name == "ocr":
             threading.Thread(target=_run_ocr, daemon=True).start()
         elif action_type_name == "record":
             threading.Thread(target=_run_recording, daemon=True).start()
         elif action_type_name == "screenshot":
-            mode = args[0] if args else "p"
+            mode = args[0]
             threading.Thread(target=_run_screenshot, args=(mode,), daemon=True).start()
 
     def _on_action_clicked(self, button, action_tuple, action_type):
@@ -558,9 +441,8 @@ class ToolBox(Window):
         self._cancel_timers()
         self._set_trigger_active_state(False)
 
-        if self._open_flag:
-            self._open_flag = False
-            self.set_visible(False)
+        self._open_flag = False
+        self.set_visible(False)
 
         self._disconnect_trigger()
         self._trigger_btn = None

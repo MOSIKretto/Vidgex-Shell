@@ -21,18 +21,13 @@ from .notificationBox import (
     clear_all_notification_images,
     submit_io_task,
     cleanup_orphan_images,
-    set_pointer_cursor,
     PERSISTENT_HISTORY_FILE,
     MAX_NOTIFICATION_HISTORY,
     NOTIFICATION_WIDTH,
 )
 import services.icons as icons
 
-# Включаем системную локаль
-try:
-    locale.setlocale(locale.LC_TIME, "")
-except Exception:
-    pass
+locale.setlocale(locale.LC_TIME, "")
 
 
 def get_date_category_label(dt: datetime) -> str:
@@ -41,11 +36,7 @@ def get_date_category_label(dt: datetime) -> str:
     today = date.today()
     target_date = dt.date()
 
-    try:
-        loc_code = (locale.getlocale(locale.LC_TIME)[0] or os.environ.get("LANG", "")).lower()
-    except Exception:
-        loc_code = os.environ.get("LANG", "").lower()
-
+    loc_code = (locale.getlocale(locale.LC_TIME)[0] or os.environ.get("LANG", "")).lower()
     is_ru = loc_code.startswith("ru")
 
     if target_date == today:
@@ -53,22 +44,16 @@ def get_date_category_label(dt: datetime) -> str:
     elif target_date == today - timedelta(days=1):
         return "Вчера" if is_ru else "Yesterday"
     elif target_date.year == today.year:
-        try:
-            return dt.strftime("%d %B").strip()
-        except Exception:
-            return dt.strftime("%d %b").strip()
+        return dt.strftime("%d %B").strip()
     else:
-        try:
-            return dt.strftime("%d %B %Y").strip()
-        except Exception:
-            return dt.strftime("%d %b %Y").strip()
+        return dt.strftime("%d %B %Y").strip()
 
 
 class NotificationHistory(Box):
     __slots__ = (
         "containers", "groups", "containers_by_id", "_save_timer_id",
         "_dnd_handler", "header_switch", "glyphs_switch", "glyphs_enabled",
-        "trigger_glyphs_callback", "do_not_disturb_enabled",
+        "do_not_disturb_enabled",
         "notifications_list", "no_notifications_box", "scroll",
         "persistent_notifications", "_is_destroyed", "_loading",
     )
@@ -93,8 +78,6 @@ class NotificationHistory(Box):
         self.do_not_disturb_enabled  = False
         self.glyphs_enabled          = True
 
-        self.trigger_glyphs_callback = None
-
         self._build_ui()
         GLib.idle_add(self._start_loading, priority=GLib.PRIORITY_LOW)
 
@@ -106,21 +89,18 @@ class NotificationHistory(Box):
         self._dnd_handler = self.header_switch.connect(
             "notify::active", self._on_dnd_changed
         )
-        set_pointer_cursor(self.header_switch)
 
         self.glyphs_switch = Gtk.Switch(
             name="dnd-switch", vexpand=False, valign=Gtk.Align.CENTER
         )
         self.glyphs_switch.set_active(False)
         self.glyphs_switch.connect("notify::active", self._on_glyphs_changed)
-        set_pointer_cursor(self.glyphs_switch)
 
         clear_btn = Button(
             name="nhh-button",
             child=Label(name="nhh-button-label", markup=icons.trash),
             on_clicked=self.clear_history,
         )
-        set_pointer_cursor(clear_btn)
 
         header = CenterBox(
             name="notification-history-header",
@@ -207,21 +187,16 @@ class NotificationHistory(Box):
         self.no_notifications_box.set_visible(not has)
         self.notifications_list.set_visible(has)
 
-    # Перестройка группировки (Стабильная с переиспользованием виджетов)
+    # Перестройка группировки
     def _rebuild_with_groups(self) -> None:
         if self._is_destroyed:
             return
 
-        # 1. Отсоединяем и уничтожаем все дочерние элементы списка (включая старые плашки дат)
         for child in list(self.notifications_list.get_children()):
             self.notifications_list.remove(child)
             if child.get_name() == "notification-date-box":
-                try:
-                    child.destroy()
-                except Exception:
-                    pass
+                child.destroy()
 
-        # 2. Собираем элементы по приложениям
         app_notifs: dict[str, list[tuple[str, datetime]]] = {}
         for container in self.containers:
             nb = getattr(container, "notification_box", None)
@@ -232,7 +207,6 @@ class NotificationHistory(Box):
                 app_notifs[app] = []
             app_notifs[app].append((nb.uuid, container.arrival_time))
 
-        # 3. Удаляем опустевшие группы
         dead_apps = [app for app in self.groups if app not in app_notifs]
         for app in dead_apps:
             group = self.groups.pop(app)
@@ -240,12 +214,8 @@ class NotificationHistory(Box):
             parent = group.get_parent()
             if parent:
                 parent.remove(group)
-            try:
-                group.destroy()
-            except Exception:
-                pass
+            group.destroy()
 
-        # 4. Обновляем существующие или создаем новые группы
         for app, items in app_notifs.items():
             if app not in self.groups:
                 self.groups[app] = NotificationGroup(app, self, is_expanded=False)
@@ -254,14 +224,12 @@ class NotificationHistory(Box):
             for uuid, arr_time in items:
                 group.add_notification_id(uuid, arr_time)
 
-        # 5. Сортируем группы по времени последнего уведомления
         sorted_groups = sorted(
             self.groups.values(),
             key=lambda grp: grp.latest_arrival_time or datetime.min,
             reverse=True,
         )
 
-        # 6. Отображаем группы с разделителями дат
         current_category = None
         for g in sorted_groups:
             g.update_display(self.containers_by_id)
@@ -318,7 +286,6 @@ class NotificationHistory(Box):
             notification_box.uuid,
             weakref.ref(container),
         )
-        set_pointer_cursor(close_btn)
 
         actions_box = Box(
             orientation="h",
@@ -396,17 +363,11 @@ class NotificationHistory(Box):
 
         for child in list(self.notifications_list.get_children()):
             self.notifications_list.remove(child)
-            try:
-                child.destroy()
-            except Exception:
-                pass
+            child.destroy()
 
         for g in list(self.groups.values()):
-            try:
-                g.clear_containers()
-                g.destroy()
-            except Exception:
-                pass
+            g.clear_containers()
+            g.destroy()
         self.groups.clear()
 
         for c in list(self.containers):
@@ -417,10 +378,7 @@ class NotificationHistory(Box):
             parent = c.get_parent()
             if parent:
                 parent.remove(c)
-            try:
-                c.destroy()
-            except Exception:
-                pass
+            c.destroy()
 
         self.containers.clear()
         self.containers_by_id.clear()
@@ -457,20 +415,14 @@ class NotificationHistory(Box):
                 if nb:
                     nb.destroy(from_history_delete=True)
                     container.notification_box = None
-                try:
-                    container.destroy()
-                except Exception:
-                    pass
+                container.destroy()
 
         if group:
             group.clear_containers()
             parent = group.get_parent()
             if parent:
                 parent.remove(group)
-            try:
-                group.destroy()
-            except Exception:
-                pass
+            group.destroy()
 
         self._rebuild_with_groups()
 
@@ -496,10 +448,7 @@ class NotificationHistory(Box):
         parent = container.get_parent()
         if parent:
             parent.remove(container)
-        try:
-            container.destroy()
-        except Exception:
-            pass
+        container.destroy()
 
         self._rebuild_with_groups()
 
@@ -514,11 +463,8 @@ class NotificationHistory(Box):
     def _load_from_file(self) -> None:
         data = []
         if os.path.isfile(PERSISTENT_HISTORY_FILE):
-            try:
-                with open(PERSISTENT_HISTORY_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                pass
+            with open(PERSISTENT_HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
         GLib.idle_add(self._on_loaded, data, priority=GLib.PRIORITY_LOW)
 
     def _on_loaded(self, data) -> bool:
@@ -576,10 +522,7 @@ class NotificationHistory(Box):
         arrival = None
         ts = hist.timestamp
         if ts:
-            try:
-                arrival = datetime.fromisoformat(ts)
-            except Exception:
-                pass
+            arrival = datetime.fromisoformat(ts)
         if not arrival:
             arrival = datetime.now()
 
@@ -609,10 +552,7 @@ class NotificationHistory(Box):
             parent = oldest.get_parent()
             if parent:
                 parent.remove(oldest)
-            try:
-                oldest.destroy()
-            except Exception:
-                pass
+            oldest.destroy()
 
     # Сохранение
     def _schedule_save(self) -> None:
@@ -630,26 +570,17 @@ class NotificationHistory(Box):
     @staticmethod
     def _clear_files_sync() -> None:
         if os.path.isfile(PERSISTENT_HISTORY_FILE):
-            try:
-                os.remove(PERSISTENT_HISTORY_FILE)
-            except OSError:
-                pass
+            os.remove(PERSISTENT_HISTORY_FILE)
 
     @staticmethod
     def _save_to_file_sync(data: list) -> None:
         tmp = PERSISTENT_HISTORY_FILE + ".tmp"
-        try:
-            os.makedirs(os.path.dirname(PERSISTENT_HISTORY_FILE), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, separators=(",", ":"))
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, PERSISTENT_HISTORY_FILE)
-        except Exception:
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
+        os.makedirs(os.path.dirname(PERSISTENT_HISTORY_FILE), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, separators=(",", ":"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, PERSISTENT_HISTORY_FILE)
 
     # Уничтожение
     def destroy(self) -> None:
@@ -657,11 +588,8 @@ class NotificationHistory(Box):
             return
         self._is_destroyed = True
 
-        try:
-            if self._dnd_handler and self.header_switch.handler_is_connected(self._dnd_handler):
-                self.header_switch.disconnect(self._dnd_handler)
-        except Exception:
-            pass
+        if self._dnd_handler and self.header_switch.handler_is_connected(self._dnd_handler):
+            self.header_switch.disconnect(self._dnd_handler)
         self._dnd_handler = None
 
         if self._save_timer_id:
@@ -674,10 +602,7 @@ class NotificationHistory(Box):
 
         for g in list(self.groups.values()):
             g.clear_containers()
-            try:
-                g.destroy()
-            except Exception:
-                pass
+            g.destroy()
         self.groups.clear()
 
         for c in list(self.containers):
@@ -688,10 +613,7 @@ class NotificationHistory(Box):
             parent = c.get_parent()
             if parent:
                 parent.remove(c)
-            try:
-                c.destroy()
-            except Exception:
-                pass
+            c.destroy()
         self.containers.clear()
         self.containers_by_id.clear()
         self.persistent_notifications.clear()

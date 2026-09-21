@@ -6,7 +6,7 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.label import Label
 from fabric.widgets.overlay import Overlay
 from fabric.widgets.scale import Scale
-from gi.repository import Gdk, Gtk, GLib
+from gi.repository import Gtk, GLib
 
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
 import services.icons as icons
@@ -34,31 +34,6 @@ _ANIM_INTERVAL_MS = 16
 
 _CLICK_STEPS = 20
 _CLICK_MS = 14
-
-_pointer_cursor: Gdk.Cursor | None = None
-_default_cursor: Gdk.Cursor | None = None
-
-def _get_cursors(display: Gdk.Display):
-    global _pointer_cursor, _default_cursor
-    if _pointer_cursor is None:
-        _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
-        _default_cursor = Gdk.Cursor.new_from_name(display, "default")
-    return _pointer_cursor, _default_cursor
-
-def _on_btn_enter(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    if win := widget.get_window():
-        win.set_cursor(_get_cursors(win.get_display())[0])
-    return False
-
-def _on_btn_leave(widget: Gtk.Widget, _event: Gdk.EventCrossing):
-    if win := widget.get_window():
-        win.set_cursor(_get_cursors(win.get_display())[1])
-    return False
-
-def _setup_pointer_cursor(widget: Gtk.Widget):
-    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    widget.connect("enter-notify-event", _on_btn_enter)
-    widget.connect("leave-notify-event", _on_btn_leave)
 
 def _ease_out_cubic(t: float) -> float:
     return 1.0 - (1.0 - t) ** 3
@@ -258,8 +233,6 @@ class _AudioIcon(Box):
         self.vol_label = Label(name=lbl_name, markup=icons.mic if is_mic else "")
         self.vol_button = Button(on_clicked=self._tog, child=self.vol_label)
         self.add(EventBox(child=self.vol_button, h_expand=True))
-
-        _setup_pointer_cursor(self.vol_button)
 
         self._audio_hid = self.audio.connect(f"notify::{stream_type}", self._new_stream)
         self._new_stream()
@@ -542,8 +515,6 @@ class BrightnessIcon(Box):
         self.brightness_label = Label(name="brightness-label-dash", markup=icons.brightness_high)
         self._btn = Button(on_clicked=self._tog, child=self.brightness_label)
         self.add(EventBox(child=self._btn, h_expand=True))
-
-        _setup_pointer_cursor(self._btn)
 
         self._br_hid = self.brightness.connect("screen", self._chg)
         self._chg()

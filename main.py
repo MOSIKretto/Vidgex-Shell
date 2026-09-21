@@ -1,5 +1,7 @@
-import sys, signal, threading
+import sys, signal, weakref
 import setproctitle
+
+from gi.repository import GLib
 
 from fabric import Application
 from fabric.utils import get_relative_path
@@ -9,44 +11,53 @@ from modules.bar import Bar
 from modules.dock import Dock
 from modules.corners import Corners
 
-from modules.Dock.SessionManager.restore import SessionManager
+from services.session import SessionManager
+
+
+setproctitle.setproctitle("vidgex-shell")
+
+
+bar = Bar()
+notch = Notch()
+dock = Dock()
+corners = Corners()
+
+bar.notch = notch
+notch.bar = weakref.ref(bar)
+
+app_widgets = [bar, notch, dock, corners]
+
+app = Application("vidgex-shell", *app_widgets)
+css_path = get_relative_path("main.css")
+app.set_stylesheet_from_file(css_path)
+app.set_css = lambda: app.set_stylesheet_from_file(css_path)
+
+session = SessionManager()
+
+
+def _autosave() -> bool:
+    session.save_all()
+    return True
+
+
+def _quit(*_):
+    app.quit()
+    return GLib.SOURCE_REMOVE
 
 
 def run():
-    setproctitle.setproctitle("vidgex-shell")
+    session.restore()
 
-    session_manager = SessionManager()
+    autosave_id = GLib.timeout_add_seconds(5, _autosave)
 
-    bar = Bar()
-    notch = Notch()
-    dock = Dock(session_manager=session_manager)
-    corners = Corners()
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, _quit)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, _quit)
 
-    bar.notch = notch
-    notch.bar = bar
-
-    app_widgets = [bar, notch, dock, corners]
-
-    app = Application("vidgex-shell", *app_widgets)
-    css_path = get_relative_path("main.css")
-    app.set_stylesheet_from_file(css_path)
-    app.set_css = lambda: app.set_stylesheet_from_file(css_path)
-
-    restore_thread = threading.Thread(
-        target=session_manager.restore,
-        name="session-restore",
-        daemon=True,
-    )
-    restore_thread.start()
-
-    signal.signal(signal.SIGINT, lambda *_: app.quit())
-    signal.signal(signal.SIGTERM, lambda *_: app.quit())
-
-    import __main__ as main_module
-    main_module.app = app
-    main_module.notch = notch
-
-    return app.run()
+    try:
+        return app.run()
+    finally:
+        GLib.source_remove(autosave_id)
+        session.save_all()
 
 
 if __name__ == "__main__":

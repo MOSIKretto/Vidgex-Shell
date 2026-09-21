@@ -52,27 +52,6 @@ def _save_duration(key: str, value: int) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def _ent(w, _):
-    win = w.get_window()
-    if win:
-        if not getattr(w, "_cursor", None):
-            w._cursor = Gdk.Cursor.new_from_name(w.get_display(), "pointer")
-        win.set_cursor(w._cursor)
-
-
-def _lv(w, _):
-    win = w.get_window()
-    if win:
-        win.set_cursor(None)
-
-
-def _hover(w):
-    w.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-    w._cursor = None
-    w.connect("enter-notify-event", _ent)
-    w.connect("leave-notify-event", _lv)
-
-
 def _fast_chk(pat: str) -> bool:
     pat_b = pat.encode()
     for pid in os.listdir("/proc"):
@@ -187,7 +166,6 @@ class _TimerSplitButton(Box):
             child=_content(self.icon, title_widget),
             on_clicked=self._on_status_click,
         )
-        _hover(self.status_button)
 
         self.timer_widget = TimerWidget(name_prefix)
         self.timer_button = Button(
@@ -198,7 +176,6 @@ class _TimerSplitButton(Box):
 
         self.timer_button.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
         self.timer_button.connect("scroll-event", self._on_timer_scroll)
-        _hover(self.timer_button)
 
         self.add(self.status_button)
         self.add(self.timer_button)
@@ -358,7 +335,6 @@ class NetworkButton(Box):
             child=_content(self.network_icon, self._title_box),
             on_clicked=_tog,
         )
-        _hover(self.network_status_button)
 
         self.network_menu_label = Label(name="network-menu-label", markup=icons.chevron_right)
         self.network_menu_button = Button(
@@ -366,7 +342,6 @@ class NetworkButton(Box):
             child=self.network_menu_label,
             on_clicked=self._menu_click,
         )
-        _hover(self.network_menu_button)
 
         self.add(self.network_status_button)
         self.add(self.network_menu_button)
@@ -505,7 +480,6 @@ class BluetoothButton(Box):
             child=_content(self.bluetooth_icon, title_box),
             on_clicked=self._on_toggle_click,
         )
-        _hover(self.bluetooth_status_button)
 
         self.bluetooth_menu_label = Label(name="bluetooth-menu-label", markup=icons.chevron_right)
         self.bluetooth_menu_button = Button(
@@ -513,7 +487,6 @@ class BluetoothButton(Box):
             child=self.bluetooth_menu_label,
             on_clicked=self._open_menu,
         )
-        _hover(self.bluetooth_menu_button)
 
         self.add(self.bluetooth_status_button)
         self.add(self.bluetooth_menu_button)

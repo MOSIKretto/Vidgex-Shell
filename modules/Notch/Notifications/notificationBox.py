@@ -10,7 +10,7 @@ from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import GdkPixbuf, GLib, Gtk
 
 import services.icons as icons
 from modules.Notch.Notifications.NotificationBox.image import CustomImage
@@ -36,21 +36,6 @@ def get_history_ignored_apps() -> frozenset:
 
 
 # Вспомогательные утилиты
-def set_pointer_cursor(widget: Gtk.Widget) -> None:
-    def _enter(w, _e):
-        win = w.get_window()
-        if win:
-            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
-
-    def _leave(w, _e):
-        win = w.get_window()
-        if win:
-            win.set_cursor(None)
-
-    widget.connect("enter-notify-event", _enter)
-    widget.connect("leave-notify-event", _leave)
-
-
 def get_safe_image_path(uuid) -> str:
     safe_id = hashlib.md5(str(uuid).encode()).hexdigest()
     return os.path.join(PERSISTENT_IMAGES_DIR, f"{safe_id}.png")
@@ -184,7 +169,6 @@ class ActionButton(Button):
             self.connect("enter-notify-event", self._on_enter),
             self.connect("leave-notify-event", self._on_leave),
         )
-        set_pointer_cursor(self)
 
     def _on_enter(self, *_):
         nb = self._nb_ref()
@@ -380,7 +364,6 @@ class NotificationBox(Box):
             close_btn.connect("clicked", self._on_close_clicked)
             close_btn.connect("enter-notify-event", lambda btn, _: self.hover_button())
             close_btn.connect("leave-notify-event", lambda btn, _: self.unhover_button())
-            set_pointer_cursor(close_btn)
             self._close_btn = close_btn
             content_children.append(
                 Box(orientation="v", v_align="center", children=[close_btn])
@@ -550,14 +533,12 @@ class NotificationGroup(Box):
             ),
         )
         self._expand_handler = self.header.connect("clicked", self._toggle_expand)
-        set_pointer_cursor(self.header)
 
         self.clear_btn = Button(
             name="notif-close-button",
             child=Label(name="notif-close-label", markup=icons.cancel),
         )
         self._clear_handler = self.clear_btn.connect("clicked", self._on_clear_group)
-        set_pointer_cursor(self.clear_btn)
 
         self.header_row = Box(
             name="notification-group-header",

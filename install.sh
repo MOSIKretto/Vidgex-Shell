@@ -1266,9 +1266,6 @@ hl.bind("SUPER + SHIFT + Q", hl.dsp.window.close())
 -- Запуск приложений
 hl.bind("SUPER + ALT + T", hl.dsp.exec_cmd("kitty"))
 hl.bind("SUPER + F", hl.dsp.exec_cmd("firefox"))
-hl.bind("SUPER + V", hl.dsp.exec_cmd("code"))
-hl.bind("SUPER + T", hl.dsp.exec_cmd("AyuGram"))
-hl.bind("SUPER + N", hl.dsp.exec_cmd("nautilus"))
 
 -- Vidgex Shell
 require("Vidgex-Shell/vidgex-shell-conf/vidgex-shell")

@@ -8,7 +8,7 @@ gi.require_version("Gray", "0.1")
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 
-from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gray, Gtk
+from gi.repository import GdkPixbuf, GLib, GObject, Gray, Gtk
 from fabric.widgets.box import Box
 
 
@@ -72,9 +72,6 @@ class SystemTray(Box):
         close_btn = Gtk.Button(label="Close", can_focus=False, has_tooltip=False)
         close_btn.set_name("systray-close-btn")
         close_btn.set_relief(Gtk.ReliefStyle.NONE)
-        close_btn.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        close_btn.connect("enter-notify-event", self._on_enter)
-        close_btn.connect("leave-notify-event", self._on_leave)
         close_btn.connect("clicked", self._on_close_clicked)
         close_btn.show()
         self._action_bar.pack_end(close_btn, False, False, 8)
@@ -94,18 +91,6 @@ class SystemTray(Box):
             if callable(getattr(self._watcher, method, None)):
                 getattr(self._watcher, method)()
                 break
-
-    def _set_cursor(self, widget: Gtk.Widget, name: str) -> None:
-        if win := widget.get_window():
-            win.set_cursor(Gdk.Cursor.new_from_name(widget.get_display(), name))
-
-    def _on_enter(self, widget: Gtk.Widget, _event) -> bool:
-        self._set_cursor(widget, "pointer")
-        return False
-
-    def _on_leave(self, widget: Gtk.Widget, _event) -> bool:
-        self._set_cursor(widget, "default")
-        return False
 
     def _get_theme(self, path: str) -> Gtk.IconTheme:
         if not path:
@@ -230,9 +215,6 @@ class SystemTray(Box):
         btn.set_name("systray-item")
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_image(Gtk.Image(visible=True))
-        btn.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-        btn.connect("enter-notify-event", self._on_enter)
-        btn.connect("leave-notify-event", self._on_leave)
         btn.connect("button-press-event", lambda _b, _e, i=ident: self._on_tray_click(i))
 
         def on_icon(*_, i=ident, it=item, b=btn):
@@ -367,7 +349,7 @@ class SystemTray(Box):
                     pass
             self._click_outside_handler = None
 
-    def _on_window_click(self, _window: Gtk.Window, event: Gdk.EventButton) -> bool:
+    def _on_window_click(self, _window: Gtk.Window, event) -> bool:
         if self._expanded_ident is None or not self._action_bar.get_visible():
             self._collapse()
             return False

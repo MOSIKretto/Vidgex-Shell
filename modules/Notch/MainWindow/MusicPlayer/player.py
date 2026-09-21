@@ -59,9 +59,8 @@ _IMG_SIGS = (
     (b'GIF89a', 0, 6),
 )
 
-_HOVER_MASK = Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
 _SCROLL_MASK = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
-_COVER_EVENTS = _HOVER_MASK | _SCROLL_MASK
+_COVER_EVENTS = _SCROLL_MASK
 _SCROLL_THRESHOLD = 5.0
 
 _ANIM_MS = 16
@@ -144,27 +143,6 @@ def _cleanup_cache():
     except Exception: pass
 
 threading.Thread(target=_cleanup_cache, daemon=True).start()
-
-_cursor_cache: dict = {}
-
-def _on_hover_enter(w, _e):
-    win = w.get_window()
-    if win:
-        dsp = w.get_display()
-        cur = _cursor_cache.get(dsp)
-        if cur is None:
-            cur = Gdk.Cursor.new_from_name(dsp, "pointer")
-            _cursor_cache[dsp] = cur
-        win.set_cursor(cur)
-
-def _on_hover_leave(w, _e):
-    win = w.get_window()
-    if win: win.set_cursor(None)
-
-def _hover(w):
-    w.add_events(_HOVER_MASK)
-    w.connect("enter-notify-event", _on_hover_enter)
-    w.connect("leave-notify-event", _on_hover_leave)
 
 def _fex(p): return bool(p) and os.path.isfile(p)
 
@@ -434,8 +412,6 @@ class PlayerBox(Box):
         cb.connect("draw", self._on_cover_draw)
         cb.connect("scroll-event", self._on_scroll)
         cb.connect("button-press-event", self._on_cover_click)
-        cb.connect("enter-notify-event", _on_hover_enter)
-        cb.connect("leave-notify-event", _on_hover_leave)
         cb.show_all()
 
         self.cover_placeholder = CircleImage(
@@ -534,14 +510,12 @@ class PlayerBox(Box):
 
     @staticmethod
     def _btn(icon, sc=()):
-        b = Button(
+        return Button(
             name="player-btn",
             child=Label(name="player-btn-label", markup=icon, style_classes=sc),
             style_classes=sc,
             h_expand=False, v_expand=False, h_align="center", v_align="center",
         )
-        _hover(b)
-        return b
 
     def _schedule_random_glitch(self):
         if not self._is_wall: return
@@ -1414,9 +1388,6 @@ class MediaPlayer(Box):
         self._repl = False
         for btn in self.switcher.get_children():
             if isinstance(btn, Gtk.ToggleButton) and btn.get_visible():
-                if not getattr(btn, '_hovered', False):
-                    _hover(btn)
-                    btn._hovered = True
                 for c in btn.get_children():
                     if isinstance(c, Gtk.Label) and c.get_text() != icons.disc:
                         btn.remove(c)

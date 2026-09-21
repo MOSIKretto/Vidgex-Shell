@@ -52,8 +52,3 @@ local layer_rule = {
 for _, rule in ipairs(layer_rule) do
   hl.layer_rule(rule)
 end
-
--- Постоянные рабочие столы 1–9
-for i = 1, 9 do
-    hl.workspace_rule({ workspace = tostring(i), persistent = true })
-end

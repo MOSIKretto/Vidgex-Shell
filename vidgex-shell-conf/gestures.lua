@@ -35,29 +35,40 @@
 -- ### ЖЕСТЫ ###
 -- #############
 
--- Матричное переключение рабочих столов (3 пальца)
+-- Переключение между рабочими столами
 hl.gesture({
     fingers = 3,
     direction = "right",
-    action = function() hl.exec_cmd("~/.config/hypr/Vidgex-Shell/scripts/matrix_nav.sh workspace nextL") end
+    action = function()
+        hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextL\")'")
+    end
 })
+
 hl.gesture({
     fingers = 3,
     direction = "left",
-    action = function() hl.exec_cmd("~/.config/hypr/Vidgex-Shell/scripts/matrix_nav.sh workspace nextR") end
+    action = function()
+        hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextR\")'")
+    end
 })
+
 hl.gesture({
     fingers = 3,
     direction = "up",
-    action = function() hl.exec_cmd("~/.config/hypr/Vidgex-Shell/scripts/matrix_nav.sh workspace nextD") end
+    action = function()
+        hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextD\")'")
+    end
 })
+
 hl.gesture({
     fingers = 3,
     direction = "down",
-    action = function() hl.exec_cmd("~/.config/hypr/Vidgex-Shell/scripts/matrix_nav.sh workspace nextU") end
+    action = function()
+        hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextU\")'")
+    end
 })
 
--- Работа с Vidgex (4 пальца)
+-- Панель
 hl.gesture({
     fingers = 4,
     direction = "pinchout",

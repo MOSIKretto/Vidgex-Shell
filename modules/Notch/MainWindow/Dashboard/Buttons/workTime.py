@@ -43,7 +43,7 @@ class WorkTime:
         self.remaining -= 1
 
         if self.remaining <= 0:
-            GLib.spawn_command_line_async(f'notify-send -a "Vidgex-Shell" "Work Time" "Take a break!"')
+            GLib.spawn_command_line_async('notify-send -a "Vidgex-Shell" "Work Time" "Take a break!"')
             self.stop()
             return False
 

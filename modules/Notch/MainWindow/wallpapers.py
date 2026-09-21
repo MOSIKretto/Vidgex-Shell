@@ -145,7 +145,6 @@ def _apply_glitch(ctx, chance, active):
 _md5 = hashlib.md5
 _CMAP = {}
 _MD5_CACHE = {}
-_pointer_cursors = {}
 
 
 def _md5hex(s):
@@ -205,75 +204,6 @@ def _arr_set_art(lbl, lines):
     )
 
 
-def _get_pointer_cursor(display):
-    if display is None:
-        display = Gdk.Display.get_default()
-    if display is None:
-        return None
-
-    cur = _pointer_cursors.get(display)
-    if cur is None:
-        cur = Gdk.Cursor.new_from_name(display, "pointer")
-        if cur is not None:
-            _pointer_cursors[display] = cur
-
-    return cur
-
-
-def _setup_pointer_cursor(widget):
-    if not widget.get_realized():
-        widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-
-    def _get_target_win(w, event=None):
-        if event and hasattr(event, "window") and event.window:
-            return event.window
-        if hasattr(w, "get_event_window"):
-            win = w.get_event_window()
-            if win:
-                return win
-        return w.get_window()
-
-    def _apply(w, event=None):
-        win = _get_target_win(w, event)
-        if not win:
-            return
-        disp = win.get_display() or Gdk.Display.get_default()
-        cursor = _get_pointer_cursor(disp)
-        if cursor:
-            win.set_cursor(cursor)
-
-    def _reset(w, event=None):
-        win = _get_target_win(w, event)
-        if win:
-            win.set_cursor(None)
-
-    def _on_enter(w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            _apply(w, event)
-        return False
-
-    def _on_leave(w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            _reset(w, event)
-        return False
-
-    widget.connect("enter-notify-event", _on_enter)
-    widget.connect("leave-notify-event", _on_leave)
-
-    def _on_realize_or_map(w, *_):
-        win = _get_target_win(w)
-        if win:
-            disp = win.get_display() or Gdk.Display.get_default()
-            cursor = _get_pointer_cursor(disp)
-            if cursor:
-                win.set_cursor(cursor)
-
-    widget.connect_after("realize", _on_realize_or_map)
-    widget.connect_after("map", _on_realize_or_map)
-    if widget.get_realized():
-        _on_realize_or_map(widget)
-
-
 def _short_path(p):
     if not p:
         return _PICK_PROMPT
@@ -327,14 +257,7 @@ def _fmt_date(ts):
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
 
 
-def _make_row_icon(is_dir, full_path, broken):
-    if broken:
-        img = Gtk.Image.new_from_icon_name(
-            "dialog-warning-symbolic", Gtk.IconSize.MENU
-        )
-        img.set_pixel_size(_ICON_PX)
-        return img
-
+def _make_row_icon(is_dir):
     if is_dir:
         return Label(markup=icons.folder)
 
@@ -346,22 +269,18 @@ def _make_row_icon(is_dir, full_path, broken):
 
 
 class _FolderRow(Gtk.ListBoxRow):
-
-    def __init__(self, name, full_path, is_dir, size, mtime, kind, broken=False):
+    def __init__(self, name, full_path, is_dir, size, mtime, kind):
         super().__init__()
         self.set_name("dir-row")
         self.set_can_focus(False)
         self.entry_name = name
         self.full_path = full_path
         self.is_dir = is_dir
-        self.broken = broken
 
         ctx = self.get_style_context()
         ctx.add_class("dir-row-dir" if is_dir else "dir-row-file")
-        if broken:
-            ctx.add_class("dir-row-broken")
 
-        icon = _make_row_icon(is_dir, full_path, broken)
+        icon = _make_row_icon(is_dir)
         icon.set_name("dir-row-icon")
 
         name_lbl = Label(name="dir-row-name", label=name, h_align="start", h_expand=True)
@@ -371,7 +290,7 @@ class _FolderRow(Gtk.ListBoxRow):
 
         size_lbl = Label(
             name="dir-row-size",
-            label=("" if (is_dir or broken) else _fmt_size(size)),
+            label=("" if is_dir else _fmt_size(size)),
             h_align="end",
         )
         size_lbl.set_width_chars(8)
@@ -383,7 +302,7 @@ class _FolderRow(Gtk.ListBoxRow):
 
         date_lbl = Label(
             name="dir-row-date",
-            label=("" if broken else _fmt_date(mtime)),
+            label=_fmt_date(mtime),
             h_align="end",
         )
         date_lbl.set_width_chars(13)
@@ -397,9 +316,7 @@ class _FolderRow(Gtk.ListBoxRow):
         row_box.pack_start(date_lbl, False, False, 0)
         self.add(row_box)
 
-        if is_dir and not broken:
-            _setup_pointer_cursor(self)
-        else:
+        if not is_dir:
             self.set_selectable(False)
             self.set_activatable(False)
 
@@ -458,7 +375,7 @@ class FolderBrowser(Box):
 
     def get_filename(self):
         row = self._list.get_selected_row()
-        if isinstance(row, _FolderRow) and row.is_dir and not row.broken:
+        if isinstance(row, _FolderRow) and row.is_dir:
             return row.full_path
         return self._cur
 
@@ -471,41 +388,21 @@ class FolderBrowser(Box):
         cur = self._cur
         if not cur:
             return
-        try:
-            entries = list(os.scandir(cur))
-        except OSError:
-            self._empty_lbl.set_label("Permission denied")
-            self._empty_lbl.get_style_context().add_class("error")
-            self._empty_lbl.show()
-            return
-
-        self._empty_lbl.get_style_context().remove_class("error")
+        entries = list(os.scandir(cur))
 
         dirs, dot_dirs, files = [], [], []
         for e in entries:
             name = e.name
-            try:
-                is_dir = e.is_dir(follow_symlinks=True)
-            except OSError:
-                files.append((name, e.path, False, 0, 0, "Broken", True))
-                continue
-            try:
-                st = e.stat(follow_symlinks=True)
-                mtime, size = st.st_mtime, st.st_size
-            except OSError:
-                if is_dir:
-                    entry = (name, e.path, True, 0, 0, "Folder", True)
-                    (dot_dirs if name.startswith(".") else dirs).append(entry)
-                else:
-                    files.append((name, e.path, False, 0, 0, "Broken", True))
-                continue
+            is_dir = e.is_dir(follow_symlinks=True)
+            st = e.stat(follow_symlinks=True)
+            mtime, size = st.st_mtime, st.st_size
             if is_dir:
-                entry = (name, e.path, True, size, mtime, "Folder", False)
+                entry = (name, e.path, True, size, mtime, "Folder")
                 (dot_dirs if name.startswith(".") else dirs).append(entry)
             else:
                 ext = os.path.splitext(name)[1].lstrip(".").upper()
                 files.append((name, e.path, False, size, mtime,
-                              ext if ext else "File", False))
+                              ext if ext else "File"))
 
         dirs.sort(key=lambda t: t[0].casefold())
         dot_dirs.sort(key=lambda t: t[0].casefold())
@@ -518,19 +415,18 @@ class FolderBrowser(Box):
             return
         self._empty_lbl.hide()
 
-        for name, path, is_dir, size, mtime, kind, broken in ordered:
-            row = _FolderRow(name, path, is_dir, size, mtime, kind, broken)
+        for name, path, is_dir, size, mtime, kind in ordered:
+            row = _FolderRow(name, path, is_dir, size, mtime, kind)
             self._list.add(row)
         self._list.show_all()
 
     def _on_row_activated(self, _lb, row):
-        if not isinstance(row, _FolderRow) or not row.is_dir or row.broken:
+        if not isinstance(row, _FolderRow) or not row.is_dir:
             return
         self.set_current_folder(row.full_path)
 
 
 class WallpaperCarousel(Gtk.DrawingArea):
-
     def __init__(self, on_select=None, on_navigate=None):
         super().__init__()
         self._files = self._flt = _EMPTY
@@ -658,49 +554,31 @@ class WallpaperCarousel(Gtk.DrawingArea):
             return
         walls_dir = self._walls_dir
         cp = _THUMBS + _md5hex(nm) + _SUFFIX
-        surf = None
-        try:
-            if os.path.exists(cp) and os.path.getsize(cp) > 0:
-                surf = cairo.ImageSurface.create_from_png(cp)
+        if os.path.exists(cp) and os.path.getsize(cp) > 0:
+            surf = cairo.ImageSurface.create_from_png(cp)
+        else:
+            full_path = walls_dir + nm
+            raw = GdkPixbuf.Pixbuf.new_from_file_at_scale(full_path, _SZ, _SZ, True)
+            w, h = raw.get_width(), raw.get_height()
+            if w == _SZ and h == _SZ:
+                sq = raw
+            elif w < _SZ or h < _SZ:
+                sq = raw.scale_simple(_SZ, _SZ, GdkPixbuf.InterpType.BILINEAR)
             else:
-                if not walls_dir:
-                    GLib.idle_add(self._on_ld_fail, nm)
-                    return
-                full_path = walls_dir + nm
-                if not os.path.exists(full_path):
-                    GLib.idle_add(self._on_ld_fail, nm)
-                    return
+                sq = raw.new_subpixbuf((w - _SZ) >> 1, (h - _SZ) >> 1, _SZ, _SZ)
 
-                raw = GdkPixbuf.Pixbuf.new_from_file_at_scale(full_path, _SZ, _SZ, True)
-                w, h = raw.get_width(), raw.get_height()
-                if w == _SZ and h == _SZ:
-                    sq = raw
-                elif w < _SZ or h < _SZ:
-                    sq = raw.scale_simple(_SZ, _SZ, GdkPixbuf.InterpType.BILINEAR)
-                else:
-                    sq = raw.new_subpixbuf((w - _SZ) >> 1, (h - _SZ) >> 1, _SZ, _SZ)
-
-                surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, _SZ, _SZ)
-                ct = cairo.Context(surf)
-                _rpath(ct, 0, 0, _SZ, _SZ, _CR)
-                ct.clip()
-                Gdk.cairo_set_source_pixbuf(ct, sq, 0, 0)
-                ct.paint()
-                surf.write_to_png(cp)
-        except (GLib.Error, OSError, cairo.Error):
-            if surf is not None:
-                surf.finish()
-            GLib.idle_add(self._on_ld_fail, nm)
-            return
+            surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, _SZ, _SZ)
+            ct = cairo.Context(surf)
+            _rpath(ct, 0, 0, _SZ, _SZ, _CR)
+            ct.clip()
+            Gdk.cairo_set_source_pixbuf(ct, sq, 0, 0)
+            ct.paint()
+            surf.write_to_png(cp)
 
         if self._dead or gen != self._gen:
             surf.finish()
             return
         GLib.idle_add(self._onth, nm, surf, gen)
-
-    def _on_ld_fail(self, nm):
-        self._ld.pop(nm, None)
-        return False
 
     def _onth(self, nm, surf, gen):
         self._ld.pop(nm, None)
@@ -1016,7 +894,6 @@ class WallpaperSelector(Box):
             name="scheme-dropdown-btn", label=_SCH[self._sch_idx][1],
             tooltip_text="Click to select scheme, or scroll",
         )
-        _setup_pointer_cursor(self._sch_btn)
         self._sch_btn.connect("clicked", self._on_sch_btn_clicked)
         self._sch_btn.add_events(Gdk.EventMask.SCROLL_MASK)
         self._sch_btn.connect("scroll-event", self._on_sch_scroll)
@@ -1036,7 +913,6 @@ class WallpaperSelector(Box):
             btn.get_child().set_halign(Gtk.Align.START)
             btn._si = i
             btn.connect("clicked", self._on_sch_item_click)
-            _setup_pointer_cursor(btn)
             list_box.add(btn)
             self._sch_items.append(btn)
 
@@ -1049,7 +925,6 @@ class WallpaperSelector(Box):
             tooltip_text="Random Wallpaper",
         )
         self._rb.connect("clicked", self.random_wall)
-        _setup_pointer_cursor(self._rb)
 
         header = Box(
             name="wallpapers-header", spacing=8, orientation="h",
@@ -1085,7 +960,6 @@ class WallpaperSelector(Box):
             tooltip_text=self._walls or _PICK_PROMPT,
         )
         self._dir_btn.connect("clicked", self._toggle_dir_chooser)
-        _setup_pointer_cursor(self._dir_btn)
 
         label_row = Box(spacing=8, orientation="h", h_expand=True, h_align="fill")
         label_row.set_homogeneous(True)
@@ -1125,11 +999,9 @@ class WallpaperSelector(Box):
 
         cancel_btn = Button(name="dir-chooser-cancel", label="Cancel")
         cancel_btn.connect("clicked", lambda *_: self._close_dir_chooser())
-        _setup_pointer_cursor(cancel_btn)
 
         apply_btn = Button(name="dir-chooser-apply", label="Select")
         apply_btn.connect("clicked", self._on_dir_apply)
-        _setup_pointer_cursor(apply_btn)
 
         btn_row = Box(
             name="dir-chooser-btnrow", spacing=8,
@@ -1210,7 +1082,6 @@ class WallpaperSelector(Box):
         n = len(segments)
         for i, (name, target) in enumerate(segments):
             btn = Button(name="custom-path-btn", label=name)
-            _setup_pointer_cursor(btn)
             if i == n - 1:
                 btn.get_style_context().add_class("current")
 
@@ -1448,15 +1319,12 @@ class WallpaperSelector(Box):
                 self._car.set_files(())
                 self._ulbl()
             return
-        try:
-            nf = tuple(sorted(
-                e.name
-                for e in os.scandir(self._walls)
-                if e.is_file(follow_symlinks=False)
-                and os.path.splitext(e.name)[1].lower() in _EXT
-            ))
-        except OSError:
-            return
+        nf = tuple(sorted(
+            e.name
+            for e in os.scandir(self._walls)
+            if e.is_file(follow_symlinks=False)
+            and os.path.splitext(e.name)[1].lower() in _EXT
+        ))
 
         if nf == self._files:
             return
@@ -1475,10 +1343,7 @@ class WallpaperSelector(Box):
     @staticmethod
     def _clean_thumbs(files):
         valid = frozenset(_md5hex(nm) for nm in files)
-        try:
-            entries = list(os.scandir(_THUMBS))
-        except OSError:
-            return
+        entries = list(os.scandir(_THUMBS))
         for entry in entries:
             name = entry.name
             if name.endswith(_SUFFIX) and name[:-_SFXL] in valid:
@@ -1489,13 +1354,9 @@ class WallpaperSelector(Box):
     def _watch(self):
         if not self._walls or not os.path.isdir(self._walls):
             return
-        try:
-            mon = Gio.File.new_for_path(self._walls).monitor_directory(
-                Gio.FileMonitorFlags.NONE, None,
-            )
-        except GLib.Error:
-            self._mon = None
-            return
+        mon = Gio.File.new_for_path(self._walls).monitor_directory(
+            Gio.FileMonitorFlags.NONE, None,
+        )
         mon.connect("changed", self._on_dir_changed)
         self._mon = mon
 
@@ -1528,28 +1389,13 @@ class WallpaperSelector(Box):
         )
         self._color_ex.submit(self._gen_colors, p, sch_id)
         if notify:
-            exec_shell_command_async(
-                f"notify-send 'Wallpaper' 'Random wallpaper set'"
-                f" -a 'Vidgex-Shell' -i '{p}' -e"
-            )
+            GLib.spawn_command_line_async(f"notify-send 'Wallpaper' 'Random wallpaper set' -a 'Vidgex-Shell' -i '{p}' -e")
 
     def _gen_colors(self, image_path, scheme_id):
         if self._dead or not image_path or not os.path.exists(image_path):
             return
-        try:
-            apply_colors(image_path, scheme_id, _CSS_OUT, _HYPR_OUT)
-        except Exception:
-            GLib.idle_add(self._notify_color_failure, image_path)
-            return
+        apply_colors(image_path, scheme_id, _CSS_OUT, _HYPR_OUT)
         GLib.idle_add(self._reload_css)
-
-    @staticmethod
-    def _notify_color_failure(image_path):
-        exec_shell_command_async(
-            f"notify-send 'Wallpaper' 'Failed to generate color scheme'"
-            f" -a 'Vidgex-Shell' -i '{image_path}' -e"
-        )
-        return False
 
     @staticmethod
     def _reload_css():

@@ -15,7 +15,6 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.scrolledwindow import ScrolledWindow
 
 import services.icons as icons
-from .player import _hover
 
 
 _TRACK_NUM_RE = re.compile(r"^(\d+[\s.\-_]+)+")
@@ -168,7 +167,6 @@ class ArtistGroup(Box):
             h_expand=True, h_align="fill",
         )
         self._header_btn.connect("clicked", self._on_toggle)
-        _hover(self._header_btn)
 
         self._header_btn.connect("enter-notify-event", self._on_btn_enter)
         self._header_btn.connect("leave-notify-event", self._on_btn_leave)
@@ -561,7 +559,6 @@ class TrackList(Box):
                     tooltip_text=full,
                 )
                 btn.connect("clicked", on_clicked, full)
-                _hover(btn)
 
                 path_map[full] = len(rows)
                 rows.append(_TrackRow(

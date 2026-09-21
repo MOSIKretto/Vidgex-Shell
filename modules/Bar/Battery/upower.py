@@ -45,7 +45,7 @@ class UPowerManager:
     def get_full_device_information(self, battery):
         obj = self.bus.get_object(self.up_name, battery)
         all_props = obj.GetAll(f"{self.up_name}.Device", dbus_interface=self.props_iface)
-        return {key: all_props.get(key, default) for key, default in self._DEFAULTS.items()}
+        return {key: all_props[key] for key in self._DEFAULTS}
     
     def is_lid_present(self):
         return bool(self._get_prop(self.up_path, self.up_name, 'LidIsPresent'))
@@ -70,6 +70,4 @@ class UPowerManager:
     
     def get_state(self, battery):
         state = int(self._get_prop(battery, f"{self.up_name}.Device", "State"))
-        if 0 <= state < len(self._STATES):
-            return self._STATES[state]
-        return "Unknown"
+        return self._STATES[state]

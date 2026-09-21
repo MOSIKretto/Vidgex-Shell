@@ -1,4 +1,4 @@
-from gi.repository import Gdk, Gtk, GLib
+from gi.repository import Gtk, GLib
 from fabric.widgets.box import Box
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
@@ -20,29 +20,6 @@ _SLOT_HEIGHT = 56
 _SLOTS_VISIBLE = 2
 _SCROLL_HEIGHT = _SLOT_HEIGHT * _SLOTS_VISIBLE + 4
 
-_pointer_cursor = None
-_default_cursor = None
-
-
-def _ensure_cursors(display):
-    global _pointer_cursor, _default_cursor
-    if _pointer_cursor is None:
-        _pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer")
-        _default_cursor = Gdk.Cursor.new_from_name(display, "default")
-
-def _on_enter(widget, _event):
-    win = widget.get_window()
-    if win:
-        _ensure_cursors(win.get_display())
-        win.set_cursor(_pointer_cursor)
-    return False
-
-def _on_leave(widget, _event):
-    win = widget.get_window()
-    if win:
-        _ensure_cursors(win.get_display())
-        win.set_cursor(_default_cursor)
-    return False
 
 def _ease_out_cubic(t: float) -> float:
     return 1.0 - (1.0 - t) ** 3
@@ -67,12 +44,6 @@ def _make_ctrl_btn(label_text: str) -> Gtk.Button:
     lbl.set_ellipsize(3)
     lbl.set_xalign(0.5)
     btn.add(lbl)
-
-    btn.add_events(
-        Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-    )
-    btn.connect("enter-notify-event", _on_enter)
-    btn.connect("leave-notify-event", _on_leave)
     return btn
 
 
@@ -113,11 +84,6 @@ class DeviceDropdown(Gtk.Box):
         row.pack_start(self._arrow,   False, False, 0)
         self._btn.add(row)
 
-        self._btn.add_events(
-            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-        )
-        self._btn.connect("enter-notify-event", _on_enter)
-        self._btn.connect("leave-notify-event", _on_leave)
         self._btn.connect("clicked", self._on_clicked)
 
         self.pack_start(self._btn, True, True, 0)
@@ -308,12 +274,6 @@ class DeviceDropdown(Gtk.Box):
                 inner.pack_start(name_lbl, True,  True,  0)
                 item_btn.add(inner)
 
-                item_btn.add_events(
-                    Gdk.EventMask.ENTER_NOTIFY_MASK
-                    | Gdk.EventMask.LEAVE_NOTIFY_MASK
-                )
-                item_btn.connect("enter-notify-event", _on_enter)
-                item_btn.connect("leave-notify-event", _on_leave)
                 item_btn.connect(
                     "clicked", lambda _b, d=dev: self._select(d)
                 )

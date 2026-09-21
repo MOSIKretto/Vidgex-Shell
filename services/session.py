@@ -7,6 +7,7 @@ import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +23,7 @@ _TITLE_SEP_RE = re.compile(r"\s+[-–—:|]\s+")
 _PATH_RE = re.compile(r"[~/][^\s:,;\"'<>|]+")
 _STRIP_RE = re.compile(r"[^a-z0-9]")
 _POSITIONAL_RE = re.compile(r"\$\{?[*@0-9]")
+_CANVAS_WS_RE = re.compile(r"^ws_(\d+)$")
 
 CANVAS_STATE_DIR = Path(os.path.expanduser("~/.cache/vidgex-shell/vidgex_canvas"))
 
@@ -38,101 +40,62 @@ def _dbg(*args):
 # ---------------------------------------------------------------------------
 
 def _cmd_standalone_ok(cmd: str) -> bool:
-    if not cmd:
-        return False
-    return not _POSITIONAL_RE.search(cmd)
+    return bool(cmd) and not _POSITIONAL_RE.search(cmd)
 
 
-def _unwrap_reply(result):
-    reply = getattr(result, "reply", result)
+def _unwrap_reply(result) -> str:
+    reply = result.reply
     if isinstance(reply, (bytes, bytearray)):
-        reply = reply.decode(errors="replace")
-    return "" if reply is None else str(reply)
+        reply = reply.decode()
+    return str(reply)
 
 
 def _hypr_json(cmd: str):
-    try:
-        conn = get_hyprland_connection()
-        result = conn.send_command(f"j/{cmd}")
-        raw = _unwrap_reply(result)
-        _dbg(f"j/{cmd} -> {raw[:200]!r}")
-        return json.loads(raw)
-    except Exception as exc:
-        _dbg(f"hypr_json({cmd}) FAILED: {type(exc).__name__}: {exc}")
-        return None
+    conn = get_hyprland_connection()
+    raw = _unwrap_reply(conn.send_command(f"j/{cmd}"))
+    _dbg(f"j/{cmd} -> {raw[:200]!r}")
+    return json.loads(raw)
 
 
 def _hypr_dispatch(cmd: str) -> bool:
-    """
-    Отправляет Lua-диспетчер через IPC.
-    cmd — полный вызов hl.dsp.*(...).
-    Проверенный формат: dispatch hl.dsp.focus({ workspace = 2 })
-    """
     if not cmd:
         return False
-    try:
-        conn = get_hyprland_connection()
-        full = f"dispatch {cmd}"
-        result = conn.send_command(full)
-        reply = _unwrap_reply(result).strip()
-        _dbg(f"dispatch {cmd} -> {reply!r}")
-        if reply.lower() in ("ok", ""):
-            return True
-        print(f"[vidgex-shell] dispatch rejected: {reply!r} for: {cmd}", file=sys.stderr)
-        return False
-    except Exception as exc:
-        print(f"[vidgex-shell] dispatch error: {type(exc).__name__}: {exc} for: {cmd}", file=sys.stderr)
-        return False
+    conn = get_hyprland_connection()
+    reply = _unwrap_reply(conn.send_command(f"dispatch {cmd}")).strip()
+    _dbg(f"dispatch {cmd} -> {reply!r}")
+    return True
 
 
 def _hypr_batch(cmds: list[str]) -> bool:
     if not cmds:
         return True
-    ok = True
-    for cmd in cmds:
-        if not _hypr_dispatch(cmd):
-            ok = False
-    return ok
+    return all([_hypr_dispatch(c) for c in cmds])
 
 
 # ---------------------------------------------------------------------------
 # Кэш и вспомогательные функции
 # ---------------------------------------------------------------------------
 
-_skip_cache: Optional[tuple[str, frozenset[str]]] = None
-_gtk_launch_ok: Optional[bool] = None
-
-
 def _home() -> str:
     return GLib.get_home_dir()
 
 
+@lru_cache(maxsize=1)
 def _has_gtk_launch() -> bool:
-    global _gtk_launch_ok
-    if _gtk_launch_ok is None:
-        _gtk_launch_ok = bool(GLib.find_program_in_path("gtk-launch"))
-    return _gtk_launch_ok
+    return bool(GLib.find_program_in_path("gtk-launch"))
 
 
+@lru_cache(maxsize=1)
 def _skip_dirs() -> frozenset[str]:
-    global _skip_cache
-    home = _home()
-    if _skip_cache and _skip_cache[0] == home:
-        return _skip_cache[1]
-    dirs: set[str] = set()
-    for d in (
-        GLib.get_user_cache_dir(),
-        GLib.get_user_data_dir(),
-        GLib.get_user_config_dir(),
-    ):
-        dirs.add(os.path.realpath(d))
-    try:
-        dirs.add(os.path.realpath(GLib.get_user_state_dir()))
-    except AttributeError:
-        dirs.add(os.path.realpath(os.path.join(home, ".local", "state")))
-    result = frozenset(dirs)
-    _skip_cache = (home, result)
-    return result
+    return frozenset(
+        os.path.realpath(d)
+        for d in (
+            GLib.get_user_cache_dir(),
+            GLib.get_user_data_dir(),
+            GLib.get_user_config_dir(),
+            GLib.get_user_state_dir(),
+        )
+    )
 
 
 def _is_project_dir(path: str) -> bool:
@@ -142,30 +105,23 @@ def _is_project_dir(path: str) -> bool:
         return False
     if not real.startswith(real_home + os.sep):
         return True
-    for skip in _skip_dirs():
-        if real == skip or real.startswith(skip + os.sep):
-            return False
-    return True
+    return not any(real == s or real.startswith(s + os.sep) for s in _skip_dirs())
 
 
 def _build_dir_index(home: str) -> dict[str, str]:
     index: dict[str, str] = {}
-    try:
-        for entry in os.scandir(home):
-            if not entry.is_dir(follow_symlinks=False) or entry.name[0] == ".":
-                continue
-            lo = entry.name.lower()
-            index[lo] = entry.path
-            try:
-                for sub in os.scandir(entry.path):
-                    if sub.is_dir(follow_symlinks=False) and sub.name[0] != ".":
-                        slo = sub.name.lower()
-                        if slo not in index:
-                            index[slo] = sub.path
-            except OSError:
-                pass
-    except OSError:
-        pass
+    top_entries = list(os.scandir(home))
+
+    for entry in top_entries:
+        if entry.name.startswith(".") or not entry.is_dir(follow_symlinks=False):
+            continue
+        index[entry.name.lower()] = entry.path
+        with os.scandir(entry.path) as sub_it:
+            for sub in sub_it:
+                if sub.name.startswith(".") or not sub.is_dir(follow_symlinks=False):
+                    continue
+                index.setdefault(sub.name.lower(), sub.path)
+
     return index
 
 
@@ -181,9 +137,59 @@ def _title_similarity(a: str, b: str) -> float:
         return 1.0
     wa, wb = set(al.split()), set(bl.split())
     union = len(wa | wb)
-    if not union:
-        return 0.0
-    return len(wa & wb) / union
+    return len(wa & wb) / union if union else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Генерация вариантов идентификаторов (используется и для поиска
+# desktop-приложений, и для подбора имени бинарника)
+# ---------------------------------------------------------------------------
+
+def _name_variants(name: str) -> list[str]:
+    if not name:
+        return []
+    lo = name.lower()
+    kebab = _CAMEL_RE.sub("-", name).lower()
+
+    variants: dict[str, None] = {}
+
+    def add(v: str) -> None:
+        if v:
+            variants.setdefault(v, None)
+
+    add(name)
+    add(lo)
+    add(kebab)
+    add(lo.replace(" ", "-"))
+    add(lo.replace(" ", ""))
+    add(lo.replace("-", ""))
+    add(lo.replace("_", ""))
+    add(lo.replace("_", "-"))
+    add(kebab.replace("-", ""))
+    add(_norm(lo))
+
+    for sep in (".", "-", "_"):
+        if sep not in lo:
+            continue
+        parts = lo.split(sep)
+        for i in range(1, len(parts)):
+            tail = sep.join(parts[i:])
+            add(tail)
+            add(tail.replace(sep, ""))
+            add(tail.replace(sep, "-"))
+            add(_norm(tail))
+
+    if "." in name:
+        last = name.rsplit(".", 1)[-1]
+        kb2 = _CAMEL_RE.sub("-", last).lower()
+        add(kb2)
+        add(kb2.replace("-", ""))
+
+    return list(variants)
+
+
+def _expand(name: str) -> set[str]:
+    return set(_name_variants(name))
 
 
 # ---------------------------------------------------------------------------
@@ -199,20 +205,15 @@ class _ProcInfo:
     _pty: Optional[bool] = field(default=None, repr=False)
 
     @classmethod
-    def read(cls, pid: int) -> Optional[_ProcInfo]:
+    def read(cls, pid: int) -> _ProcInfo:
         base = f"/proc/{pid}"
-        try:
-            raw = Path(f"{base}/cmdline").read_bytes()
-        except OSError:
-            return None
+        raw = Path(f"{base}/cmdline").read_bytes()
+        cwd = os.readlink(f"{base}/cwd")
+
         info = cls(pid=pid)
         info.args = [a for a in raw.decode(errors="replace").split("\x00") if a]
         info.cmdline = " ".join(info.args)
-        try:
-            cwd = os.readlink(f"{base}/cwd")
-            info.cwd = cwd if os.path.isdir(cwd) else _home()
-        except OSError:
-            info.cwd = _home()
+        info.cwd = cwd
         return info
 
     @property
@@ -220,37 +221,24 @@ class _ProcInfo:
         if self._pty is not None:
             return self._pty
         result = False
-        try:
-            for fd in os.scandir(f"/proc/{self.pid}/fd"):
-                try:
-                    if os.readlink(fd.path).startswith("/dev/pts/"):
-                        result = True
-                        break
-                except OSError:
-                    continue
-        except OSError:
-            pass
+        with os.scandir(f"/proc/{self.pid}/fd") as it:
+            for fd in it:
+                if os.readlink(fd.path).startswith("/dev/pts/"):
+                    result = True
+                    break
         self._pty = result
         return result
 
     @property
     def ppid(self) -> int:
-        try:
-            stat = Path(f"/proc/{self.pid}/stat").read_text()
-        except OSError:
-            return 0
+        stat = Path(f"/proc/{self.pid}/stat").read_text()
         idx = stat.rfind(")")
-        if idx < 0:
-            return 0
-        try:
-            return int(stat[idx + 2:].split()[1])
-        except (ValueError, IndexError):
-            return 0
+        return int(stat[idx + 2:].split()[1])
 
     def dir_args(self) -> list[str]:
         out: list[str] = []
         for arg in self.args[1:]:
-            if arg[0:1] == "-":
+            if arg.startswith("-"):
                 continue
             expanded = os.path.expanduser(arg)
             if os.path.isdir(expanded) and _is_project_dir(expanded):
@@ -272,28 +260,24 @@ def _get_gio(app: DesktopApp) -> Optional[Gio.DesktopAppInfo]:
 
 def _gio_wm_class(app: DesktopApp) -> str:
     gio = _get_gio(app)
-    if gio and hasattr(gio, "get_startup_wm_class"):
-        return (gio.get_startup_wm_class() or "").lower()
-    return (getattr(app, "window_class", "") or "").lower()
+    if gio is None:
+        return ""
+    wm_class = gio.get_startup_wm_class()
+    return wm_class.lower() if wm_class else ""
 
 
 def _gio_is_terminal(app: DesktopApp) -> Optional[bool]:
     gio = _get_gio(app)
-    if not gio:
+    if gio is None:
         return None
-    cats = getattr(gio, "get_categories", lambda: "")() or ""
+    cats = gio.get_categories() or ""
     if "TerminalEmulator" in cats:
         return True
-    if hasattr(gio, "get_boolean"):
-        try:
-            return gio.get_boolean("Terminal")
-        except Exception:
-            pass
-    return None
+    return gio.get_boolean("Terminal")
 
 
 # ---------------------------------------------------------------------------
-# AppResolver (без изменений)
+# AppResolver
 # ---------------------------------------------------------------------------
 
 class AppResolver:
@@ -325,18 +309,12 @@ class AppResolver:
 
     def launch(self, app=None, key="", original_class="") -> bool:
         if app:
-            try:
-                app.launch()
-                return True
-            except Exception as exc:
-                print(f"[vidgex-shell] app.launch error: {exc}", file=sys.stderr)
+            app.launch()
+            return True
         found = self.find(key, original_class)
         if found:
-            try:
-                found.launch()
-                return True
-            except Exception as exc:
-                print(f"[vidgex-shell] found.launch error: {exc}", file=sys.stderr)
+            found.launch()
+            return True
         for binary in self._binary_candidates(key, original_class):
             if GLib.find_program_in_path(binary):
                 exec_shell_command_async(binary)
@@ -344,19 +322,15 @@ class AppResolver:
         return False
 
     @staticmethod
-    def get_command(app: DesktopApp) -> str:
-        cmd = getattr(app, "command_line", "") or ""
+    def get_command(app: Optional[DesktopApp]) -> str:
+        if app is None:
+            return ""
+        cmd = app.command_line or ""
         return _FIELD_RE.sub("", cmd).strip()
 
     @staticmethod
-    def get_desktop_id(app: DesktopApp) -> str:
-        did = getattr(app, "desktop_id", "") or ""
-        if did:
-            return did
-        gio = _get_gio(app)
-        if gio:
-            return gio.get_id() or ""
-        return ""
+    def get_desktop_id(app: Optional[DesktopApp]) -> str:
+        return app.desktop_id or "" if app else ""
 
     def _ensure_index(self):
         now = time.monotonic()
@@ -364,52 +338,38 @@ class AppResolver:
             self._apps = get_desktop_applications()
             idx: dict[str, DesktopApp] = {}
             for a in self._apps:
-                did = getattr(a, "desktop_id", "") or ""
+                did = a.desktop_id
                 if not did:
                     continue
                 bn = os.path.basename(did)
                 base = os.path.splitext(bn)[0]
                 for k in (did, bn, base, base.lower()):
-                    if k not in idx:
-                        idx[k] = a
+                    idx.setdefault(k, a)
             self._index = idx
             self._index_ts = now
         return self._apps, self._index
 
     def _do_find(self, ids):
-        r = self._icon_lookup(*ids)
-        if r:
-            return r
+        if self._icons is not None:
+            r = self._icon_lookup(*ids)
+            if r:
+                return r
         apps, idx = self._ensure_index()
-        r = self._gio_find(ids, idx)
-        if r:
-            return r
-        return self._attrs_match(ids, apps)
+        return self._gio_find(ids, idx) or self._attrs_match(ids, apps)
 
     def _icon_lookup(self, *names):
-        if not self._icons:
-            return None
-        amap = getattr(self._icons, "app_map", None)
-        norm_fn = getattr(self._icons, "norm_name", None)
-        if amap:
-            for name in names:
-                if not name:
-                    continue
-                lo = name.lower()
-                r = amap.get(lo)
-                if r:
-                    return r
-                if norm_fn:
-                    r = amap.get(norm_fn(lo))
-                    if r:
-                        return r
-        find_fn = getattr(self._icons, "find_app", None)
-        if find_fn:
-            for name in names:
-                if name:
-                    r = find_fn(name)
-                    if r:
-                        return r
+        amap = self._icons.app_map
+        norm_fn = self._icons.norm_name
+        for name in names:
+            if not name:
+                continue
+            r = amap.get(name.lower()) or amap.get(norm_fn(name.lower()))
+            if r:
+                return r
+        find_fn = self._icons.find_app
+        for name in names:
+            if name and (r := find_fn(name)):
+                return r
         return None
 
     @staticmethod
@@ -419,8 +379,7 @@ class AppResolver:
         bn = os.path.basename(desktop_id)
         base = os.path.splitext(bn)[0]
         for k in (desktop_id, bn, base, base.lower()):
-            r = idx.get(k)
-            if r:
+            if r := idx.get(k):
                 return r
         return None
 
@@ -429,25 +388,15 @@ class AppResolver:
             if not raw:
                 continue
             for sfx in ("", ".desktop"):
-                try:
-                    info = Gio.DesktopAppInfo.new(raw + sfx)
-                except Exception:
-                    continue
-                if info:
-                    m = self._resolve(info.get_id() or "", idx)
-                    if m:
-                        return m
+                info = Gio.DesktopAppInfo.new(raw + sfx)
+                if info and (m := self._resolve(info.get_id(), idx)):
+                    return m
         for raw in ids:
             if not raw or len(raw) < 2:
                 continue
-            try:
-                groups = Gio.DesktopAppInfo.search(raw)
-            except Exception:
-                continue
-            for group in groups:
+            for group in Gio.DesktopAppInfo.search(raw):
                 for did in group:
-                    m = self._resolve(did, idx)
-                    if m:
+                    if m := self._resolve(did, idx):
                         return m
         return None
 
@@ -467,11 +416,9 @@ class AppResolver:
                 v = getattr(a, attr, None)
                 if v:
                     aids.update(_expand(v))
-            wm = _gio_wm_class(a)
-            if wm:
+            if wm := _gio_wm_class(a):
                 aids.update(_expand(wm))
-            did = getattr(a, "desktop_id", "") or ""
-            if did:
+            if did := a.desktop_id:
                 aids.update(_expand(os.path.splitext(os.path.basename(did))[0]))
             anorms = {_norm(i) for i in aids}
             anorms.discard("")
@@ -479,82 +426,23 @@ class AppResolver:
                 return a
 
         for a in apps:
-            cmd = (getattr(a, "command_line", "") or "").lower()
-            if not cmd:
-                continue
-            tokens = cmd.split()
+            tokens = (a.command_line or "").lower().split()
             if not tokens:
                 continue
             if terms & _expand(os.path.basename(tokens[0])):
                 return a
             for tok in tokens[1:]:
-                if "." in tok and tok[0] not in "-/%":
-                    if terms & _expand(tok):
-                        return a
+                if "." in tok and tok[0] not in "-/%" and terms & _expand(tok):
+                    return a
         return None
 
     @classmethod
-    def _binary_candidates(cls, *identifiers):
-        seen: set[str] = set()
-        out: list[str] = []
-        for b in identifiers:
-            if not b:
-                continue
-            lo = b.lower()
-            for v in (b, lo, lo.replace(" ", "-"), lo.replace(" ", ""),
-                      lo.replace("_", "-"), _CAMEL_RE.sub("-", b).lower()):
-                if v and v not in seen:
-                    seen.add(v)
-                    out.append(v)
-            if "." in lo:
-                parts = lo.split(".")
-                for i in range(1, len(parts)):
-                    v = ".".join(parts[i:])
-                    if v not in seen:
-                        seen.add(v)
-                        out.append(v)
-                v = parts[-1]
-                if v and v not in seen:
-                    seen.add(v)
-                    out.append(v)
-            if "-" in lo:
-                parts = lo.split("-")
-                for i in range(1, len(parts)):
-                    v = "-".join(parts[i:])
-                    if v not in seen:
-                        seen.add(v)
-                        out.append(v)
-        return out
-
-
-def _expand(name: str) -> set[str]:
-    if not name:
-        return set()
-    lo = name.lower()
-    out: set[str] = {
-        lo, lo.replace(" ", "-"), lo.replace(" ", ""),
-        lo.replace("-", ""), lo.replace("_", ""), _norm(lo),
-    }
-    kb = _CAMEL_RE.sub("-", name).lower()
-    out.add(kb)
-    out.add(kb.replace("-", ""))
-    for sep in (".", "-", "_"):
-        if sep not in lo:
-            continue
-        parts = lo.split(sep)
-        for i in range(1, len(parts)):
-            tail = sep.join(parts[i:])
-            out.add(tail)
-            out.add(tail.replace(sep, ""))
-            out.add(tail.replace(sep, "-"))
-            out.add(_norm(tail))
-    if "." in name:
-        last = name.rsplit(".", 1)[-1]
-        kb2 = _CAMEL_RE.sub("-", last).lower()
-        out.add(kb2)
-        out.add(kb2.replace("-", ""))
-    out.discard("")
-    return out
+    def _binary_candidates(cls, *identifiers) -> list[str]:
+        seen: dict[str, None] = {}
+        for ident in identifiers:
+            for v in _name_variants(ident):
+                seen.setdefault(v, None)
+        return list(seen)
 
 
 # ---------------------------------------------------------------------------
@@ -569,27 +457,24 @@ class SessionManager:
     __slots__ = (
         "_file", "_resolver", "_protect_pid",
         "_pinned_classes", "_pinned_info", "_dir_index",
-        "_restore_pairs", "_canvas_ws",
+        "_restore_pairs", "_canvas_ws", "_restoring",
     )
 
     def __init__(self, resolver: Optional[AppResolver] = None):
         self._file = Path(GLib.get_user_cache_dir()) / "vidgex-shell" / "session.json"
         self._file.parent.mkdir(parents=True, exist_ok=True)
-        self._resolver = resolver or AppResolver()
+        self._resolver = resolver
         self._protect_pid = self._ancestor_pid()
         self._pinned_classes: set[str] = set()
         self._pinned_info: list[dict] = []
         self._dir_index: Optional[dict[str, str]] = None
         self._restore_pairs: list[tuple[dict, dict]] = []
         self._canvas_ws: list[int] = []
+        self._restoring: bool = False
 
     @staticmethod
-    def _ancestor_pid() -> Optional[int]:
-        try:
-            proc = _ProcInfo.read(os.getppid())
-            return proc.ppid if proc else None
-        except Exception:
-            return None
+    def _ancestor_pid() -> int:
+        return _ProcInfo.read(os.getppid()).ppid
 
     def _matches(self, client: dict) -> bool:
         if not self._pinned_classes:
@@ -601,22 +486,21 @@ class SessionManager:
         return False
 
     def get_pinned(self) -> list[dict]:
+        session = self._load_session()
+        return session.get("pinned", []) if session else []
+
+    def _load_session(self) -> Optional[dict]:
         if not self._file.exists():
-            return []
-        try:
-            return json.loads(self._file.read_text()).get("pinned", [])
-        except Exception:
-            return []
+            return None
+        return json.loads(self._file.read_text())
 
     def _detect_project(self, client: dict, proc: _ProcInfo) -> str:
         home = _home()
-        dirs = proc.dir_args()
-        if dirs:
+        if dirs := proc.dir_args():
             return dirs[0]
         if proc.cwd and proc.cwd != home and _is_project_dir(proc.cwd):
             return os.path.realpath(proc.cwd)
-        project = self._walk_parents(proc.pid)
-        if project:
+        if project := self._walk_parents(proc.pid):
             return project
         return self._project_from_title(client.get("title", ""))
 
@@ -629,16 +513,11 @@ class SessionManager:
                 break
             visited.add(cur)
             proc = _ProcInfo.read(cur)
-            if not proc:
-                break
             ppid = proc.ppid
             if ppid <= 1:
                 break
             parent = _ProcInfo.read(ppid)
-            if not parent:
-                break
-            dirs = parent.dir_args()
-            if dirs:
+            if dirs := parent.dir_args():
                 return dirs[0]
             if parent.cwd and parent.cwd != home and _is_project_dir(parent.cwd):
                 return os.path.realpath(parent.cwd)
@@ -669,7 +548,7 @@ class SessionManager:
     @staticmethod
     def _by_class(clients=None) -> dict[str, list[dict]]:
         if clients is None:
-            clients = _hypr_json("clients") or []
+            clients = _hypr_json("clients")
         by: dict[str, list[dict]] = defaultdict(list)
         for w in clients:
             cls = (w.get("class") or "").lower()
@@ -681,64 +560,59 @@ class SessionManager:
     # SAVE
     # ------------------------------------------------------------------
 
+    def save_all(self) -> None:
+        if self._restoring:
+            _dbg("skip autosave: restore in progress")
+            return
+        clients = _hypr_json("clients")
+        classes = {c["class"].lower() for c in clients if c.get("class")}
+        self.save(pinned_classes=classes, pinned_info=[])
+
     def save(self, pinned_classes=None, pinned_info=None):
         if pinned_classes is not None:
             self._pinned_classes = pinned_classes
         if pinned_info is not None:
             self._pinned_info = pinned_info
-        try:
-            self._do_save()
-        except Exception as exc:
-            print(f"[vidgex-shell] save error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        self._do_save()
 
     def _do_save(self):
+        if self._resolver is None:
+            _dbg("no resolver configured, skipping save")
+            return
+
         self._resolver.invalidate_cache()
 
-        clients = _hypr_json("clients") or []
-        ws_info = _hypr_json("activeworkspace") or {}
+        clients = _hypr_json("clients")
+        ws_info = _hypr_json("activeworkspace")
         windows: list[dict] = []
         counts: dict[str, int] = defaultdict(int)
 
         canvas_workspaces: list[int] = []
         if CANVAS_STATE_DIR.exists():
             for f in CANVAS_STATE_DIR.iterdir():
-                if f.name.startswith("ws_") and not f.name.endswith(".json"):
-                    try:
-                        canvas_workspaces.append(int(f.name.split("_")[1]))
-                    except Exception:
-                        pass
+                if m := _CANVAS_WS_RE.match(f.name):
+                    canvas_workspaces.append(int(m.group(1)))
 
         for c in clients:
-            wm = c.get("class", "")
+            wm = c.get("class") or ""
             pid = c.get("pid", 0)
-            ws_id = c.get("workspace", {}).get("id", 1)
-            if not wm or ws_id < 0 or pid <= 0:
-                continue
-            if not self._matches(c):
-                continue
-            proc = _ProcInfo.read(pid)
-            if not proc:
+            ws_id = c.get("workspace", {}).get("id", -1)
+            if not wm or ws_id < 0 or pid <= 0 or not self._matches(c):
                 continue
 
+            proc = _ProcInfo.read(pid)
             lo = wm.lower()
             counts[lo] += 1
             app = self._resolver.find(wm)
-
-            cmd = AppResolver.get_command(app) if app else lo
-            desktop_id = AppResolver.get_desktop_id(app) if app else ""
-
-            is_term = _gio_is_terminal(app) if app else None
-            if is_term is None:
-                is_term = proc.uses_pty
 
             windows.append({
                 "wm_class": wm,
                 "workspace": ws_id,
                 "title": c.get("title", ""),
-                "desktop_id": desktop_id,
-                "launch_cmd": cmd,
+                "desktop_id": AppResolver.get_desktop_id(app),
+                "launch_cmd": AppResolver.get_command(app),
                 "project": self._detect_project(c, proc),
-                "is_terminal": bool(is_term),
+                "is_terminal": bool(_gio_is_terminal(app) if app else None),
                 "floating": c.get("floating", False),
                 "at": c.get("at", [0, 0]),
                 "size": c.get("size", [0, 0]),
@@ -747,60 +621,57 @@ class SessionManager:
         for w in windows:
             w["is_multi_instance"] = counts[w["wm_class"].lower()] > 1
 
+        self._sync_canvas_state_dir(canvas_workspaces)
+
         tmp = self._file.with_suffix(".tmp")
-        try:
-            tmp.write_text(json.dumps({
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "active_workspace": ws_info.get("id", 1),
-                "canvas_workspaces": canvas_workspaces,
-                "pinned": self._pinned_info,
-                "windows": windows,
-            }, indent=2))
-            tmp.rename(self._file)
-        except Exception:
-            tmp.unlink(missing_ok=True)
-            raise
+        tmp.write_text(json.dumps({
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "active_workspace": ws_info.get("id"),
+            "canvas_workspaces": canvas_workspaces,
+            "pinned": self._pinned_info,
+            "windows": windows,
+        }, indent=2))
+        tmp.rename(self._file)
+
+    @staticmethod
+    def _sync_canvas_state_dir(canvas_workspaces: list[int]) -> None:
+        CANVAS_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        wanted = {f"ws_{ws_id}" for ws_id in canvas_workspaces}
+        for f in CANVAS_STATE_DIR.iterdir():
+            if _CANVAS_WS_RE.match(f.name) and f.name not in wanted:
+                f.unlink(missing_ok=True)
+        for name in wanted:
+            (CANVAS_STATE_DIR / name).touch()
 
     # ------------------------------------------------------------------
     # RESTORE
     # ------------------------------------------------------------------
 
     def restore(self):
-        if not self._file.exists():
-            return
-        try:
-            session = json.loads(self._file.read_text())
-        except Exception:
+        session = self._load_session()
+        if session is None:
             return
 
         saved = session.get("windows", [])
-        active_ws = session.get("active_workspace", 1)
-        canvas_ws = session.get("canvas_workspaces", [])
         if not saved:
             return
 
-        self._canvas_ws = []
-        for x in canvas_ws:
-            try:
-                self._canvas_ws.append(int(x))
-            except (TypeError, ValueError):
-                pass
+        self._canvas_ws = [int(x) for x in session.get("canvas_workspaces", [])]
 
         targets: dict[str, int] = defaultdict(int)
         for w in saved:
-            cls = (w.get("wm_class") or "").lower()
-            if cls:
+            if cls := (w.get("wm_class") or "").lower():
                 targets[cls] += 1
 
-        closed = self._close_excess(targets)
-        if closed:
+        self._restoring = True
+
+        if self._close_excess(targets):
             GLib.timeout_add(self.CLOSE_SETTLE_MS, self._restore_step_launch, saved, targets)
         else:
             self._restore_step_launch(saved, targets)
 
     def _restore_step_launch(self, saved: list[dict], targets: dict[str, int]) -> bool:
-        launched = self._launch_missing(saved, targets)
-        if launched:
+        if self._launch_missing(saved, targets):
             GLib.timeout_add(self.POLL_INTERVAL_MS, self._restore_step_poll, saved, targets, 0)
         else:
             self._restore_step_assign(saved, targets)
@@ -808,45 +679,32 @@ class SessionManager:
 
     def _restore_step_poll(self, saved: list[dict], targets: dict[str, int], elapsed: int) -> bool:
         cur = self._by_class()
-        if all(len(cur.get(c, [])) >= n for c, n in targets.items()):
-            self._restore_step_assign(saved, targets)
-            return False
-        if elapsed >= self.LAUNCH_TIMEOUT_MS:
+        done = all(len(cur.get(c, [])) >= n for c, n in targets.items())
+        if done or elapsed >= self.LAUNCH_TIMEOUT_MS:
             self._restore_step_assign(saved, targets)
             return False
         GLib.timeout_add(self.POLL_INTERVAL_MS, self._restore_step_poll, saved, targets,
-                         elapsed + self.POLL_INTERVAL_MS)
+                          elapsed + self.POLL_INTERVAL_MS)
         return False
 
     def _restore_step_assign(self, saved: list[dict], targets: dict[str, int]):
         self._close_excess(targets)
-        matched_pairs = self._assign_workspaces(saved)
-        self._restore_pairs = matched_pairs
+        self._restore_pairs = self._assign_workspaces(saved)
         GLib.timeout_add(100, self._restore_geometry_and_canvas)
 
     def _restore_geometry_and_canvas(self) -> bool:
-        canvas_ws = self._canvas_ws
-        pairs = self._restore_pairs
-
-        try:
-            CANVAS_STATE_DIR.mkdir(parents=True, exist_ok=True)
-            for ws_id in canvas_ws:
-                (CANVAS_STATE_DIR / f"ws_{ws_id}").touch(exist_ok=True)
-        except Exception as exc:
-            print(f"[vidgex-shell] canvas marker error: {exc}", file=sys.stderr)
+        self._sync_canvas_state_dir(self._canvas_ws)
 
         float_cmds: list[str] = []
         geo_cmds: list[str] = []
 
-        for saved_win, cur_win in pairs:
-            addr = cur_win.get("address", "")
+        for saved_win, cur_win in self._restore_pairs:
+            addr = cur_win.get("address")
             if not addr:
                 continue
 
             was_floating = saved_win.get("floating", False)
-            is_floating = cur_win.get("floating", False)
-
-            if was_floating != is_floating:
+            if was_floating != cur_win.get("floating", False):
                 float_cmds.append(
                     f'hl.dsp.window.float({{ window = "address:{addr}", action = "toggle" }})'
                 )
@@ -868,8 +726,15 @@ class SessionManager:
             _hypr_batch(float_cmds)
 
         if geo_cmds:
-            GLib.timeout_add(200, lambda: (_hypr_batch(geo_cmds), False)[1])
+            GLib.timeout_add(200, self._apply_geo_cmds, geo_cmds)
+        else:
+            self._restoring = False
 
+        return False
+
+    def _apply_geo_cmds(self, geo_cmds: list[str]) -> bool:
+        _hypr_batch(geo_cmds)
+        self._restoring = False
         return False
 
     # ------------------------------------------------------------------
@@ -888,7 +753,7 @@ class SessionManager:
             for win in wins[-excess:]:
                 if win.get("pid") == self._protect_pid:
                     continue
-                addr = win.get("address", "")
+                addr = win.get("address")
                 if addr and _hypr_dispatch(
                     f'hl.dsp.window.close({{ window = "address:{addr}" }})'
                 ):
@@ -897,25 +762,24 @@ class SessionManager:
 
     def _launch_missing(self, saved: list[dict], targets: dict[str, int]) -> int:
         cur = self._by_class()
-        opened: dict[str, int] = {}
+        opened: dict[str, int] = defaultdict(int)
         total = 0
-        for w in sorted(saved, key=lambda x: x.get("workspace", 1)):
+        for w in sorted(saved, key=lambda x: x.get("workspace", 0)):
             cls = (w.get("wm_class") or "").lower()
             if not cls:
                 continue
-            have = len(cur.get(cls, []))
-            already = opened.get(cls, 0)
-            if have + already >= targets.get(cls, 0):
+            have = len(cur.get(cls, [])) + opened[cls]
+            if have >= targets.get(cls, 0):
                 continue
             if self._launch_one(w):
-                opened[cls] = already + 1
+                opened[cls] += 1
                 total += 1
         return total
 
     def _launch_one(self, w: dict) -> bool:
         wm = w.get("wm_class", "")
         project = w.get("project", "")
-        ws = w.get("workspace", 1)
+        ws = w.get("workspace", 0)
         title = w.get("title", "")
         cmd = w.get("launch_cmd", "")
         is_term = w.get("is_terminal", False)
@@ -926,71 +790,59 @@ class SessionManager:
         has_project = bool(project and os.path.isdir(project))
 
         if not cmd or not _cmd_standalone_ok(cmd) or not desktop_id:
-            app = self._resolver.find(wm)
+            app = self._resolver.find(wm) if self._resolver else None
             if app:
-                if not desktop_id:
-                    desktop_id = AppResolver.get_desktop_id(app)
+                desktop_id = desktop_id or AppResolver.get_desktop_id(app)
                 if not cmd or not _cmd_standalone_ok(cmd):
                     alt = AppResolver.get_command(app)
                     if _cmd_standalone_ok(alt):
                         cmd = alt
 
-        # === ИСПРАВЛЕНО: правила передаются напрямую, silent вместо follow=false ===
         rule = f'{{ workspace = "{int(ws)} silent" }}'
 
         if cmd and _cmd_standalone_ok(cmd):
             if has_project:
-                if is_term:
-                    launch = f'sh -c \'cd "{project}" && exec {cmd}\''
-                else:
-                    launch = f'{cmd} "{project}"'
+                launch = (
+                    f'sh -c \'cd "{project}" && exec {cmd}\'' if is_term
+                    else f'{cmd} "{project}"'
+                )
             else:
                 launch = cmd
-
-            lua_cmd = json.dumps(launch)
-            return _hypr_dispatch(f'hl.dsp.exec_cmd({lua_cmd}, {rule})')
+            return _hypr_dispatch(f'hl.dsp.exec_cmd({json.dumps(launch)}, {rule})')
 
         gtk_name = self._gtk_launch_name(desktop_id, wm)
         if gtk_name and _has_gtk_launch():
             lua_cmd = json.dumps(f"gtk-launch {gtk_name}")
             return _hypr_dispatch(f'hl.dsp.exec_cmd({lua_cmd}, {rule})')
 
-        app = self._resolver.find(wm)
+        app = self._resolver.find(wm) if self._resolver else None
         if app:
-            try:
-                app.launch()
-                return True
-            except Exception as exc:
-                print(f"[vidgex-shell] launch error: {exc}", file=sys.stderr)
+            app.launch()
+            return True
 
         for binary in AppResolver._binary_candidates(wm):
             if GLib.find_program_in_path(binary):
-                lua_cmd = json.dumps(binary)
-                return _hypr_dispatch(f'hl.dsp.exec_cmd({lua_cmd}, {rule})')
+                return _hypr_dispatch(f'hl.dsp.exec_cmd({json.dumps(binary)}, {rule})')
         return False
 
     @staticmethod
     def _gtk_launch_name(desktop_id: str, wm_class: str) -> str:
         if desktop_id:
-            bn = os.path.basename(desktop_id)
-            return os.path.splitext(bn)[0]
+            return os.path.splitext(os.path.basename(desktop_id))[0]
         if wm_class:
             lo = wm_class.lower()
-            for candidate in (lo.replace(" ", "-"), lo.replace(" ", ""), lo):
-                if candidate:
-                    return candidate
+            return lo.replace(" ", "-") or lo.replace(" ", "") or lo
         return ""
 
     def _assign_workspaces(self, saved: list[dict]) -> list[tuple[dict, dict]]:
         cur = self._by_class()
         saved_by: dict[str, list[dict]] = defaultdict(list)
         for w in saved:
-            cls = (w.get("wm_class") or "").lower()
-            if cls:
+            if cls := (w.get("wm_class") or "").lower():
                 saved_by[cls].append(w)
 
         cmds: list[str] = []
-        all_matched_pairs: list[tuple[dict, dict]] = []
+        all_pairs: list[tuple[dict, dict]] = []
 
         for cls, slist in saved_by.items():
             clist = cur.get(cls, [])
@@ -998,13 +850,12 @@ class SessionManager:
                 continue
 
             pairs = _match_windows(slist, clist)
-            all_matched_pairs.extend(pairs)
+            all_pairs.extend(pairs)
 
             for sw, cw in pairs:
-                addr = cw.get("address", "")
-                ws = sw.get("workspace", 1)
-                cur_ws = cw.get("workspace", {}).get("id", -1)
-
+                addr = cw.get("address")
+                ws = sw.get("workspace", 0)
+                cur_ws = cw.get("workspace", {}).get("id")
                 if addr and int(ws) != cur_ws:
                     cmds.append(
                         f'hl.dsp.window.move({{ window = "address:{addr}", '
@@ -1013,7 +864,7 @@ class SessionManager:
 
         if cmds:
             _hypr_batch(cmds)
-        return all_matched_pairs
+        return all_pairs
 
 
 # ---------------------------------------------------------------------------
@@ -1029,8 +880,7 @@ def _match_windows(saved: list[dict], current: list[dict]) -> list[tuple[dict, d
     limit = min(len(saved), len(current))
     scores: list[tuple[float, int, int]] = []
     for si, sw in enumerate(saved):
-        st = sw.get("title", "")
-        sp = sw.get("project", "")
+        st, sp = sw.get("title", ""), sw.get("project", "")
         for ci, cw in enumerate(current):
             ct = cw.get("title", "")
             score = _title_similarity(st, ct)

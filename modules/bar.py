@@ -11,13 +11,9 @@ from fabric.widgets.datetime import DateTime
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.eventbox import EventBox
 
-import gi
-gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk
-
 from modules.Bar.powerMenu import PowerMenu
 from modules.Bar.toolBox import ToolBox
-from modules.Bar.workspaces import TopWorkspaces, SideBarWindow, _hov
+from modules.Bar.workspaces import TopWorkspaces, SideBarWindow
 from modules.Bar.battery import Battery
 
 from services.wayland import WaylandWindow as Window
@@ -38,8 +34,6 @@ class Bar(Window):
         self.conn = get_hyprland_connection()
         self.lang = Language()
         self._last_lang = ""
-        self._hand = None
-        self._default = None
 
         self.sidebar = SideBarWindow(conn=self.conn, monitor_id=self.mid)
         self.sidebar.show_all()
@@ -59,64 +53,26 @@ class Bar(Window):
     def notch(self, value):
         self._notch_ref = weakref.ref(value) if value else None
 
-    def _ensure_cursors(self):
-        if self._hand is None:
-            display = self.get_display()
-            self._hand = Gdk.Cursor.new_from_name(display, "pointer")
-            self._default = Gdk.Cursor.new_from_name(display, "default")
-
-    def _set_toplevel_cursor(self, cursor):
-        toplevel = self.get_toplevel()
-        if toplevel:
-            win = toplevel.get_window()
-            if win:
-                win.set_cursor(cursor)
-
-    def _on_btn_enter(self, w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self._ensure_cursors()
-            self._set_toplevel_cursor(self._hand)
-        return False
-
-    def _on_btn_leave(self, w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self._ensure_cursors()
-            self._set_toplevel_cursor(self._default)
-        return False
-
-    def _hand_cursor(self, widget):
-        widget.add_events(
-            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
-        )
-        widget.connect("enter-notify-event", self._on_btn_enter)
-        widget.connect("leave-notify-event", self._on_btn_leave)
-
     def _build(self):
         self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")
 
         self.dt  = DateTime(name="date-time", formatters=["%H:%M"])
         self.bat = Battery()
 
-        # Кнопка ToolBox
         self.bt = Button(
             name="button-bar",
             tooltip_markup="<b>Tools</b>",
             on_clicked=self._tools,
             child=Label(name="button-bar-label", markup=icons.photo),
         )
-        _hov(self.bt)
-        self._hand_cursor(self.bt)
         self.toolbox_menu.set_trigger_button(self.bt)
 
-        # Кнопка Power Menu
         self.bp = Button(
             name="button-bar",
             tooltip_markup="<b>Power menu</b>",
             on_clicked=self._pwr,
             child=Label(name="button-bar-label", markup=icons.shutdown),
         )
-        _hov(self.bp)
-        self._hand_cursor(self.bp)
         self.power_menu.set_trigger_button(self.bp)
 
         self.ll = Label(name="lang-label", xalign=0.5)
@@ -161,8 +117,6 @@ class Bar(Window):
 
     def _lchg(self, *_):
         raw = self.lang.get_label()
-        if not raw:
-            return
         short = raw[:2].upper()
         if short != self._last_lang:
             self._last_lang = short
@@ -170,41 +124,34 @@ class Bar(Window):
 
     def _pwr(self, *_):
         pm = self.power_menu
-        if pm:
-            if pm.is_open():
-                pm.close()
-            else:
-                pm.open()
+        if pm.is_open():
+            pm.close()
+        else:
+            pm.open()
 
     def _tools(self, *_):
         tm = self.toolbox_menu
-        if tm:
-            if tm.is_open():
-                tm.close()
-            else:
-                tm.open()
+        if tm.is_open():
+            tm.close()
+        else:
+            tm.open()
 
     def cleanup(self):
-        if self.lang and self._lang_sig_id:
-            self.lang.disconnect(self._lang_sig_id)
-            self._lang_sig_id = 0
+        self.lang.disconnect(self._lang_sig_id)
+        self._lang_sig_id = 0
 
-        if self.sidebar:
-            self.sidebar.destroy()
-            self.sidebar = None
+        self.sidebar.destroy()
+        self.sidebar = None
 
-        if self.power_menu:
-            self.power_menu.cleanup()
-            self.power_menu.destroy()
-            self.power_menu = None
+        self.power_menu.cleanup()
+        self.power_menu.destroy()
+        self.power_menu = None
 
-        if self.toolbox_menu:
-            self.toolbox_menu.cleanup()
-            self.toolbox_menu.destroy()
-            self.toolbox_menu = None
+        self.toolbox_menu.cleanup()
+        self.toolbox_menu.destroy()
+        self.toolbox_menu = None
 
-        if hasattr(self.bat, "cleanup"):
-            self.bat.cleanup()
+        self.bat.cleanup()
 
         self._notch_ref = None
         self.conn = None

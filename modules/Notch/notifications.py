@@ -7,6 +7,7 @@ from gi.repository import GLib
 
 from modules.Notch.Notifications.history import get_shared_history
 from modules.Notch.Notifications.notificationBox import NotificationBox
+from modules.Notch.Notifications.glyph import SideGlyph
 
 
 _notification_server: FabricNotifications | None = None
@@ -19,10 +20,7 @@ def _get_notification_server() -> FabricNotifications:
     return _notification_server
 
 
-class NotificationPopup(Box):
-    # Виджет уведомлений внутри стека Notch.
-    # При получении нового уведомления текущее немедленно уходит в историю
-    # и заменяется новым — без очереди и ожидания таймера.
+class Notifications(Box):
     def __init__(self, notch=None, **kwargs):
         super().__init__(
             name="notch-notification-popup",
@@ -38,6 +36,9 @@ class NotificationPopup(Box):
         self._current_notification = None
         self._destroyed = False
 
+        self.left_glyph = SideGlyph("left")
+        self.right_glyph = SideGlyph("right")
+
         self._inner = Box(
             name="notch-notification-inner",
             orientation="v",
@@ -50,11 +51,9 @@ class NotificationPopup(Box):
             "notification-added", self._on_notification_added
         )
 
-    # Публичный метод
     def open(self) -> None:
         pass
 
-    # Приём нового уведомления
     def _on_notification_added(self, server, notif_id: int) -> None:
         if self._destroyed:
             return
@@ -65,10 +64,10 @@ class NotificationPopup(Box):
 
         history = get_shared_history()
 
-        if history.glyphs_enabled and history.trigger_glyphs_callback:
-            history.trigger_glyphs_callback()
+        if history.glyphs_enabled:
+            self.left_glyph.trigger()
+            self.right_glyph.trigger()
 
-        # Сразу в историю если DND или notch открыт с другим виджетом
         notch = self._get_notch()
         notch_busy = (
             notch is not None
@@ -101,7 +100,6 @@ class NotificationPopup(Box):
         ms = live_timeout if (live_timeout and live_timeout > 0) else 5000
         self._timeout_id = GLib.timeout_add(ms, self._on_timeout)
 
-    # Подписка / отписка
     def _subscribe_closed(self, notification) -> None:
         if hasattr(notification, "connect"):
             self._closed_handler = notification.connect(
@@ -112,16 +110,11 @@ class NotificationPopup(Box):
     def _unsubscribe_closed(self) -> None:
         n = self._current_notification
         h = self._closed_handler
-        if n and h is not None:
-            try:
-                if n.handler_is_connected(h):
-                    n.disconnect(h)
-            except Exception:
-                pass
+        if n and h is not None and n.handler_is_connected(h):
+            n.disconnect(h)
         self._closed_handler = None
         self._current_notification = None
 
-    # Таймер и закрытие
     def _on_timeout(self) -> bool:
         self._timeout_id = None
         self._unsubscribe_closed()
@@ -158,11 +151,9 @@ class NotificationPopup(Box):
         elif not getattr(nb, "_destroyed", False):
             nb.destroy()
 
-    # Вспомогательные
     def _get_notch(self):
         return self._notch_ref() if self._notch_ref else None
 
-    # Уничтожение
     def destroy(self) -> None:
         if self._destroyed:
             return
@@ -172,12 +163,8 @@ class NotificationPopup(Box):
         self._unsubscribe_closed()
         self._dismiss_current(send_to_history=False)
 
-        if self._server and self._server_handler is not None:
-            try:
-                if self._server.handler_is_connected(self._server_handler):
-                    self._server.disconnect(self._server_handler)
-            except Exception:
-                pass
+        if self._server and self._server_handler is not None and self._server.handler_is_connected(self._server_handler):
+            self._server.disconnect(self._server_handler)
         self._server_handler = None
         self._server = None
 

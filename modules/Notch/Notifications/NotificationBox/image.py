@@ -26,7 +26,7 @@ class CustomImage(Image):
             prop = self.get_style_context().get_property(
                 "border-radius", Gtk.StateFlags.NORMAL
             )
-            self._cached_radius = prop if prop else 0
+            self._cached_radius = prop
 
         radius = self._cached_radius
         if radius <= 0:
