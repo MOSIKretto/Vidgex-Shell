@@ -7,10 +7,12 @@
   background-color: var(--shadow);
   border-radius: 0px 0px 12px 12px;
   margin-top: -16px; 
+  padding-top: 14px;
 }
 
+/* Точки рядов */
 #workspaces-left {
-  padding: 14px;
+  padding: 0px 14px 14px 14px;
 }
 
 #workspaces-num-top {
@@ -25,7 +27,9 @@
 
 #workspaces-top > button,
 #workspaces-left > button,
-#workspaces-num-top > button {
+#workspaces-num-top > button,
+#workspaces-action-top > button,
+#workspaces-action-left > button {
   border: none;
   outline: none;
   box-shadow: none;
@@ -37,7 +41,9 @@
 
 #workspaces-top > button > label,
 #workspaces-left > button > label,
-#workspaces-num-top > button > label {
+#workspaces-num-top > button > label,
+#workspaces-action-top > button > label,
+#workspaces-action-left > button > label {
   margin: 0;
   padding: 0;
 }
@@ -105,5 +111,43 @@
 }
 
 #workspaces-num-top > button.active > label {
+  color: var(--shadow);
+}
+
+/* Выезжающая кнопка '+' в верхней панели */
+#workspaces-action-top {
+  padding: 8px 6px 8px 0px; 
+  margin: 0;
+}
+
+/* Выезжающая кнопка '-' в левой панели */
+#workspaces-action-left {
+  padding: 0px 0px 6px 0px;
+  margin: 0;
+}
+
+#workspaces-action-top > button,
+#workspaces-action-left > button {
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 12px;
+  background-color: var(--surface-bright);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#workspaces-action-top > button > label,
+#workspaces-action-left > button > label {
+  font-weight: bold;
+  font-size: 11pt;
+  color: var(--foreground);
+}
+
+#workspaces-action-top > button:hover,
+#workspaces-action-left > button:hover {
+  background-color: var(--primary);
+}
+
+#workspaces-action-top > button:hover > label,
+#workspaces-action-left > button:hover > label {
   color: var(--shadow);
 }

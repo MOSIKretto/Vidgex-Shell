@@ -18,7 +18,6 @@
 
 #close-button,
 #clear-button,
-#new-session-button,
 #random-wall-button {
   background-color: var(--surface);
   border-radius: 24px;
@@ -29,8 +28,6 @@
 #close-button:focus,
 #clear-button:hover,
 #clear-button:focus,
-#new-session-button:hover,
-#new-session-button:focus,
 #random-wall-button:hover {
   background-color: var(--surface-bright);
   border-radius: 12px;
@@ -38,7 +35,6 @@
 
 #close-button:active,
 #clear-button:active,
-#new-session-button:active,
 #random-wall-button:active {
   background-color: var(--primary);
   border-radius: 12px;
@@ -46,7 +42,6 @@
 
 #close-label,
 #clear-label,
-#new-session-label,
 #random-wall-label {
   color: var(--primary);
   font-size: 24px;
@@ -54,7 +49,6 @@
 
 #close-button:active #close-label,
 #clear-button:active #clear-label,
-#new-session-button:active #new-session-label,
 #random-wall-button:active #random-wall-label {
   color: var(--on-primary);
 }

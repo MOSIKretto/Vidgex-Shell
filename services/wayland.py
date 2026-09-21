@@ -6,16 +6,8 @@ _LAYER_MAP = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
 _EXCL_MAP = {"none": 0, "normal": 1, "auto": 2}
 _KBD_MAP = {"none": 0, "exclusive": 1, "on_demand": 2, "on-demand": 2}
 
-_EMPTY_REGION = cairo.Region()
-
 
 class WaylandWindow(Window):
-    __slots__ = (
-        "_layer", "_exclusivity", "_pass_through",
-        "_keyboard_mode", "_keyboard_interactivity",
-        "_monitor_obj", "_display",
-    )
-
     def __init__(
         self,
         layer: str | int = 2,
@@ -41,9 +33,9 @@ class WaylandWindow(Window):
 
         self._display = Gdk.Display.get_default()
         self._monitor_obj = None
-        
+
         self._layer = self._exclusivity = self._keyboard_mode = -1
-        self._keyboard_interactivity = self._pass_through = False
+        self._pass_through = False
 
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, title)
@@ -58,8 +50,23 @@ class WaylandWindow(Window):
 
         self.connect("notify::title", self._on_title_changed)
 
+        self._monitor_removed_id = self._display.connect(
+            "monitor-removed", self._on_monitor_removed
+        )
+
+        self.connect("destroy", self._on_destroy)
+
         if all_visible: self.show_all()
         elif visible: self.show()
+
+    def _on_destroy(self, *_) -> None:
+        if self._monitor_removed_id is not None:
+            self._display.disconnect(self._monitor_removed_id)
+            self._monitor_removed_id = None
+
+    def _on_monitor_removed(self, _display, monitor: Gdk.Monitor) -> None:
+        if self._monitor_obj is monitor:
+            self._monitor_obj = None
 
     def _on_title_changed(self, *_) -> None:
         GtkLayerShell.set_namespace(self, self.get_title())
@@ -110,8 +117,7 @@ class WaylandWindow(Window):
         nums = []
         if type(value) is str:
             for x in value.replace(",", " ").replace("px", "").split():
-                try: nums.append(int(float(x)))
-                except ValueError: pass
+                nums.append(int(float(x)))
         else:
             nums = [int(v) for v in value[:4] if isinstance(v, (int, float))]
 
@@ -129,7 +135,6 @@ class WaylandWindow(Window):
 
     @property
     def monitor(self) -> int | None:
-        if not self._display or not self._monitor_obj: return None
         for i in range(self._display.get_n_monitors()):
             if self._display.get_monitor(i) is self._monitor_obj: return i
         return None
@@ -138,13 +143,13 @@ class WaylandWindow(Window):
     def monitor(self, value: int | Gdk.Monitor | None) -> None:
         mon = None
         if type(value) is Gdk.Monitor: mon = value
-        elif value is not None and self._display:
+        elif value is not None:
             if 0 <= value < self._display.get_n_monitors():
                 mon = self._display.get_monitor(value)
 
         if self._monitor_obj is not mon:
             self._monitor_obj = mon
-            if mon: GtkLayerShell.set_monitor(self, mon)
+            GtkLayerShell.set_monitor(self, mon)
 
     @property
     def exclusivity(self) -> int:
@@ -171,16 +176,6 @@ class WaylandWindow(Window):
             GtkLayerShell.set_keyboard_mode(self, val)
 
     @property
-    def keyboard_interactivity(self) -> bool:
-        return self._keyboard_interactivity
-
-    @keyboard_interactivity.setter
-    def keyboard_interactivity(self, value: bool) -> None:
-        if self._keyboard_interactivity != value:
-            self._keyboard_interactivity = value
-            GtkLayerShell.set_keyboard_interactivity(self, value)
-
-    @property
     def pass_through(self) -> bool:
         return self._pass_through
 
@@ -191,7 +186,8 @@ class WaylandWindow(Window):
             if self.get_visible(): self._apply_input_region()
 
     def _apply_input_region(self) -> None:
-        self.input_shape_combine_region(_EMPTY_REGION if self._pass_through else None)
+        region = cairo.Region() if self._pass_through else None
+        self.input_shape_combine_region(region)
 
     def show(self) -> None:
         super().show()
@@ -202,7 +198,7 @@ class WaylandWindow(Window):
         if self._pass_through: self._apply_input_region()
 
     def steal_input(self) -> None:
-        self.keyboard_interactivity = True
+        self.keyboard_mode = "exclusive"
 
     def return_input(self) -> None:
-        self.keyboard_interactivity = False
+        self.keyboard_mode = "none"

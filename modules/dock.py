@@ -1,9 +1,9 @@
 import json
+import threading
 
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk
-from types import SimpleNamespace
 
 from fabric.hyprland.widgets import get_hyprland_connection
 from fabric.utils import get_desktop_applications
@@ -13,17 +13,22 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.image import Image
 from fabric.widgets.revealer import Revealer
 from fabric.widgets.label import Label
-from fabric.widgets.overlay import Overlay
 
 from modules.Dock.visibility import Visibility
-from modules.Dock.pin import Pin
 from modules.Dock.windowNavigator import WindowNavigator
-from modules.Dock.restore import AppResolver as RestoreAppResolver
 from modules.Dock.DnD import Dnd
+
+from modules.Dock.Desktop.infinite_desktop import (
+    start_canvas_daemon,
+    toggle_mode as toggle_float_mode,
+    is_canvas_mode,
+    register_mode_change_callback as register_float_mode_change_callback,
+)
+
 from modules.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
-from services.icons import pin, pinned
+from services.icons import layout_tiling, layout_float
 
 
 ICON_SCALE_FACTOR = 0.035
@@ -36,26 +41,28 @@ DOT_SIZE = 5
 UPDATE_DEBOUNCE_MS = 80
 HOVER_DEBOUNCE_MS = 40
 INIT_DELAY_MS = 150
-FALLBACK_ICON = "application-x-executable-symbolic"
 
 _apps, _app_map, _theme = [], {}, Gtk.IconTheme.get_default()
 
+LAYOUT_CANVAS   = 0
+LAYOUT_HYPRLAND = 1
+
 
 def _norm(name):
-    return name.lower().strip().rsplit(".", 1)[-1] if name else ""
+    return name.lower().strip().rsplit(".", 1)[-1]
+
 
 def _refresh():
     global _apps
     _apps = get_desktop_applications()
     _app_map.clear()
     for app in _apps:
-        for k in filter(None, (app.name, app.display_name)):
+        for k in (app.name, app.display_name):
             _app_map.setdefault(k.lower(), app)
             _app_map.setdefault(_norm(k), app)
 
+
 def _find(name):
-    if not name:
-        return None
     low, n = name.lower(), _norm(name)
     for k in (low, n):
         if k in _app_map:
@@ -65,34 +72,23 @@ def _find(name):
             if seg in _app_map:
                 return _app_map[seg]
     for app in _apps:
-        an, ad = (app.name or "").lower(), (app.display_name or "").lower()
+        an, ad = app.name.lower(), app.display_name.lower()
         if n in an or an in n or n in ad or ad in n:
             return app
     return None
 
+
 def _icon(cls, size, app=None):
     for src in (app, _find(cls)):
-        if src and hasattr(src, "get_icon_pixbuf"):
-            try:
-                px = src.get_icon_pixbuf(size=size)
-                if px:
-                    return px
-            except Exception:
-                pass
-    for name in filter(None, (cls, _norm(cls), cls and cls.lower(), FALLBACK_ICON)):
-        try:
-            px = _theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
+        if src:
+            px = src.get_icon_pixbuf(size=size)
             if px:
                 return px
-        except Exception:
-            pass
+    for name in (cls, _norm(cls), cls.lower()):
+        px = _theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
+        if px:
+            return px
     return None
-
-def _resolver():
-    return SimpleNamespace(
-        app_map=_app_map, refresh=_refresh,
-        norm_name=_norm, find_app=_find, get_icon=_icon,
-    )
 
 
 class Dock(Window):
@@ -102,7 +98,6 @@ class Dock(Window):
         self,
         monitor_id=0,
         integrated_mode=False,
-        session_manager=None,
         icon_scale=ICON_SCALE_FACTOR,
         default_icon_size=DEFAULT_ICON_SIZE,
         **kwargs,
@@ -113,11 +108,16 @@ class Dock(Window):
         self.icon_size = default_icon_size
 
         self._drag_active = False
-        self._dock_width = self._dock_height = 0
         self._mon_x = self._mon_y = self._mon_w = self._mon_h = 0
         self._visibility = None
         self._update_timer = None
         self._last_fingerprint = None
+
+        self._layouts = ["Canvas", "Hyprland"]
+        self._layout_icons = [layout_float, layout_tiling]
+        self._current_layout_idx = LAYOUT_CANVAS
+
+        self._daemons_started = False
 
         super().__init__(
             name="dock-window", layer="top", anchor="bottom",
@@ -126,25 +126,37 @@ class Dock(Window):
         )
 
         self.conn = get_hyprland_connection()
-        resolver = _resolver()
-        self._pin_mgr = Pin(session_manager, resolver)
         self._nav = WindowNavigator(self.conn, self._parse)
-        self._restorer = RestoreAppResolver(resolver)
         self._dnd = Dnd(self)
 
         self._init_ui()
         self._bind_events()
 
     def _parse(self, cmd):
-        try:
-            raw = self.conn.send_command(cmd).reply
-            return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-        except Exception:
-            return []
+        raw = self.conn.send_command(cmd).reply
+        return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
 
     def _init_ui(self):
-        self.view = Box(name="viewport", spacing=0, orientation=Gtk.Orientation.HORIZONTAL)
-        self.wrapper = Box(name="dock", children=[self.view], orientation=Gtk.Orientation.HORIZONTAL)
+        self.view = Box(
+            name="viewport",
+            spacing=0,
+            orientation=Gtk.Orientation.HORIZONTAL,
+        )
+
+        self._layout_btn = self._make_layout_btn()
+
+        self.wrapper = Box(
+            name="dock",
+            orientation=Gtk.Orientation.HORIZONTAL,
+            children=[
+                self.view,
+                Box(
+                    name="dock-separator",
+                    orientation=Gtk.Orientation.VERTICAL,
+                ),
+                self._layout_btn,
+            ],
+        )
 
         if self.integrated_mode:
             self.add(self.wrapper)
@@ -158,20 +170,38 @@ class Dock(Window):
         self.dock_eb.connect("leave-notify-event", self._on_dock_leave)
 
         dock_full = Box(
-            name="dock-full", orientation=Gtk.Orientation.HORIZONTAL,
-            h_expand=True, h_align="fill",
+            name="dock-full",
+            orientation=Gtk.Orientation.HORIZONTAL,
+            h_expand=True,
+            h_align="fill",
             children=[
-                Box(name="dock-corner-left", orientation=Gtk.Orientation.VERTICAL,
-                    h_align="start", children=[Box(v_expand=True, v_align="fill"), MyCorner("bottom-right")]),
+                Box(
+                    name="dock-corner-left",
+                    orientation=Gtk.Orientation.VERTICAL,
+                    h_align="start",
+                    children=[
+                        Box(v_expand=True, v_align="fill"),
+                        MyCorner("bottom-right"),
+                    ],
+                ),
                 self.dock_eb,
-                Box(name="dock-corner-right", orientation=Gtk.Orientation.VERTICAL,
-                    h_align="end", children=[Box(v_expand=True, v_align="fill"), MyCorner("bottom-left")]),
+                Box(
+                    name="dock-corner-right",
+                    orientation=Gtk.Orientation.VERTICAL,
+                    h_align="end",
+                    children=[
+                        Box(v_expand=True, v_align="fill"),
+                        MyCorner("bottom-left"),
+                    ],
+                ),
             ],
         )
 
         self.revealer = Revealer(
-            name="dock-revealer", transition_type="slide-up",
-            child_revealed=True, child=dock_full,
+            name="dock-revealer",
+            transition_type="slide-up",
+            child_revealed=True,
+            child=dock_full,
         )
 
         activator = EventBox()
@@ -180,7 +210,8 @@ class Dock(Window):
         activator.connect("leave-notify-event", self._on_hover_leave)
 
         self.add(Box(
-            orientation=Gtk.Orientation.VERTICAL, h_align="center",
+            orientation=Gtk.Orientation.VERTICAL,
+            h_align="center",
             children=[activator, self.revealer],
         ))
         self.wrapper.connect("size-allocate", self._on_size_allocate)
@@ -188,6 +219,94 @@ class Dock(Window):
     def _on_size_allocate(self, _, alloc):
         if self._visibility:
             self._visibility.update_size(alloc.width, alloc.height)
+
+    def _make_layout_btn(self):
+        self._layout_icon_lbl = Label(
+            markup=self._layout_icons[self._current_layout_idx],
+            name="dock-layout-icon",
+        )
+
+        content = Box(
+            name="dock-layout-content",
+            orientation="h",
+            h_align="center",
+            v_align="center",
+            children=[self._layout_icon_lbl],
+        )
+
+        btn = Button(
+            child=content,
+            name="dock-app-button",
+            tooltip_text=f"Layout: {self._layouts[self._current_layout_idx]}",
+        )
+        btn.add_style_class("layout-btn")
+        btn._hover_timer = None
+
+        btn.connect("clicked", self._on_layout_click)
+        btn.connect(
+            "enter-notify-event",
+            lambda w, e: self._on_layout_hover_enter(btn, e),
+        )
+        btn.connect(
+            "leave-notify-event",
+            lambda w, e: self._on_layout_hover_leave(btn, e),
+        )
+
+        return btn
+
+    def _determine_layout_state(self) -> int:
+        if is_canvas_mode():
+            return LAYOUT_CANVAS
+        return LAYOUT_HYPRLAND
+
+    def _cycle_layout(self):
+        self._ensure_daemons()
+        threading.Thread(
+            target=self._do_cycle_layout,
+            name="layout-toggle",
+            daemon=True,
+        ).start()
+
+    def _do_cycle_layout(self):
+        toggle_float_mode()
+        GLib.idle_add(self._sync_layout_btn)
+
+    def _ensure_daemons(self):
+        if self._daemons_started:
+            return
+        self._daemons_started = True
+        threading.Thread(
+            target=start_canvas_daemon, name="canvas-daemon-init", daemon=True,
+        ).start()
+
+    def _on_layout_click(self, *_):
+        self._cycle_layout()
+
+    def _on_layout_hover_enter(self, btn, event):
+        if self._visibility:
+            self._visibility.mouse_enter()
+        t = btn._hover_timer
+        if t:
+            GLib.source_remove(t)
+        btn._hover_timer = GLib.timeout_add(
+            HOVER_DEBOUNCE_MS, self._apply_layout_hover, btn
+        )
+        return False
+
+    def _on_layout_hover_leave(self, btn, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
+        t = btn._hover_timer
+        if t:
+            GLib.source_remove(t)
+            btn._hover_timer = None
+        btn.remove_style_class("hovered")
+        return False
+
+    def _apply_layout_hover(self, btn):
+        btn._hover_timer = None
+        btn.add_style_class("hovered")
+        return False
 
     def _bind_events(self):
         c = self.conn
@@ -207,17 +326,43 @@ class Dock(Window):
             c.connect("event::ready", self._on_ready)
 
     def _on_ready(self, *_):
-        self._pin_mgr.restore()
         self._update_monitor()
+
+        register_float_mode_change_callback(self._on_canvas_mode_changed)
+
         self.show_all()
         if self._visibility:
             self._visibility.start()
+
         GLib.timeout_add(INIT_DELAY_MS, self._do_full_update)
+        GLib.timeout_add(INIT_DELAY_MS + 100, self._sync_layout_btn)
+
+        self._ensure_daemons()
+
+    def _sync_layout_btn(self):
+        idx = self._determine_layout_state()
+        if idx != self._current_layout_idx:
+            self._current_layout_idx = idx
+            self._layout_icon_lbl.set_markup(self._layout_icons[idx])
+            self._layout_btn.set_tooltip_text(f"Layout: {self._layouts[idx]}")
+
+        if idx == LAYOUT_HYPRLAND:
+            self._layout_btn.add_style_class("active")
+            self._layout_btn.add_style_class("active-hyprland")
+        else:
+            self._layout_btn.add_style_class("active")
+            self._layout_btn.remove_style_class("active-hyprland")
+        return False
+
+    def _on_canvas_mode_changed(self, ws_id, is_canvas):
+        GLib.idle_add(self._sync_layout_btn)
 
     def _schedule_update(self, *_):
         if self._update_timer is not None:
             GLib.source_remove(self._update_timer)
-        self._update_timer = GLib.timeout_add(UPDATE_DEBOUNCE_MS, self._do_full_update)
+        self._update_timer = GLib.timeout_add(
+            UPDATE_DEBOUNCE_MS, self._do_full_update
+        )
 
     def _on_active_window(self, *_):
         self._sync_active()
@@ -249,21 +394,20 @@ class Dock(Window):
     @staticmethod
     def _fingerprint(candidates):
         return tuple(
-            (c["unique_id"], tuple(sorted(i.get("address", "") for i in c.get("insts", []))))
+            (
+                c["unique_id"],
+                tuple(sorted(i["address"] for i in c["insts"])),
+            )
             for c in candidates
         )
 
     def _build_candidates(self, clients):
         wins = {}
         for c in clients:
-            cls = c.get("initialClass") or c.get("class") or ""
-            title = c.get("title", "")
-            if not cls and not title:
-                continue
-            raw = cls or title
-            key = raw.lower().split(" - ", 1)[0].strip()
+            cls = c["initialClass"]
+            key = cls.lower().split(" - ", 1)[0].strip()
             if key not in wins:
-                wins[key] = {"original": cls or title, "instances": []}
+                wins[key] = {"original": cls, "instances": []}
             wins[key]["instances"].append(c)
 
         seen, candidates = set(), []
@@ -277,40 +421,37 @@ class Dock(Window):
                 seen.add(n)
 
             app = (
-                _app_map.get(key) or _app_map.get(n)
-                or _app_map.get(original.lower()) or _find(original)
+                _app_map.get(key)
+                or _app_map.get(n)
+                or _app_map.get(original.lower())
+                or _find(original)
             )
-            uid = (app.name or getattr(app, "window_class", "") or key) if app else key
+            uid = app.name if app else key
+
             candidates.append({
-                "unique_id": uid, "app": app, "insts": data["instances"],
-                "key": key, "original": original,
+                "unique_id": uid,
+                "app": app,
+                "insts": data["instances"],
+                "key": key,
+                "original": original,
             })
 
-        existing = {c["unique_id"] for c in candidates}
-        candidates.extend(self._pin_mgr.get_ghost_candidates(existing))
         return self._dnd.apply_order(candidates)
 
     def _gdk_geometry(self):
         display = Gdk.Display.get_default()
-        if display and 0 <= self.monitor_id < display.get_n_monitors():
-            mon = display.get_monitor(self.monitor_id)
-            if mon:
-                return mon.get_geometry()
-        return None
+        mon = display.get_monitor(self.monitor_id)
+        return mon.get_geometry()
 
     def _update_monitor(self, *_):
         for m in self._parse("j/monitors"):
-            if m.get("id") != self.monitor_id:
+            if m["id"] != self.monitor_id:
                 continue
 
-            w, h = m.get("width", self._mon_w), m.get("height", self._mon_h)
-            x, y = m.get("x", self._mon_x), m.get("y", self._mon_y)
-
-            if not all((w, h)):
-                g = self._gdk_geometry()
-                if g:
-                    w, h = w or g.width, h or g.height
-                    x, y = x or g.x, y or g.y
+            w = m["width"]
+            h = m["height"]
+            x = m["x"]
+            y = m["y"]
 
             self._mon_w, self._mon_h = w, h
             self._mon_x, self._mon_y = x, y
@@ -325,45 +466,20 @@ class Dock(Window):
 
     def _sync_active(self):
         aw = self._parse("j/activewindow")
-        active = _norm(aw.get("initialClass") or aw.get("class", "")) if aw else ""
-        for container in self.view.get_children():
-            cls = getattr(container, "_cls", None)
-            btn = getattr(container, "_main_btn", container)
-            n = _norm(cls) if cls else ""
-            match = n and active and (n == active or n in active or active in n)
+        active = _norm(aw["initialClass"])
+        for btn in self.view.get_children():
+            cls = btn._cls
+            n = _norm(cls)
+            match = n == active or n in active or active in n
             if match:
                 btn.add_style_class("active")
             else:
                 btn.remove_style_class("active")
 
     def _sync_tooltips(self):
-        clients = self._parse("j/clients")
-        if not clients:
-            return
-
-        best = {}
-        for c in clients:
-            cls = c.get("initialClass") or c.get("class") or ""
-            title = c.get("title", "")
-            if not cls and not title:
-                continue
-            key = (cls or title).lower().split(" - ", 1)[0].strip()
-            fh = c.get("focusHistoryID", float("inf"))
-            prev = best.get(key)
-            if prev is None or fh < prev[1]:
-                best[key] = (title, fh)
-
-        titles = {k: v[0] for k, v in best.items()}
-        for container in self.view.get_children():
-            cls = getattr(container, "_cls", None)
-            if not cls:
-                continue
-            btn = getattr(container, "_main_btn", container)
-            app = getattr(container, "_app", None)
-            app_name = (app.display_name or app.name) if app else None
-            btn.set_tooltip_text(
-                app_name or titles.get(cls) or getattr(container, "_original", "")
-            )
+        for btn in self.view.get_children():
+            app = btn._app
+            btn.set_tooltip_text(app.display_name if app else btn._original)
 
     def _rebuild_ui(self, candidates):
         for c in self.view.get_children():
@@ -377,149 +493,118 @@ class Dock(Window):
         self.view.show_all()
 
     def _make_btn(self, app, insts, key, original, uid):
-        name = (app.display_name or app.name) if app else None
-        px = _icon(original or key, self.icon_size, app)
-        num = len(insts) if insts else 0
-        is_pin = self._pin_mgr.is_pinned(uid)
+        name = app.display_name if app else original
+        px = _icon(original, self.icon_size, app)
+        num = len(insts)
 
         icon_box = Box(
-            name="dock-icon-box", orientation="v",
-            h_align="center", v_align="end",
+            name="dock-icon-box",
+            orientation="v",
+            h_align="center",
+            v_align="end",
             children=[Image(pixbuf=px, name="dock-icon-image")],
         )
         icon_wrapper = Box(
-            name="dock-icon-wrapper", orientation="v",
-            h_align="center", v_align="end", spacing=ICON_SPACING,
+            name="dock-icon-wrapper",
+            orientation="v",
+            h_align="center",
+            v_align="end",
+            spacing=ICON_SPACING,
             children=[icon_box],
         )
 
-        dots_box = Box(name="dock-dots", orientation="v", spacing=WIDGET_SPACING, v_align="center")
+        dots_box = Box(
+            name="dock-dots",
+            orientation="v",
+            spacing=WIDGET_SPACING,
+            v_align="center",
+        )
         for _ in range(min(num, MAX_DOTS)):
             dot = Box(name="dock-dot")
             dot.set_size_request(DOT_SIZE, DOT_SIZE)
             dots_box.add(dot)
 
         content = Box(
-            name="dock-icon", orientation="h",
-            h_align="center", v_align="center", spacing=WIDGET_SPACING,
+            name="dock-icon",
+            orientation="h",
+            h_align="center",
+            v_align="center",
+            spacing=WIDGET_SPACING,
         )
         content.add(icon_wrapper)
 
         if num > 0:
             content.add(Box(
-                name="dock-dots-wrapper", orientation="v",
-                v_align="center", children=[dots_box],
-            ))
-        elif is_pin:
-            content.add(Box(
-                name="dock-dots-wrapper", orientation="v",
-                v_align="center", children=[Label(label="✕", name="dock-cross")],
+                name="dock-dots-wrapper",
+                orientation="v",
+                v_align="center",
+                children=[dots_box],
             ))
 
         main_btn = Button(
             child=content,
-            tooltip_text=name or (insts[0].get("title") if insts else None) or original,
+            tooltip_text=name,
             name="dock-app-button",
         )
 
-        pin_lbl = Label(markup=pinned if is_pin else pin)
-        pin_btn = Button(
-            name="dock-app-pin-btn", child=pin_lbl,
-            v_align="start", h_align="start",
-            tooltip_text="Unpin" if is_pin else "Pin to Dock",
+        main_btn._cls = key
+        main_btn._original = original
+        main_btn._app = app
+        main_btn._insts = insts
+        main_btn._icon_box = icon_box
+        main_btn._unique_id = uid
+        main_btn._main_btn = main_btn
+        main_btn._hover_timer = None
+
+        main_btn.connect("clicked", lambda *_: self._on_btn_click(main_btn))
+        main_btn.connect(
+            "enter-notify-event",
+            lambda w, e: self._on_btn_hover_enter(main_btn, e),
         )
-        if is_pin:
-            pin_btn.add_style_class("active")
+        main_btn.connect(
+            "leave-notify-event",
+            lambda w, e: self._on_btn_hover_leave(main_btn, e),
+        )
 
-        container = Overlay(child=main_btn, overlays=[pin_btn])
-        container._cls = key
-        container._original = original
-        container._app = app
-        container._insts = insts
-        container._icon_box = icon_box
-        container._unique_id = uid
-        container._main_btn = main_btn
-        container._hover_timer = None
+        if insts:
+            main_btn.add_style_class("instance")
 
-        main_btn.connect("clicked", lambda *_: self._on_btn_click(container))
-        main_btn.connect("enter-notify-event", lambda w, e: self._on_btn_hover_enter(container, e))
-        main_btn.connect("leave-notify-event", lambda w, e: self._on_btn_hover_leave(container, e))
-        pin_btn.connect("clicked", lambda *_: self._on_pin_toggle(container, pin_lbl, pin_btn))
-        pin_btn.connect("enter-notify-event", lambda w, e: self._on_btn_hover_enter(container, e))
-        pin_btn.connect("leave-notify-event", lambda w, e: self._on_btn_hover_leave(container, e))
+        self._dnd.setup(main_btn)
+        return main_btn
 
-        main_btn.add_style_class("instance" if insts else ("pinned-empty" if is_pin else ""))
-        self._dnd.setup(container)
-        return container
-
-    def _on_btn_click(self, container):
-        if self._drag_active:
+    def _on_btn_click(self, btn):
+        if self._drag_active or not btn._insts:
             return
-        if not container._insts:
-            self._restorer.launch(
-                container._app, key=container._cls,
-                original_class=container._original,
-            )
-        else:
-            self._nav.cycle_and_focus(container._insts)
+        self._nav.cycle_and_focus(btn._insts)
 
-    def _on_pin_toggle(self, container, pin_lbl, pin_btn):
-        now = self._pin_mgr.toggle(
-            container._unique_id, container._app,
-            container._cls, container._original,
-        )
-        pin_lbl.set_markup(pinned if now else pin)
-        pin_btn.set_tooltip_text("Unpin" if now else "Pin to Dock")
-        if now:
-            pin_btn.add_style_class("active")
-        else:
-            pin_btn.remove_style_class("active")
-        if not container._insts:
-            self._last_fingerprint = None
-            self._schedule_update()
-
-    def _on_btn_hover_enter(self, container, event):
+    def _on_btn_hover_enter(self, btn, event):
         if self._visibility:
             self._visibility.mouse_enter()
         if self._drag_active:
             return False
-        if event.window and event.detail != Gdk.NotifyType.INFERIOR:
-            event.window.set_cursor(
-                Gdk.Cursor.new_from_name(event.window.get_display(), "pointer")
-            )
-        self._cancel_hover(container)
-        container._hover_timer = GLib.timeout_add(
-            HOVER_DEBOUNCE_MS, self._apply_hover, container,
+        self._cancel_hover(btn)
+        btn._hover_timer = GLib.timeout_add(
+            HOVER_DEBOUNCE_MS, self._apply_hover, btn,
         )
         return False
 
-    def _on_btn_hover_leave(self, container, event):
+    def _on_btn_hover_leave(self, btn, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        self._cancel_hover(container)
-        for target in (container, getattr(container, "_main_btn", container)):
-            target.remove_style_class("hovered")
-        ib = getattr(container, "_icon_box", None)
-        if ib:
-            ib.remove_style_class("lifted")
-        if event.window:
-            event.window.set_cursor(None)
+        self._cancel_hover(btn)
+        btn.remove_style_class("hovered")
         return False
 
-    def _apply_hover(self, container):
-        container._hover_timer = None
-        for target in (container, getattr(container, "_main_btn", container)):
-            target.add_style_class("hovered")
-        ib = getattr(container, "_icon_box", None)
-        if ib:
-            ib.add_style_class("lifted")
+    def _apply_hover(self, btn):
+        btn._hover_timer = None
+        btn.add_style_class("hovered")
         return False
 
-    def _cancel_hover(self, container):
-        t = getattr(container, "_hover_timer", None)
+    def _cancel_hover(self, btn):
+        t = btn._hover_timer
         if t:
             GLib.source_remove(t)
-            container._hover_timer = None
+            btn._hover_timer = None
 
     def _on_hover_enter(self, *_):
         if self._visibility:

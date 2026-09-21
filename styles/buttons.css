@@ -2,73 +2,107 @@
 #bluetooth-button,
 #night-mode-button,
 #caffeine-button,
-#eyes-hands-button {
+#work-time-button,
+#pomodoro-button {
   min-height: 52px;
   border-radius: 12px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-#network-button,
-#bluetooth-button {
   background-color: unset;
   padding: 0;
-}
-
-#night-mode-button,
-#caffeine-button,
-#eyes-hands-button {
-  background-color: var(--primary);
-  padding: 0 10px;
-}
-
-#night-mode-button.disabled,
-#caffeine-button.disabled,
-#eyes-hands-button.disabled {
-  background-color: var(--surface);
-  border-radius: 24px; 
+  transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 #network-status-button,
 #network-menu-button,
 #bluetooth-status-button,
-#bluetooth-menu-button {
+#bluetooth-menu-button,
+#night-mode-status-button,
+#night-mode-timer-button,
+#caffeine-status-button,
+#caffeine-timer-button,
+#work-time-status-button,
+#work-time-timer-button {
   background-color: var(--primary);
   padding: 0 8px;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 #network-menu-button,
-#bluetooth-menu-button {
+#bluetooth-menu-button,
+#night-mode-timer-button,
+#caffeine-timer-button,
+#work-time-timer-button {
   border-left: 1px solid var(--outline);
   min-width: 24px;
 }
 
 #network-menu-button:active,
-#bluetooth-menu-button:active {
+#bluetooth-menu-button:active,
+#night-mode-timer-button:active,
+#caffeine-timer-button:active,
+#work-time-timer-button:active {
   border-radius: 0 24px 24px 0; 
 }
 
+/* Симметричный пульс правых углов навстречу друг другу */
+#night-mode-timer-button.tick-pulse,
+#caffeine-timer-button.tick-pulse,
+#work-time-timer-button.tick-pulse {
+  border-radius: 0 20px 20px 0;
+  transition: all 0.08s ease-out;
+}
+
+#night-mode-timer-button.disabled.tick-pulse,
+#caffeine-timer-button.disabled.tick-pulse,
+#work-time-timer-button.disabled.tick-pulse {
+  border-radius: 0 32px 32px 0;
+  transition: all 0.08s ease-out;
+}
+
+/* Плавные переходы для выключенного состояния */
 #network-status-button.disabled,
 #network-menu-button.disabled,
 #bluetooth-status-button.disabled,
-#bluetooth-menu-button.disabled {
+#bluetooth-menu-button.disabled,
+#night-mode-status-button.disabled,
+#night-mode-timer-button.disabled,
+#caffeine-status-button.disabled,
+#caffeine-timer-button.disabled,
+#work-time-status-button.disabled,
+#work-time-timer-button.disabled {
   background-color: var(--surface);
+  transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#network-status-button.disabled,
+#bluetooth-status-button.disabled,
+#night-mode-status-button.disabled,
+#caffeine-status-button.disabled,
+#work-time-status-button.disabled {
   border-radius: 24px 0 0 24px; 
 }
 
 #network-menu-button.disabled,
-#bluetooth-menu-button.disabled {
+#bluetooth-menu-button.disabled,
+#night-mode-timer-button.disabled,
+#caffeine-timer-button.disabled,
+#work-time-timer-button.disabled {
   border-left: 1px solid var(--surface-bright);
   border-radius: 0 24px 24px 0; 
 }
 
 #network-status-button,
-#bluetooth-status-button {
+#bluetooth-status-button,
+#night-mode-status-button,
+#caffeine-status-button,
+#work-time-status-button {
   border-radius: 12px 0 0 12px; 
 }
 
 #network-menu-button,
-#bluetooth-menu-button {
+#bluetooth-menu-button,
+#night-mode-timer-button,
+#caffeine-timer-button,
+#work-time-timer-button {
   border-radius: 0 12px 12px 0; 
 }
 
@@ -76,71 +110,129 @@
 #bluetooth-icon,
 #night-mode-icon,
 #caffeine-icon,
-#eyes-hands-icon {
+#work-time-icon,
+#pomodoro-icon {
   color: var(--shadow);
   font-size: 24px;
+  transition: color 0.35s ease;
 }
 
 #network-menu-label,
 #bluetooth-menu-label {
   color: var(--shadow);
   font-size: 16px;
+  transition: color 0.35s ease;
 }
 
 #network-label,
 #bluetooth-label,
 #night-mode-label,
 #caffeine-label,
-#eyes-hands-label {
+#work-time-label,
+#pomodoro-label {
   color: var(--shadow);
   font-size: 14px;
   font-weight: bold;
+  transition: color 0.35s ease;
 }
 
+#network-ssid {
+  color: var(--surface-bright);
+  font-size: 12px;
+  transition: color 0.35s ease;
+}
+
+#night-mode-timer-hh,
+#night-mode-timer-mm,
+#caffeine-timer-hh,
+#caffeine-timer-mm,
+#work-time-timer-hh,
+#work-time-timer-mm {
+  color: var(--surface-bright);
+  font-size: 12px;
+  font-weight: bold;
+  transition: color 0.35s ease;
+}
+
+/* Глитч эффекты для чисел таймера */
+.glitch-shift-right {
+  margin-left: 2px;
+}
+
+.glitch-shift-left {
+  margin-left: -2px;
+}
+
+.glitch-flicker {
+  opacity: 0.3;
+}
+
+.glitch-aberration {
+  color: var(--primary);
+}
+
+.glitch-heavy {
+  margin-top: 1px;
+  opacity: 0.5;
+}
+
+.glitch-color-swap {
+  color: var(--shadow);
+}
+
+.glitching {
+  opacity: 0.8;
+}
+
+/* Принудительный плавный цвет текста всех элементов в выключенном состоянии */
+.disabled label,
+#network-status-button.disabled label,
+#bluetooth-status-button.disabled label,
+#night-mode-status-button.disabled label,
+#caffeine-status-button.disabled label,
+#work-time-status-button.disabled label,
+#night-mode-timer-button.disabled label,
+#caffeine-timer-button.disabled label,
+#work-time-timer-button.disabled label,
 #network-label.disabled,
 #bluetooth-label.disabled,
 #night-mode-label.disabled,
 #caffeine-label.disabled,
-#eyes-hands-label.disabled,
+#work-time-label.disabled,
 #network-ssid.disabled,
-#bluetooth-status.disabled,
-#night-mode-status.disabled,
-#caffeine-status.disabled,
-#eyes-hands-status.disabled,
 #network-menu-label.disabled,
 #bluetooth-menu-label.disabled,
 #network-icon.disabled,
 #bluetooth-icon.disabled,
 #night-mode-icon.disabled,
 #caffeine-icon.disabled,
-#eyes-hands-icon.disabled {
+#work-time-icon.disabled,
+#night-mode-timer-hh.disabled,
+#night-mode-timer-mm.disabled,
+#caffeine-timer-hh.disabled,
+#caffeine-timer-mm.disabled,
+#work-time-timer-hh.disabled,
+#work-time-timer-mm.disabled {
   color: var(--outline);
-}
-
-#network-ssid,
-#bluetooth-status,
-#night-mode-status,
-#caffeine-status,
-#eyes-hands-status {
-  color: var(--surface-bright);
-  font-size: 12px;
+  transition: color 0.35s ease;
 }
 
 #network-status-button:hover,
 #network-menu-button:hover,
 #bluetooth-status-button:hover,
 #bluetooth-menu-button:hover,
-#bluetooth-button:hover,
-#night-mode-button:hover,
-#caffeine-button:hover,
-#eyes-hands-button:hover {
+#night-mode-status-button:hover,
+#night-mode-timer-button:hover,
+#caffeine-status-button:hover,
+#caffeine-timer-button:hover,
+#work-time-status-button:hover,
+#work-time-timer-button:hover {
   background-color: var(--foreground);
 }
 
 button,
 #close-button,
 #clear-button,
-#new-session-button,
 #random-wall-button,
 #update-button,
 #later-button,
@@ -157,7 +249,6 @@ button,
 button:hover,
 #close-button:hover,
 #clear-button:hover,
-#new-session-button:hover,
 #random-wall-button:hover,
 #update-button:hover,
 #later-button:hover,
@@ -172,16 +263,18 @@ button:hover,
 #network-menu-button.disabled:hover,
 #bluetooth-status-button.disabled:hover,
 #bluetooth-menu-button.disabled:hover,
-#night-mode-button.disabled:hover,
-#caffeine-button.disabled:hover,
-#eyes-hands-button.disabled:hover {
+#night-mode-status-button.disabled:hover,
+#night-mode-timer-button.disabled:hover,
+#caffeine-status-button.disabled:hover,
+#caffeine-timer-button.disabled:hover,
+#work-time-status-button.disabled:hover,
+#work-time-timer-button.disabled:hover {
   background-color: var(--surface-bright);
 }
 
 button:active,
 #close-button:active,
 #clear-button:active,
-#new-session-button:active,
 #random-wall-button:active,
 #update-button:active,
 #later-button:active,
@@ -194,36 +287,3 @@ button:active,
 #next-month-button:active {
   background-color: var(--primary);
 }
-
-
-
-/* ==================== AUTO LANGUAGE BUTTON (ICON) ==================== */
-
-#autolanguage-button {
-  border-radius: 12px;
-  background-color: var(--shadow);
-  border: none;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0;
-  margin: 4px 4px;
-  transition: all 0.1s ease;
-}
-
-#autolanguage-icon {
-  color: var(--outline);
-  font-size: 16px;
-  transition: all 0.1s ease;
-}
-
-#autolanguage-button:hover { background-color: var(--surface-bright); }
-#autolanguage-button:hover #autolanguage-icon { color: var(--primary); }
-
-#autolanguage-button.active,
-#autolanguage-button.active:hover { background-color: var(--primary); }
-#autolanguage-button.active #autolanguage-icon,
-#autolanguage-button.active:hover #autolanguage-icon { color: var(--shadow); }
-
-
-
-

@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from gi.repository import Gtk, NM, GLib, Gdk
+from gi.repository import Gtk, NM, GLib
 
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -13,23 +13,6 @@ from fabric.widgets.stack import Stack
 
 import services.icons as icons
 from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
-
-
-def set_pointer_cursor(widget):
-    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-
-    def _on_enter(w, _event):
-        win = w.get_window()
-        if win:
-            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
-
-    def _on_leave(w, _event):
-        win = w.get_window()
-        if win:
-            win.set_cursor(None)
-
-    widget.connect("enter-notify-event", _on_enter)
-    widget.connect("leave-notify-event", _on_leave)
 
 
 class WifiSlot(Gtk.Box):
@@ -51,7 +34,6 @@ class WifiSlot(Gtk.Box):
 
         self.click_area = Gtk.EventBox()
         self.click_area.connect("button-press-event", self._on_click)
-        set_pointer_cursor(self.click_area)
 
         self.main_box = CenterBox()
         self.main_box.get_style_context().add_class("pixel-slot")
@@ -72,7 +54,6 @@ class WifiSlot(Gtk.Box):
         )
         self.btn_settings.get_style_context().add_class("pixel-icon-button")
         self.btn_settings.get_style_context().add_class("settings-btn")
-        set_pointer_cursor(self.btn_settings)
 
         self.lock_icon = Label(markup=icons.lock)
         self.lock_icon.get_style_context().add_class("lock-icon")
@@ -97,7 +78,6 @@ class WifiSlot(Gtk.Box):
             on_clicked=self._on_reveal_clicked,
         )
         self.btn_pw_reveal.get_style_context().add_class("pw-reveal-btn")
-        set_pointer_cursor(self.btn_pw_reveal)
 
         self.pw_entry = Gtk.Entry(
             visibility=False,
@@ -113,7 +93,6 @@ class WifiSlot(Gtk.Box):
         )
         self.btn_pw_ok.set_sensitive(False)
         self.btn_pw_ok.get_style_context().add_class("pw-submit-btn")
-        set_pointer_cursor(self.btn_pw_ok)
 
         self.pw_entry.connect("changed", self._on_pw_change)
         self.pw_entry.connect("activate", self._on_pw_activate)
@@ -379,7 +358,6 @@ class NetworkConnections(Box):
             tooltip_text="Scan",
             on_clicked=self._on_scan,
         )
-        set_pointer_cursor(self.scan_btn)
 
         self.saved_lbl = Label(markup=icons.save, name="network-saved-label")
         self.saved_btn = Button(
@@ -388,14 +366,12 @@ class NetworkConnections(Box):
             tooltip_text="Saved Networks",
             on_clicked=self._on_saved_toggle,
         )
-        set_pointer_cursor(self.saved_btn)
 
         back = Button(
             name="network-back",
             child=Label(markup=icons.chevron_left, name="network-back-label"),
         )
         back.connect("clicked", self._on_back_click)
-        set_pointer_cursor(back)
 
         self.header_title = Label(label="Wi-Fi", v_align="center", name="header-title")
 
@@ -430,7 +406,6 @@ class NetworkConnections(Box):
 
         btn_turn_on = Button(label="Turn On", h_align="center", on_clicked=self._turn_on_wifi)
         btn_turn_on.get_style_context().add_class("wifi-turn-on-btn")
-        set_pointer_cursor(btn_turn_on)
         off_box.add(btn_turn_on)
 
         self.stack.add_named(off_box, "off")
@@ -458,7 +433,6 @@ class NetworkConnections(Box):
 
         btn_scan = Button(label="Scan", h_align="center", on_clicked=self._on_scan)
         btn_scan.get_style_context().add_class("wifi-turn-on-btn")
-        set_pointer_cursor(btn_scan)
         self.avail_empty.add(btn_scan)
 
         self.avail_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
@@ -527,7 +501,6 @@ class NetworkConnections(Box):
         self.btn_net_forget = Button(child=self.lbl_net_forget, on_clicked=self._do_forget)
         self.btn_net_forget.get_style_context().add_class("net-action-btn")
         self.btn_net_forget.get_style_context().add_class("net-forget")
-        set_pointer_cursor(self.btn_net_forget)
 
         self.lbl_net_disconnect = Label(
             markup=f"<span size='large'>{icons.cancel}</span> Disconnect",
@@ -536,14 +509,12 @@ class NetworkConnections(Box):
             child=self.lbl_net_disconnect, on_clicked=self._do_disconnect_or_connect,
         )
         self.btn_net_disconnect.get_style_context().add_class("net-action-btn")
-        set_pointer_cursor(self.btn_net_disconnect)
 
         self.btn_net_share = Button(
             child=Label(markup=f"<span size='large'>{icons.scan}</span> Share"),
             on_clicked=self._do_share,
         )
         self.btn_net_share.get_style_context().add_class("net-action-btn")
-        set_pointer_cursor(self.btn_net_share)
 
         actions_box.add(self.btn_net_forget)
         actions_box.add(self.btn_net_disconnect)

@@ -8,6 +8,7 @@ from gi.repository import Gdk, Gtk, GLib
 
 class Dnd:
     _ORDER_FILE = GLib.get_user_cache_dir() + "/vidgex-shell/dock_order.json"
+    TARGET_NAME = "DOCK_APP_ROW"
 
     def __init__(self, dock, order_file: str | None = None):
         self._dock = dock
@@ -19,10 +20,6 @@ class Dnd:
         return self._custom_order
 
     def apply_order(self, candidates: list[dict]) -> list[dict]:
-        all_ids = {c["unique_id"] for c in candidates}
-
-        self._custom_order = [u for u in self._custom_order if u in all_ids]
-
         for c in candidates:
             uid = c["unique_id"]
             if uid not in self._custom_order:
@@ -35,7 +32,8 @@ class Dnd:
         main_btn = container._main_btn
         main_btn._container = container
 
-        te = Gtk.TargetEntry.new("text/plain", Gtk.TargetFlags.SAME_APP, 0)
+        te = Gtk.TargetEntry.new(self.TARGET_NAME, Gtk.TargetFlags.SAME_APP, 0)
+
         main_btn.drag_source_set(
             Gdk.ModifierType.BUTTON1_MASK, [te], Gdk.DragAction.MOVE
         )
@@ -51,56 +49,39 @@ class Dnd:
         main_btn.connect("drag-leave", self._on_drag_leave)
 
     def save_order(self) -> None:
-        try:
-            os.makedirs(os.path.dirname(self._order_file), exist_ok=True)
-            with open(self._order_file, "w", encoding="utf-8") as f:
-                json.dump(self._custom_order, f, ensure_ascii=False, indent=2)
-        except OSError:
-            pass
+        os.makedirs(os.path.dirname(self._order_file), exist_ok=True)
+        with open(self._order_file, "w", encoding="utf-8") as f:
+            json.dump(self._custom_order, f, ensure_ascii=False, indent=2)
 
     def _load_order(self) -> list[str]:
-        try:
-            with open(self._order_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list) and all(isinstance(i, str) for i in data):
-                return data
-        except (OSError, json.JSONDecodeError, ValueError):
-            pass
-        return []
+        with open(self._order_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
 
     def _on_drag_begin(self, main_btn, context):
         self._dock._drag_active = True
-        visibility = getattr(self._dock, "_visibility", None)
-        if visibility:
-            visibility.set_drag(True)
+        self._dock._visibility.set_drag(True)
 
         main_btn.add_style_class("dragging")
         container = main_btn._container
-        try:
-            if hasattr(container, "_icon_box"):
-                img = container._icon_box.get_children()[0]
-                pb = img.get_pixbuf()
-                if pb:
-                    Gtk.drag_set_icon_pixbuf(
-                        context, pb,
-                        pb.get_width() // 2,
-                        pb.get_height() // 2,
-                    )
-                    return
-        except Exception:
-            pass
-        Gtk.drag_set_icon_default(context)
+        img = container._icon_box.get_children()[0]
+        pb = img.get_pixbuf()
+        Gtk.drag_set_icon_pixbuf(
+            context, pb,
+            pb.get_width() // 2,
+            pb.get_height() // 2,
+        )
 
     def _on_drag_end(self, main_btn, _context):
         self._dock._drag_active = False
         main_btn.remove_style_class("dragging")
-        visibility = getattr(self._dock, "_visibility", None)
-        if visibility:
-            visibility.set_drag(False)
+        self._dock._visibility.set_drag(False)
+
+        GLib.timeout_add(50, lambda: self._dock._schedule_update() or False)
 
     def _on_drag_data_get(self, main_btn, _ctx, sel, _info, _ts):
-        uid = getattr(main_btn._container, "_unique_id", "")
-        sel.set_text(uid, -1)
+        uid = main_btn._container._unique_id
+        sel.set(sel.get_target(), 8, str(uid).encode("utf-8"))
 
     def _on_drag_motion(self, main_btn, context, _x, _y, time):
         main_btn.add_style_class("drag-hover")
@@ -115,51 +96,42 @@ class Dnd:
     ):
         main_btn.remove_style_class("drag-hover")
 
+        raw_data = sel_data.get_data()
+        source_id = raw_data.decode("utf-8")
         container = main_btn._container
-        source_id = sel_data.get_text()
-        target_id = getattr(container, "_unique_id", None)
+        target_id = container._unique_id
 
-        if not source_id or not target_id or source_id == target_id:
-            context.finish(False, False, timestamp)
-            return
-
-        if source_id not in self._custom_order or target_id not in self._custom_order:
-            context.finish(False, False, timestamp)
-            return
+        if source_id not in self._custom_order:
+            self._custom_order.append(source_id)
+        if target_id not in self._custom_order:
+            self._custom_order.append(target_id)
 
         old_idx = self._custom_order.index(source_id)
         tgt_idx = self._custom_order.index(target_id)
 
         view = self._dock.view
-        src_container = None
         children = view.get_children()
-        for child in children:
-            if getattr(child, "_unique_id", "") == source_id:
-                src_container = child
-                break
 
-        if not src_container:
-            context.finish(False, False, timestamp)
-            return
+        src_container = next(
+            child for child in children
+            if str(child._unique_id) == source_id
+        )
 
-        try:
-            box_idx = children.index(container)
-            alloc = main_btn.get_allocation()
+        box_idx = children.index(container)
+        alloc = main_btn.get_allocation()
 
-            if x > alloc.width / 2:
-                box_idx += 1
-                tgt_idx += 1
+        if x > alloc.width / 2:
+            box_idx += 1
+            tgt_idx += 1
 
-            view.reorder_child(src_container, box_idx)
+        view.reorder_child(src_container, box_idx)
 
-            self._custom_order.remove(source_id)
-            if old_idx < tgt_idx:
-                tgt_idx -= 1
-            self._custom_order.insert(tgt_idx, source_id)
+        self._custom_order.remove(source_id)
+        if old_idx < tgt_idx:
+            tgt_idx -= 1
+        self._custom_order.insert(tgt_idx, source_id)
 
-            self.save_order()
-
-        except ValueError:
-            pass
+        self.save_order()
+        self._dock._last_fingerprint = None
 
         context.finish(True, False, timestamp)

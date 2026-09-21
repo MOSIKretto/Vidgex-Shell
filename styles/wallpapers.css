@@ -49,284 +49,357 @@
     color: var(--shadow);
 }
 
-#random-wall-button {
+
+/* ═══════════════════════════════════════════════════════════════
+   ЕДИНЫЙ СТИЛЬ ДЛЯ ВСЕХ КНОПОК
+   ═══════════════════════════════════════════════════════════════ */
+
+#random-wall-button,
+#scheme-dropdown-btn,
+#wallpaper-dir-button,
+#dir-chooser-cancel,
+#dir-chooser-apply,
+#custom-path-btn {
     background-image: none;
-    box-shadow: none;
-    font-weight: bold;
-    padding: 4px 8px;
     background-color: var(--surface);
     border: 2px solid var(--primary);
     border-radius: 12px;
-    min-width: 36px;
-    min-height: 36px;
-    transition: background-color 250ms ease,
-                border-color   250ms ease,
-                box-shadow     250ms ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transition: background-color 200ms ease,
+                border-color     200ms ease,
+                box-shadow       200ms ease;
 }
 
-#random-wall-button label {
-    margin: 0;
-    padding: 0;
+#random-wall-button label,
+#scheme-dropdown-btn label,
+#wallpaper-dir-button label,
+#wallpaper-dir-path,
+#wallpaper-dir-icon,
+#dir-chooser-cancel label,
+#dir-chooser-apply label,
+#custom-path-btn label {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 800;
     color: var(--primary);
-    font-weight: bold;
-    transition: color 250ms ease;
+    transition: color 200ms ease;
 }
 
-#random-wall-button:hover {
+/* Hover */
+#random-wall-button:hover,
+#scheme-dropdown-btn:hover,
+#wallpaper-dir-button:hover,
+#dir-chooser-cancel:hover,
+#dir-chooser-apply:hover,
+#custom-path-btn:hover {
     background-color: var(--surface-bright);
     border-color: var(--foreground);
 }
 
-#random-wall-button:hover label {
+#random-wall-button:hover label,
+#scheme-dropdown-btn:hover label,
+#wallpaper-dir-button:hover label,
+#wallpaper-dir-button:hover #wallpaper-dir-path,
+#wallpaper-dir-button:hover #wallpaper-dir-icon,
+#dir-chooser-cancel:hover label,
+#dir-chooser-apply:hover label,
+#custom-path-btn:hover label {
     color: var(--foreground);
 }
 
+/* Active / Selected */
 #random-wall-button:active,
-#random-wall-button:checked {
+#random-wall-button:checked,
+#scheme-dropdown-btn.open,
+#scheme-dropdown-btn:active,
+#wallpaper-dir-button.open,
+#wallpaper-dir-button:active,
+#dir-chooser-cancel:active,
+#dir-chooser-apply,
+#custom-path-btn.current,
+#custom-path-btn:active {
     background-color: var(--primary);
     border-color: var(--primary);
 }
 
 #random-wall-button:active label,
-#random-wall-button:checked label {
+#random-wall-button:checked label,
+#scheme-dropdown-btn.open label,
+#scheme-dropdown-btn:active label,
+#wallpaper-dir-button.open label,
+#wallpaper-dir-button.open #wallpaper-dir-path,
+#wallpaper-dir-button.open #wallpaper-dir-icon,
+#wallpaper-dir-button:active label,
+#wallpaper-dir-button:active #wallpaper-dir-path,
+#wallpaper-dir-button:active #wallpaper-dir-icon,
+#dir-chooser-cancel:active label,
+#dir-chooser-apply label,
+#custom-path-btn.current label,
+#custom-path-btn:active label {
     color: var(--shadow);
 }
 
-/* ── Scheme dropdown button ── */
+
+/* ═══════════════════════════════════════════════════════════════
+   ОРИГИНАЛЬНЫЕ РАЗМЕРЫ КНОПОК
+   ═══════════════════════════════════════════════════════════════ */
+
+#random-wall-button {
+    padding: 0;
+    min-width: 36px;
+    min-height: 36px;
+}
+
 #scheme-wrapper {
     min-width: 110px;
 }
 
 #scheme-dropdown-btn {
-    background-image: none;
-    box-shadow: none;
-    font-weight: bold;
-    padding: 4px 8px;
+    padding: 6px 8px;
+    min-width: 110px;
+}
+
+#wallpaper-dir-button {
+    padding: 4px 12px;
+    margin-top: 4px;
+    margin-bottom: 2px;
+}
+
+#wallpaper-dir-path,
+#wallpaper-dir-icon {
+    font-size: 13px;
+}
+
+#dir-chooser-cancel {
+    padding: 4px 10px;
+}
+
+#dir-chooser-cancel label {
+    font-size: 11px;
+}
+
+#dir-chooser-apply {
+    padding: 4px 12px;
+}
+
+#dir-chooser-apply label {
+    font-size: 11px;
+}
+
+#custom-path-btn {
+    padding: 2px 8px;
+    margin: 0 1px;
+}
+
+#custom-path-btn label {
+    font-size: 11px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   ДИАЛОГ И ПУТЬ
+   ═══════════════════════════════════════════════════════════════ */
+
+#dir-dialog-card {
     background-color: var(--surface);
     border: 2px solid var(--primary);
     border-radius: 12px;
-    min-width: 110px;
-    transition: background-color 250ms ease,
-                border-color   250ms ease,
-                box-shadow     250ms ease;
+    padding: 8px;
+    margin-bottom: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
-#scheme-dropdown-btn label {
+#dir-chooser-header-icon {
     color: var(--primary);
-    font-weight: bold;
-    transition: color 250ms ease;
+    font-size: 14px;
 }
 
-#scheme-dropdown-btn:hover {
-    background-color: var(--surface-bright);
-    border-color: var(--foreground);
+#dir-chooser-header-title {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 800;
+    font-size: 12px;
+    color: var(--primary);
 }
 
-#scheme-dropdown-btn:hover label {
+/* ── Полоса пути: плотно прилегает к списку ── */
+#custom-path-bar-scroll,
+#custom-path-bar-scroll viewport,
+#custom-path-bar-box {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 4px 0 0 0;
+}
+
+#custom-path-sep {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 800;
+    color: var(--primary);
+    font-size: 11px;
+    padding: 0 2px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   КАСТОМНЫЙ FOLDER BROWSER (Gtk.ListBox — заменяет GtkFileChooserWidget)
+   ═══════════════════════════════════════════════════════════════
+
+   GtkTreeView (использовавшийся внутри GtkFileChooserWidget) красит
+   выделение per-cell — отдельным фоном на каждую видимую колонку
+   (Имя/Размер/Тип/Дата), и тема перебивает любые CSS-правила для
+   этих cell с более высоким приоритетом, поэтому раньше выделение
+   выглядело как 4 отдельные "таблетки".
+
+   Gtk.ListBoxRow — это ОДИН CSS-узел ("row") на всю ширину строки,
+   без какого-либо per-column рендеринга внутри темы. Поэтому здесь
+   единственное правило `#dir-row:selected` гарантированно красит
+   ВСЮ строку целиком одним сплошным цветом — split на части
+   физически невозможен, так как узел один. */
+
+#dir-listbox,
+#dir-listbox row,
+#dir-scroll,
+#dir-scroll viewport {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+#dir-scroll {
+    margin: 2px 0 4px 0;
+}
+
+#dir-row {
+    margin: 1px 4px;
+    padding: 0;
+    border-radius: 8px;
+    background-color: transparent;
+    transition: background-color 120ms ease;
+}
+
+#dir-row-box {
+    padding: 5px 6px;
+}
+
+/* Иконка строки — CSS-управляемого цвета:
+   - у папок это тот же icon-font глиф (icons.folder), что и в кнопке
+     выбора папки, — markup не содержит зашитого цвета, поэтому
+     `color` ниже реально на него влияет;
+   - у файлов/битых записей это официальные GTK "-symbolic" иконки,
+     которые тоже перекрашиваются через CSS `color`. */
+#dir-row-icon {
+    color: var(--foreground);
+    opacity: 0.9;
+}
+
+#dir-row-name {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--foreground);
 }
 
-#scheme-dropdown-btn:active {
+#dir-row-size,
+#dir-row-type,
+#dir-row-date {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: alpha(var(--foreground), 0.7);
+}
+
+/* Файлы показаны только для контекста — визуально приглушены и
+   не кликабельны (см. _FolderRow: set_selectable/activatable(False)). */
+#dir-row.dir-row-file #dir-row-name,
+#dir-row.dir-row-file #dir-row-size,
+#dir-row.dir-row-file #dir-row-type,
+#dir-row.dir-row-file #dir-row-date,
+#dir-row.dir-row-file #dir-row-icon {
+    opacity: 0.45;
+}
+
+/* Битые записи (недоступный stat / битый symlink) — явно, видимо
+   помечены как проблема, а не тихо скрыты. */
+#dir-row.dir-row-broken #dir-row-icon,
+#dir-row.dir-row-broken #dir-row-name,
+#dir-row.dir-row-broken #dir-row-type {
+    color: #ff5c5c;
+}
+
+#dir-row.dir-row-dir:hover {
+    background-color: alpha(var(--primary), 0.15);
+}
+
+#dir-row.dir-row-dir:selected {
     background-color: var(--primary);
-    border-color: var(--primary);
 }
 
-#scheme-dropdown-btn:active label {
+#dir-row.dir-row-dir:selected #dir-row-icon,
+#dir-row.dir-row-dir:selected #dir-row-name,
+#dir-row.dir-row-dir:selected #dir-row-size,
+#dir-row.dir-row-dir:selected #dir-row-type,
+#dir-row.dir-row-dir:selected #dir-row-date {
     color: var(--shadow);
 }
 
-/* ── Scheme button open ── */
-#scheme-dropdown-btn.open {
-    background-color: var(--primary);
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px alpha(var(--primary), 0.35);
+#dir-row.dir-row-dir:selected #dir-row-name {
+    font-weight: 800;
 }
 
-#scheme-dropdown-btn.open label {
-    color: var(--shadow);
+#dir-empty-label {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 600;
+    font-size: 12px;
+    color: alpha(var(--foreground), 0.5);
+    padding: 24px 0;
 }
 
-#scheme-dropdown-btn.open:hover {
-    background-color: var(--foreground);
-    border-color: var(--foreground);
-    box-shadow: 0 0 0 2px alpha(var(--foreground), 0.25);
+#dir-empty-label.error {
+    color: #ff5c5c;
 }
 
-#scheme-dropdown-btn.open:hover label {
-    color: var(--shadow);
-}
 
-#scheme-dropdown-btn.open:active {
-    background-color: var(--surface-bright);
-    border-color: var(--primary);
-}
+/* ═══════════════════════════════════════════════════════════════
+   ОСТАЛЬНЫЕ ЭЛЕМЕНТЫ (СХЕМЫ, ИМЯ ОБОЕВ, КАРУСЕЛЬ, GLITCH)
+   ═══════════════════════════════════════════════════════════════ */
 
-#scheme-dropdown-btn.open:active label {
-    color: var(--primary);
-}
-
-/* ── Scheme list ── */
 #scheme-list-container {
     background-color: var(--surface);
     border: 2px solid var(--primary);
     border-radius: 12px;
     padding: 4px;
     margin-top: 4px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
 #scheme-list-item {
     background: transparent;
-    background-color: transparent;
-    background-image: none;
-    box-shadow: none;
     border: none;
-    outline: none;
     border-radius: 8px;
     padding: 4px 8px;
-    transition: background-color 100ms ease-out;
     min-width: 110px;
+    transition: background-color 100ms ease-out;
 }
 
 #scheme-list-item label {
     color: var(--foreground);
     font-weight: 600;
-    transition: color 100ms ease-out;
 }
 
-#scheme-list-item:hover,
-#scheme-list-item:focus {
-    background-image: none;
+#scheme-list-item:hover {
     background-color: var(--primary);
 }
 
-#scheme-list-item:hover label,
-#scheme-list-item:focus label {
+#scheme-list-item:hover label {
     color: var(--shadow);
 }
 
 #scheme-list-item:active {
-    background-image: none;
     background-color: var(--shadow);
 }
-
-#scheme-list-item:active label {
-    color: var(--shadow);
-}
-
-#matugen-switcher,
-#dnd-switch {
-    min-width: 40px;
-    min-height: 20px;
-    background-color: var(--surface);
-    border-radius: 12px;
-    padding: 2px;
-    transition: background-color 0.3s ease;
-}
-
-#matugen-switcher slider,
-#dnd-switch slider {
-    background-color: var(--primary);
-    border-radius: 12px;
-    min-width: 16px;
-    min-height: 8px;
-    transition:
-        background-color 0.1s cubic-bezier(0.5, 0.25, 0, 1.25),
-        transform 0.25s cubic-bezier(0.5, 0.25, 0, 1.25);
-}
-
-#matugen-switcher:checked,
-#dnd-switch:checked {
-    background-color: var(--primary);
-}
-
-#matugen-switcher:checked slider,
-#dnd-switch:checked slider {
-    background-color: var(--shadow);
-}
-
-#matugen-switcher:checked image,
-#dnd-switch:checked image {
-    color: var(--shadow);
-}
-
-#mat-label {
-    font-size: 24px;
-    margin-left: 4px;
-}
-
-#custom-color-selector-box {
-    background-color: var(--surface);
-    border-radius: 12px;
-    padding: 8px;
-}
-
-#hue-slider {
-    margin: 0 24px;
-}
-
-#hue-slider trough {
-    background-image: linear-gradient(
-        to right,
-        #ff0000, #ffff00, #00ff00,
-        #00ffff, #0000ff, #ff00ff, #ff0000
-    );
-    border-radius: 12px;
-    min-height: 8px;
-}
-
-#hue-slider slider {
-    min-height: 16px;
-    min-width: 8px;
-    margin: -10px 0;
-    background-color: var(--primary);
-    box-shadow: 0 0 4px alpha(var(--shadow), 0.5);
-    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    border-radius: 12px;
-}
-
-#hue-slider slider:hover,
-#hue-slider slider:active {
-    background-color: var(--foreground);
-}
-
-#hue-slider slider:active {
-    min-height: 24px;
-    min-width: 8px;
-}
-
-#apply-color-button:hover {
-    background-color: var(--foreground);
-}
-
-#apply-color-button {
-    background-color: var(--primary);
-    color: var(--shadow);
-    border-radius: 12px;
-    padding: 8px;
-    box-shadow: 0 0 4px alpha(var(--shadow), 0.5);
-}
-
-#apply-color-button:active {
-    background-color: var(--shadow);
-}
-
-#apply-color-button:active #apply-color-label {
-    color: var(--foreground);
-}
-
-#apply-color-label {
-    font-size: 16px;
-    color: var(--shadow);
-}
-
-#wallpaper-carousel {
-    color: var(--primary);
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   WALLPAPER NAME LABEL  –  base + glitch
-   ═══════════════════════════════════════════════════════════════ */
 
 #wallpaper-name-label {
     font-family: "JetBrains Mono", monospace;
@@ -340,47 +413,29 @@
     margin-bottom: 2px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     border: 2px solid var(--primary);
-    transition: text-shadow      40ms step-end,
-                color            40ms step-end,
-                opacity          40ms step-end,
-                background-color 0.3s ease,
-                border-color     0.3s ease,
-                box-shadow       0.3s ease;
 }
 
-
-/* ═══════════════════════════════════════════════════════════════
-   CAROUSEL ARROW LABEL  –  base + glitch
-   ═══════════════════════════════════════════════════════════════ */
+#wallpaper-carousel {
+    color: var(--primary);
+}
 
 #carousel-arrow-label {
-    transition: text-shadow 40ms step-end,
-                color       40ms step-end,
-                opacity     40ms step-end;
+    transition: text-shadow 40ms step-end, color 40ms step-end, opacity 40ms step-end;
 }
-
-
-/* ═══════════════════════════════════════════════════════════════
-   GLITCH EFFECT CLASSES
-   (applied to both #wallpaper-name-label and #carousel-arrow-label)
-   ═══════════════════════════════════════════════════════════════ */
 
 #wallpaper-name-label.glitch-aberration,
 #carousel-arrow-label.glitch-aberration {
-    text-shadow:  2px 0 alpha(#ff0040, 0.85),
-                 -2px 0 alpha(#00e5ff, 0.85);
+    text-shadow: 2px 0 alpha(#ff0040, 0.85), -2px 0 alpha(#00e5ff, 0.85);
 }
 
 #wallpaper-name-label.glitch-shift-right,
 #carousel-arrow-label.glitch-shift-right {
-    text-shadow: 4px 0 alpha(#ff0040, 0.7),
-                 8px 0 alpha(#ff0040, 0.25);
+    text-shadow: 4px 0 alpha(#ff0040, 0.7), 8px 0 alpha(#ff0040, 0.25);
 }
 
 #wallpaper-name-label.glitch-shift-left,
 #carousel-arrow-label.glitch-shift-left {
-    text-shadow: -4px 0 alpha(#00e5ff, 0.7),
-                 -8px 0 alpha(#00e5ff, 0.25);
+    text-shadow: -4px 0 alpha(#00e5ff, 0.7), -8px 0 alpha(#00e5ff, 0.25);
 }
 
 #wallpaper-name-label.glitch-flicker,
@@ -390,9 +445,7 @@
 
 #wallpaper-name-label.glitch-heavy,
 #carousel-arrow-label.glitch-heavy {
-    text-shadow:  5px  1px alpha(#ff0040, 0.6),
-                 -5px -1px alpha(#00e5ff, 0.6),
-                  0    3px alpha(#76ff03, 0.35);
+    text-shadow: 5px 1px alpha(#ff0040, 0.6), -5px -1px alpha(#00e5ff, 0.6), 0 3px alpha(#76ff03, 0.35);
 }
 
 #wallpaper-name-label.glitch-color-swap,
@@ -401,14 +454,10 @@
     text-shadow: 0 0 8px alpha(#ff0040, 0.5);
 }
 
-/* ── Combo classes ── */
-
 #wallpaper-name-label.glitch-aberration.glitch-color-swap,
 #carousel-arrow-label.glitch-aberration.glitch-color-swap {
     color: #ff0040;
-    text-shadow:  2px 0 alpha(#ff0040, 0.85),
-                 -2px 0 alpha(#00e5ff, 0.85),
-                  0   0 8px alpha(#ff0040, 0.4);
+    text-shadow: 2px 0 alpha(#ff0040, 0.85), -2px 0 alpha(#00e5ff, 0.85), 0 0 8px alpha(#ff0040, 0.4);
 }
 
 #wallpaper-name-label.glitch-shift-right.glitch-flicker,
@@ -419,26 +468,5 @@
 
 #wallpaper-name-label.glitch-shift-left.glitch-heavy,
 #carousel-arrow-label.glitch-shift-left.glitch-heavy {
-    text-shadow: -5px 0   alpha(#00e5ff, 0.8),
-                  5px 1px alpha(#ff0040, 0.5),
-                  0   3px alpha(#76ff03, 0.3);
-}
-
-#random-wall-button {
-  background-color: var(--surface);
-  border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 0;
-  min-width: 36px;
-  min-height: 36px;
-  transition: all 150ms ease-in-out;
-}
-
-#scheme-dropdown-btn {
-  background-color: var(--surface);
-  padding: 6px 8px;
-  border-radius: 12px; 
-  border: 1px solid transparent;
-  transition: background-color 150ms ease-in-out, border-color 150ms ease-in-out;
-  min-width: 110px;
+    text-shadow: -5px 0 alpha(#00e5ff, 0.8), 5px 1px alpha(#ff0040, 0.5), 0 3px alpha(#76ff03, 0.3);
 }

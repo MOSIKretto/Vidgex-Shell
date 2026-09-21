@@ -1,54 +1,171 @@
+import weakref
+
+from fabric.notifications.service import Notifications as FabricNotifications
 from fabric.widgets.box import Box
 
-from modules.Notch.Notifications.history import NotificationContainer, get_shared_history
+from gi.repository import GLib
 
-from services.wayland import WaylandWindow as Window
+from modules.Notch.Notifications.history import get_shared_history
+from modules.Notch.Notifications.notificationBox import NotificationBox
+from modules.Notch.Notifications.glyph import SideGlyph
 
 
-class Notifications(Window):
+_notification_server: FabricNotifications | None = None
 
-    def __init__(self, **kwargs):
+
+def _get_notification_server() -> FabricNotifications:
+    global _notification_server
+    if _notification_server is None:
+        _notification_server = FabricNotifications()
+    return _notification_server
+
+
+class Notifications(Box):
+    def __init__(self, notch=None, **kwargs):
         super().__init__(
-            name="notification-popup",
-            anchor="right top",
-            layer="top",
-            keyboard_mode="none",
-            exclusivity="none",
-            visible=False,
-            all_visible=True,
-        )
-
-        self._destroyed = False
-        self._owns_history = False
-
-        self.notification_history = get_shared_history()
-
-        self.notification_container = NotificationContainer(
-            notification_history_instance=self.notification_history,
-            revealer_transition_type="slide-down",
-        )
-
-        self._spacer = Box()
-        self._spacer.set_size_request(1, 1)
-
-        self._popup_box = Box(
-            name="notification-popup-box",
+            name="notch-notification-popup",
             orientation="v",
-            children=[self.notification_container, self._spacer],
+            h_align="fill",
+            h_expand=True,
+            **kwargs,
         )
-        self.add(self._popup_box)
+        self._notch_ref = weakref.ref(notch) if notch else None
+        self._current_nb: NotificationBox | None = None
+        self._timeout_id: int | None = None
+        self._closed_handler: int | None = None
+        self._current_notification = None
+        self._destroyed = False
 
-    def destroy(self):
+        self.left_glyph = SideGlyph("left")
+        self.right_glyph = SideGlyph("right")
+
+        self._inner = Box(
+            name="notch-notification-inner",
+            orientation="v",
+            h_expand=True,
+        )
+        self.add(self._inner)
+
+        self._server = _get_notification_server()
+        self._server_handler = self._server.connect(
+            "notification-added", self._on_notification_added
+        )
+
+    def open(self) -> None:
+        pass
+
+    def _on_notification_added(self, server, notif_id: int) -> None:
+        if self._destroyed:
+            return
+
+        n = server.get_notification_from_id(notif_id)
+        if n is None:
+            return
+
+        history = get_shared_history()
+
+        if history.glyphs_enabled:
+            self.left_glyph.trigger()
+            self.right_glyph.trigger()
+
+        notch = self._get_notch()
+        notch_busy = (
+            notch is not None
+            and notch._cw is not None
+            and notch._cw != "notification"
+        )
+
+        if history.do_not_disturb_enabled or notch_busy:
+            nb = NotificationBox(n, timeout_ms=0)
+            history.add_notification(nb)
+            return
+
+        self._stop_timeout()
+        self._unsubscribe_closed()
+        self._dismiss_current(send_to_history=True)
+
+        nb = NotificationBox(n, timeout_ms=0)
+        self._current_nb = nb
+        self._subscribe_closed(n)
+
+        for child in list(self._inner.get_children()):
+            self._inner.remove(child)
+        self._inner.add(nb)
+        self._inner.show_all()
+
+        if notch:
+            notch.open_notification()
+
+        live_timeout = getattr(n, "timeout", -1)
+        ms = live_timeout if (live_timeout and live_timeout > 0) else 5000
+        self._timeout_id = GLib.timeout_add(ms, self._on_timeout)
+
+    def _subscribe_closed(self, notification) -> None:
+        if hasattr(notification, "connect"):
+            self._closed_handler = notification.connect(
+                "closed", self._on_notification_closed
+            )
+            self._current_notification = notification
+
+    def _unsubscribe_closed(self) -> None:
+        n = self._current_notification
+        h = self._closed_handler
+        if n and h is not None and n.handler_is_connected(h):
+            n.disconnect(h)
+        self._closed_handler = None
+        self._current_notification = None
+
+    def _on_timeout(self) -> bool:
+        self._timeout_id = None
+        self._unsubscribe_closed()
+        self._dismiss_current(send_to_history=True)
+        notch = self._get_notch()
+        if notch:
+            notch.close_notification()
+        return GLib.SOURCE_REMOVE
+
+    def _on_notification_closed(self, notification, reason) -> None:
+        self._stop_timeout()
+        self._unsubscribe_closed()
+        self._dismiss_current(send_to_history=True)
+        notch = self._get_notch()
+        if notch:
+            notch.close_notification()
+
+    def _stop_timeout(self) -> None:
+        if self._timeout_id is not None:
+            GLib.source_remove(self._timeout_id)
+            self._timeout_id = None
+
+    def _dismiss_current(self, send_to_history: bool = True) -> None:
+        nb = self._current_nb
+        if nb is None:
+            return
+        self._current_nb = None
+
+        for child in list(self._inner.get_children()):
+            self._inner.remove(child)
+
+        if send_to_history and not getattr(nb, "_destroyed", False):
+            get_shared_history().add_notification(nb)
+        elif not getattr(nb, "_destroyed", False):
+            nb.destroy()
+
+    def _get_notch(self):
+        return self._notch_ref() if self._notch_ref else None
+
+    def destroy(self) -> None:
         if self._destroyed:
             return
         self._destroyed = True
 
-        if self.notification_container is not None:
-            self.notification_container.destroy()
-            self.notification_container = None
+        self._stop_timeout()
+        self._unsubscribe_closed()
+        self._dismiss_current(send_to_history=False)
 
-        self.notification_history = None
-        self._spacer = None
-        self._popup_box = None
+        if self._server and self._server_handler is not None and self._server.handler_is_connected(self._server_handler):
+            self._server.disconnect(self._server_handler)
+        self._server_handler = None
+        self._server = None
 
         super().destroy()

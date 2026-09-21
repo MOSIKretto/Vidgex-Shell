@@ -120,23 +120,21 @@ class Visibility:
     def _has_overlap(self, clients=None):
         dock = self._dock
         dw = self._dock_width
-        if not dw:
-            return False
 
-        dh = self._dock_height or 60
+        dh = self._dock_height
         dx = dock._mon_x + (dock._mon_w - dw) // 2
         dy = dock._mon_y + dock._mon_h - dh
         dx2 = dx + dw
         dy2 = dy + dh
 
         ws    = dock._parse("j/activeworkspace")
-        ws_id = ws.get("id", 0) if ws else 0
+        ws_id = ws.get("id")
 
         if clients is None:
             clients = dock._parse("j/clients")
 
         for w in clients:
-            if w.get("hidden") or w.get("minimized"):
+            if w.get("hidden") or w.get("floating") is False and w.get("fullscreen", 0) > 0:
                 continue
 
             w_ws = w.get("workspace", {})
@@ -147,8 +145,6 @@ class Visibility:
                 continue
 
             pos, size = w.get("at"), w.get("size")
-            if not pos or not size:
-                continue
 
             wx, wy, ww, wh = pos[0], pos[1], size[0], size[1]
             if (

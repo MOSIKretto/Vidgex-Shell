@@ -1,6 +1,6 @@
 import os
 
-from gi.repository import GLib, Gtk, Gdk
+from gi.repository import GLib, Gtk
 from fabric.bluetooth import BluetoothClient
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -11,23 +11,6 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-
-
-def set_pointer_cursor(widget):
-    widget.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
-
-    def _on_enter(w, _event):
-        win = w.get_window()
-        if win:
-            win.set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer"))
-
-    def _on_leave(w, _event):
-        win = w.get_window()
-        if win:
-            win.set_cursor(None)
-
-    widget.connect("enter-notify-event", _on_enter)
-    widget.connect("leave-notify-event", _on_leave)
 
 
 def _run_bt_cmd(cmd_str, callback=None):
@@ -75,7 +58,6 @@ class BTSlot(Gtk.EventBox):
         self.list_type = "avail"
 
         self.connect("button-press-event", self._on_click)
-        set_pointer_cursor(self)
 
         self.main_box = CenterBox()
         self.main_box.get_style_context().add_class("pixel-slot")
@@ -95,7 +77,6 @@ class BTSlot(Gtk.EventBox):
         self.btn_settings.get_style_context().add_class("pixel-icon-button")
         self.btn_settings.get_style_context().add_class("settings-btn")
         self.btn_settings.set_valign(Gtk.Align.CENTER)
-        set_pointer_cursor(self.btn_settings)
 
         self.main_box.add_start(start_box)
         self.main_box.add_end(self.btn_settings)
@@ -215,7 +196,6 @@ class BluetoothConnections(Box):
             child=Label(markup=icons.chevron_left, name="bluetooth-back-label"),
         )
         back_btn.connect("clicked", self._on_back_click)
-        set_pointer_cursor(back_btn)
 
         self.header_title = Label(label="Bluetooth", v_align="center", name="header-title")
 
@@ -225,7 +205,6 @@ class BluetoothConnections(Box):
             tooltip_text="Saved Devices",
             on_clicked=self._on_saved_toggle,
         )
-        set_pointer_cursor(self.saved_btn)
 
         self._sc_lbl = Label(markup=icons.radar, name="bluetooth-scan-label")
         self._sc_btn = Button(
@@ -234,7 +213,6 @@ class BluetoothConnections(Box):
             tooltip_text="Scan",
             on_clicked=self._on_scan_toggle,
         )
-        set_pointer_cursor(self._sc_btn)
 
         header_end = Box(spacing=4, orientation="horizontal", children=(self.saved_btn, self._sc_btn))
         header = CenterBox(
@@ -259,7 +237,6 @@ class BluetoothConnections(Box):
 
         btn_turn_on = Button(label="Turn On", h_align="center", on_clicked=self._turn_on_bt)
         btn_turn_on.get_style_context().add_class("bluetooth-turn-on-btn")
-        set_pointer_cursor(btn_turn_on)
         off_box.add(btn_turn_on)
 
         self.stack.add_named(off_box, "off")
@@ -287,7 +264,6 @@ class BluetoothConnections(Box):
 
         btn_scan = Button(label="Scan", h_align="center", on_clicked=self._on_scan_toggle)
         btn_scan.get_style_context().add_class("bluetooth-turn-on-btn")
-        set_pointer_cursor(btn_scan)
         self.avail_empty.add(btn_scan)
 
         self.avail_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
@@ -347,7 +323,6 @@ class BluetoothConnections(Box):
         self.btn_bt_forget = Button(child=lbl_forget, on_clicked=self._do_forget)
         self.btn_bt_forget.get_style_context().add_class("net-action-btn")
         self.btn_bt_forget.get_style_context().add_class("net-forget")
-        set_pointer_cursor(self.btn_bt_forget)
 
         self.lbl_bt_disconnect = Label(
             markup=f"<span size='large'>{icons.cancel}</span> Disconnect",
@@ -356,7 +331,6 @@ class BluetoothConnections(Box):
             child=self.lbl_bt_disconnect, on_clicked=self._do_disconnect_or_connect,
         )
         self.btn_bt_disconnect.get_style_context().add_class("net-action-btn")
-        set_pointer_cursor(self.btn_bt_disconnect)
 
         actions_box.add(self.btn_bt_forget)
         actions_box.add(self.btn_bt_disconnect)
