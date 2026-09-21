@@ -16,6 +16,7 @@ from services.session import SessionManager, AppResolver
 
 setproctitle.setproctitle("vidgex-shell")
 
+
 bar = Bar()
 notch = Notch()
 dock = Dock()
@@ -38,7 +39,6 @@ session = SessionManager(resolver=resolver)
 def _autosave() -> bool:
     session.save_all()
     return True
-
 
 def _quit(*_):
     session.save_all()

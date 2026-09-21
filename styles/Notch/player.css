@@ -249,7 +249,6 @@
   border-color: var(--primary);
 }
 
-/* ── Раскрыто + Наведение: текст и иконки становятся --primary ── */
 #artist-group-header.expanded.hover #artist-group-name,
 #artist-group-header.expanded.hover #artist-group-count,
 #artist-group-header.expanded.hover #artist-expand-icon {
@@ -381,7 +380,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   DEVICE LIST — float overlay, не влияет на высоту окна
+   DEVICE LIST — float overlay
 ══════════════════════════════════════════════════════════════════════════════ */
 
 #device-list-scroll {
@@ -497,94 +496,4 @@
 #inputs-scrolled scrollbar button {
   min-width: 0; min-height: 0; padding: 0;
   border: none; background: transparent;
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   SLIDERS
-══════════════════════════════════════════════════════════════════════════════ */
-
-#control-slider {
-  background-color: var(--surface);
-  margin: 0;
-  border-radius: 2px 10px 10px 2px;
-}
-
-#control-slider.no-icon { border-radius: 10px; }
-
-#control-slider trough {
-  min-height: 32px;
-  padding-right: 4px;
-  transition: none;
-}
-
-#control-slider trough highlight {
-  border-radius: 0 2px 2px 0;
-  min-height: 28px;
-  margin-right: 8px;
-  background-color: var(--primary);
-  transition: background-color 150ms ease;
-}
-
-#control-slider.no-icon trough highlight {
-  border-radius: 10px 2px 2px 10px;
-}
-
-#control-slider slider {
-  border-radius: 12px;
-  background-color: var(--primary);
-  min-width: 4px;
-  min-height: 40px;
-  margin: -8px 0;
-  box-shadow: -4px 0 0 2px var(--shadow), 4px 0 0 2px var(--shadow);
-  transition: background-color 150ms ease;
-}
-
-#control-slider slider:hover { background-color: var(--foreground); }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   SMALL VOLUME / MIC / BRIGHTNESS
-══════════════════════════════════════════════════════════════════════════════ */
-
-#control-small {
-  padding: 4px;
-  background-color: var(--shadow);
-  border-radius: 12px;
-}
-
-#button-volume,
-#button-mic,
-#button-brightness {
-  color: var(--surface-bright);
-  border: 3px solid var(--primary);
-  border-radius: 12px;
-}
-
-#button-volume button:hover,     #button-volume button:focus,
-#button-mic button:hover,        #button-mic button:focus,
-#button-brightness button:hover, #button-brightness button:focus,
-#vol-icon button:hover,          #vol-icon button:focus,
-#mic-icon button:hover,          #mic-icon button:focus,
-#brightness-icon button:hover,   #brightness-icon button:focus,
-#button-bar-vol button:hover,    #button-bar-vol button:focus,
-#button-bar-mic button:hover,    #button-bar-mic button:focus,
-#button-bar-brightness button:hover, #button-bar-brightness button:focus {
-  background-color: transparent;
-  border-radius: inherit;
-}
-
-#vol-label, #mic-label, #brightness-label { font-size: 16px; }
-
-#vol-icon, #mic-icon, #brightness-icon {
-  min-width: 32px;
-  min-height: 32px;
-  padding-right: 8px;
-  background-color: var(--primary);
-  border-radius: 12px 0 0 12px;
-  transition: all .25s cubic-bezier(.175, .885, .32, 1.275);
-}
-
-#vol-label-dash, #mic-label-dash, #brightness-label-dash {
-  color: var(--shadow);
-  font-size: 20px;
-  font-family: "Symbols Nerd Font Mono";
 }
