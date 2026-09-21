@@ -11,11 +11,10 @@ from modules.bar import Bar
 from modules.dock import Dock
 from modules.corners import Corners
 
-from services.session import SessionManager
+from services.session import SessionManager, AppResolver
 
 
 setproctitle.setproctitle("vidgex-shell")
-
 
 bar = Bar()
 notch = Notch()
@@ -32,7 +31,8 @@ css_path = get_relative_path("main.css")
 app.set_stylesheet_from_file(css_path)
 app.set_css = lambda: app.set_stylesheet_from_file(css_path)
 
-session = SessionManager()
+resolver = AppResolver()
+session = SessionManager(resolver=resolver)
 
 
 def _autosave() -> bool:
@@ -41,6 +41,7 @@ def _autosave() -> bool:
 
 
 def _quit(*_):
+    session.save_all()
     app.quit()
     return GLib.SOURCE_REMOVE
 

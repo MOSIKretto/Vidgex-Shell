@@ -18,10 +18,8 @@ from modules.Notch.mainWindow import MainWindow
 from modules.Notch.clipHist import ClipHistory
 from modules.Notch.appLauncher import AppLauncher
 from modules.Notch.notifications import Notifications
-
 from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
 from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
-
 from modules.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
@@ -39,7 +37,7 @@ _theme = Gtk.IconTheme.get_default()
 
 def _refresh_apps() -> None:
     for app in get_desktop_applications():
-        for k in (app.name, app.display_name):
+        for k in filter(None, (app.name, app.display_name)):
             _app_map[k.lower()] = app
             _app_map[k.lower().strip().rsplit(".", 1)[-1]] = app
 
@@ -47,16 +45,14 @@ _refresh_apps()
 
 
 def _icon(cls: str, size: int = 20):
-    key = cls.lower()
-    app = _app_map.get(key) or _app_map.get(key.rsplit(".", 1)[-1])
-    if app:
+    key = (cls or "").lower()
+    app = _app_map.get(key) or _app_map.get(key.strip().rsplit(".", 1)[-1])
+    if app and hasattr(app, "get_icon_pixbuf"):
         px = app.get_icon_pixbuf(size=size)
         if px:
             return px
-    for name in (cls, key):
-        px = _theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
-        if px:
-            return px
+    for name in filter(None, (cls, key, "application-x-executable-symbolic")):
+        return _theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
     return None
 
 
@@ -64,8 +60,8 @@ class Notch(Window):
     def __init__(self, **kwargs):
         super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
 
-        self._cw: str | None = None
-        self._cht: int | None = None
+        self._cw: str | None = None  # имя текущего открытого виджета
+        self._cht: int | None = None  # id таймера ctrl_rev
         self._last_win: tuple = (None, None, None)
         self._conn = get_hyprland_connection()
         self._init = False
@@ -87,7 +83,11 @@ class Notch(Window):
             spacing=8,
             children=[self.win_ic, self.ws_lbl],
         )
-        self.awb = Box(name="active-window-box", h_align="center", children=[self.awc])
+        self.awb = Box(
+            name="active-window-box",
+            h_align="center",
+            children=[self.awc],
+        )
 
         self.cs = Stack(name="notch-compact-stack", transition_type="slide-up-down")
         self.cs.add_named(self.awb, "window")
@@ -97,12 +97,20 @@ class Notch(Window):
             transition_type="slide-down",
             transition_duration=200,
             child_revealed=False,
-            child=Box(name="control-revealer-box", h_align="center", children=[ControlSmall()]),
+            child=Box(
+                name="control-revealer-box",
+                h_align="center",
+                children=[ControlSmall()],
+            ),
         )
 
         self.compact = Gtk.EventBox(name="notch-compact", visible=True)
         self.compact.add(
-            Box(name="compact-content", orientation="v", children=[self.cs, self.ctrl_rev])
+            Box(
+                name="compact-content",
+                orientation="v",
+                children=[self.cs, self.ctrl_rev],
+            )
         )
         self.compact.set_size_request(260, -1)
 
@@ -135,18 +143,26 @@ class Notch(Window):
         self.nb = CenterBox(
             name="notch-box",
             start_children=Box(
-                name="notch-corner-left", orientation="v", h_align="start",
+                name="notch-corner-left",
+                orientation="v",
+                h_align="start",
                 children=[MyCorner("top-right")],
             ),
             center_children=self.stack,
             end_children=Box(
-                name="notch-corner-right", orientation="v", h_align="end",
+                name="notch-corner-right",
+                orientation="v",
+                h_align="end",
                 children=[MyCorner("top-left")],
             ),
         )
         self.nb.add_style_class("notch")
 
-        self.nr = Revealer(name="notch-revealer", child_revealed=True, child=self.nb)
+        self.nr = Revealer(
+            name="notch-revealer",
+            child_revealed=True,
+            child=self.nb,
+        )
         self.nr.set_size_request(-1, 1)
 
         self.heb = Gtk.EventBox(
@@ -183,11 +199,14 @@ class Notch(Window):
         )
         self.connect(
             "key-press-event",
-            lambda _, e: self.close_notch() or True if e.keyval == Gdk.KEY_Escape else False,
+            lambda _, e: self.close_notch() or True
+            if e.keyval == Gdk.KEY_Escape
+            else False,
         )
         self.add_keybinding("Escape", lambda *_: self.close_notch())
 
-        self._conn.connect("event", lambda *_: self._schedule_updwin())
+        if self._conn:
+            self._conn.connect("event", lambda *_: self._schedule_updwin())
 
     def _watch(self) -> None:
         self.audio = get_audio()
@@ -196,7 +215,9 @@ class Notch(Window):
 
         for dev in ("speaker", "microphone"):
             self._bind_dev(dev)
-            self.audio.connect(f"notify::{dev}", lambda *_, d=dev: self._bind_dev(d))
+            self.audio.connect(
+                f"notify::{dev}", lambda *_, d=dev: self._bind_dev(d)
+            )
 
         if self._br.screen_brightness != -1:
             self._vals["screen"] = self._br.screen_brightness
@@ -206,23 +227,29 @@ class Notch(Window):
             )
 
     def _bind_dev(self, dev: str) -> None:
-        d = getattr(self.audio, dev)
+        d = getattr(self.audio, dev, None)
         if d:
             self._vals[dev] = d.volume
             d.connect(
                 "changed",
-                lambda *_, name=dev: self._val_chg(name, getattr(self.audio, name).volume, 0.5),
+                lambda *_, name=dev: self._val_chg(
+                    name, getattr(self.audio, name).volume, 0.5
+                ),
             )
 
     def _val_chg(self, name: str, cur, threshold: float) -> None:
-        if not self._init:
+        if not self._init or cur is None:
             return
-        prev = self._vals[name]
-        if prev is not None and abs(cur - prev) > threshold and not self._cw:
-            if self._cht:
-                GLib.source_remove(self._cht)
-            self.ctrl_rev.set_reveal_child(True)
-            self._cht = GLib.timeout_add(2000, lambda: self.ctrl_rev.set_reveal_child(False) or False)
+        prev = self._vals.get(name)
+        if prev is not None and abs(cur - prev) > threshold:
+            if not self._cw:
+                if self._cht:
+                    GLib.source_remove(self._cht)
+                self.ctrl_rev.set_reveal_child(True)
+                self._cht = GLib.timeout_add(
+                    2000,
+                    lambda: self.ctrl_rev.set_reveal_child(False) or False,
+                )
         self._vals[name] = cur
 
     def _final(self) -> bool:
@@ -234,6 +261,7 @@ class Notch(Window):
     def open_notification(self) -> None:
         if self._cw and self._cw != "notification":
             return
+
         self._stop_ctrl_rev()
         self.nr.set_reveal_child(True)
         self.nb.add_style_class("open")
@@ -267,17 +295,26 @@ class Notch(Window):
 
         if name in APPLET_MAP or name in {"wallpapers", "player"}:
             self.stack.set_visible_child(self.main_window)
-            self.main_window.go_to_section("dashboard" if name in APPLET_MAP else name)
+            self.main_window.go_to_section(
+                "dashboard" if name in APPLET_MAP else name
+            )
             if name in APPLET_MAP:
-                target = getattr(self.main_window.dashboard, APPLET_MAP[name])
-                self.main_window.dashboard.applet_stack.set_visible_child(target)
+                target = getattr(
+                    self.main_window.dashboard,
+                    APPLET_MAP[name],
+                    None,
+                )
+                if target:
+                    self.main_window.dashboard.applet_stack.set_visible_child(target)
         else:
             widget = self._widget_by_name(name)
-            self.stack.set_visible_child(widget)
-            widget.open()
-            if name == "launcher":
-                widget.ent.set_text("")
-                widget.ent.grab_focus()
+            if widget:
+                self.stack.set_visible_child(widget)
+                if hasattr(widget, "open"):
+                    widget.open()
+                if name == "launcher" and hasattr(widget, "ent"):
+                    widget.ent.set_text("")
+                    widget.ent.grab_focus()
 
     def close_notch(self) -> None:
         self.keyboard_mode = "none"
@@ -285,22 +322,25 @@ class Notch(Window):
         self.stack.remove_style_class("open")
         self._stop_ctrl_rev()
 
-        dashboard = self.main_window.dashboard
-        applet_stack = dashboard.applet_stack
-        notif_hist = dashboard.notification_history
-        applet_stack.set_visible_child(notif_hist)
+        dashboard = getattr(self.main_window, "dashboard", None)
+        if dashboard:
+            applet_stack = getattr(dashboard, "applet_stack", None)
+            notif_hist   = getattr(dashboard, "notification_history", None)
+            if applet_stack and notif_hist:
+                applet_stack.set_visible_child(notif_hist)
 
         self._cw = None
         self.stack.set_visible_child(self.compact)
         self._schedule_updwin()
 
-    def _widget_by_name(self, name: str) -> Gtk.Widget:
+    # Вспомогательные методы
+    def _widget_by_name(self, name: str) -> Gtk.Widget | None:
         return {
             "main_window":  self.main_window,
             "launcher":     self.app_launcher,
             "cliphist":     self.clip_history,
             "notification": self.notif_popup,
-        }[name]
+        }.get(name)
 
     def _stop_ctrl_rev(self) -> None:
         if self._cht:
@@ -312,12 +352,20 @@ class Notch(Window):
         threading.Thread(target=self._fetch_win_info, daemon=True).start()
 
     def _fetch_win_info(self) -> None:
-        if self._cw:
+        if self._cw or not self._conn:
             return
-        ws = json.loads(self._conn.send_command("j/activeworkspace").reply.decode())["id"]
-        win = json.loads(self._conn.send_command("j/activewindow").reply.decode())
-        wc = win["class"]
-        wt = win["title"]
+        try:
+            ws = json.loads(
+                self._conn.send_command("j/activeworkspace").reply.decode()
+            ).get("id", 1)
+            win = json.loads(
+                self._conn.send_command("j/activewindow").reply.decode()
+            )
+            wc = win.get("class", win.get("initialClass", ""))
+            wt = win.get("title", "")
+        except Exception:
+            return
+
         GLib.idle_add(self._apply_win_info, ws, wc, wt)
 
     def _apply_win_info(self, ws: int, wc: str, wt: str) -> bool:
@@ -333,7 +381,9 @@ class Notch(Window):
             if px:
                 self.win_ic.set_from_pixbuf(px)
             else:
-                self.win_ic.set_from_icon_name("application-x-executable-symbolic", 20)
+                self.win_ic.set_from_icon_name(
+                    "application-x-executable-symbolic", 20
+                )
             self.win_ic.show()
             self.awc.set_spacing(8)
         else:

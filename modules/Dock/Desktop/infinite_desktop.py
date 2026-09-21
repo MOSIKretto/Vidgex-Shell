@@ -1,4 +1,5 @@
 import os, re, json, threading, time, socket, queue
+from pathlib import Path
 import evdev
 
 
@@ -29,10 +30,9 @@ _MAX_FRAME_DT = 0.1
 OVERVIEW_PADDING   = _env_int('OVERVIEW_PADDING', 80, lo=0)
 OVERVIEW_MIN_SCALE = _env_float('OVERVIEW_MIN_SCALE', 0.15, lo=0.01, hi=1.0)
 ABS_SENSITIVITY = 8.0 * SPEED
-STATE_DIR = os.environ.get(
-    'STATE_DIR',
-    os.path.expanduser("~/.cache/vidgex-shell/vidgex_canvas"),
-)
+
+# ЕДИНАЯ ПАПКА СЕССИЙ
+STATE_DIR = os.path.expanduser("~/.cache/vidgex-shell/vidgex_session")
 os.makedirs(STATE_DIR, exist_ok=True)
 
 
@@ -207,12 +207,40 @@ def _monitor_for_workspace(ws_id, monitors=None):
     return mon
 
 
+# ---------------------------------------------------------------------------
+# I/O функций для работы со структурой ws_{N}_layout.json
+# ---------------------------------------------------------------------------
+
+def _read_ws_file(ws_id):
+    path = os.path.join(STATE_DIR, f"ws_{ws_id}_layout.json")
+    if not os.path.exists(path):
+        return 0, {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().strip().split("\n", 1)
+        mode = 1 if lines[0].strip() == "1" else 0
+        data = json.loads(lines[1]) if len(lines) > 1 and lines[1].strip() else {}
+        return mode, data
+    except Exception:
+        return 0, {}
+
+
+def _write_ws_file(ws_id, mode, data):
+    path = os.path.join(STATE_DIR, f"ws_{ws_id}_layout.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(f"{1 if mode else 0}\n")
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
 def is_canvas_mode(ws_id=None) -> bool:
     if ws_id is None:
         ws_id = hc_dict(['activeworkspace']).get('id')
     if ws_id is None:
         return False
-    return os.path.exists(os.path.join(STATE_DIR, f"ws_{ws_id}"))
+    mode, _ = _read_ws_file(ws_id)
+    return mode == 1
 
 
 def _active_canvas_ws():
@@ -226,10 +254,10 @@ def toggle_mode(silent: bool = False):
         if ws_id is None:
             return
 
-        lock_file = os.path.join(STATE_DIR, f"ws_{ws_id}")
-        layout_file = os.path.join(STATE_DIR, f"ws_{ws_id}_layout.json")
+        current_mode, data = _read_ws_file(ws_id)
 
-        if is_canvas_mode(ws_id):
+        if current_mode == 1:
+            # Выход из режима CANVAS -> HYPRLAND (Тайлинг)
             _exit_overview(ws_id)
 
             clients = [
@@ -245,12 +273,9 @@ def toggle_mode(silent: bool = False):
                 for w in clients
             }
 
-            if saved_layout:
-                with open(layout_file, 'w') as f:
-                    json.dump(saved_layout, f)
-
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
+            # Сохраняем раскладку, меняя первую строку на 0
+            data['layout'] = saved_layout
+            _write_ws_file(ws_id, 0, data)
 
             hc_batch([_float_toggle_cmd(w['address']) for w in clients])
 
@@ -258,12 +283,9 @@ def toggle_mode(silent: bool = False):
                 _fire_mode_change(ws_id, False)
 
         else:
-            open(lock_file, 'w').close()
-
-            saved_layout = {}
-            if os.path.exists(layout_file):
-                with open(layout_file, 'r') as f:
-                    saved_layout = json.load(f)
+            # Вход в режим CANVAS (1)
+            saved_layout = data.get('layout', {})
+            _write_ws_file(ws_id, 1, data)
 
             clients = [
                 w for w in hc_list(['clients'])
@@ -294,6 +316,7 @@ def toggle_mode(silent: bool = False):
 def enable_canvas():
     if not is_canvas_mode():
         toggle_mode()
+
 
 def _center_camera_on_window(ws_id, win_addr):
     if not win_addr:
@@ -818,27 +841,6 @@ def _main_canvas_loop():
             mode_lock.release()
 
 
-_LOCK_RE = re.compile(r'^ws_(?P<id>-?\d+)(?P<layout>_layout\.json)?$')
-
-
-def _cleanup_stale_locks():
-    workspaces = hc_list(['workspaces'])
-    if not workspaces:
-        return
-
-    active_ids = {str(w.get('id')) for w in workspaces if 'id' in w}
-
-    fnames = os.listdir(STATE_DIR)
-
-    for fname in fnames:
-        m = _LOCK_RE.match(fname)
-        if not m:
-            continue
-        ws_id = m.group('id')
-        if ws_id not in active_ids:
-            os.remove(os.path.join(STATE_DIR, fname))
-
-
 _daemon_start_lock = threading.Lock()
 _daemon_started = False
 
@@ -849,7 +851,6 @@ def start_canvas_daemon():
             return
         _daemon_started = True
 
-    _cleanup_stale_locks()
     _ensure_batch_worker()
     threading.Thread(target=hyprland_ipc_listener, daemon=True).start()
     threading.Thread(target=hotplug_monitor,       daemon=True).start()

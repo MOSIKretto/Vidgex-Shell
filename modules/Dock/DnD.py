@@ -54,6 +54,10 @@ class Dnd:
             json.dump(self._custom_order, f, ensure_ascii=False, indent=2)
 
     def _load_order(self) -> list[str]:
+        if not os.path.exists(self._order_file):
+            self._custom_order = []
+            self.save_order()
+
         with open(self._order_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data

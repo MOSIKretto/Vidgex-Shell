@@ -26,14 +26,15 @@ _ORDER_FILE = os.path.join(_CACHE_DIR, "matrix_order")
 
 
 def _load_matrix_order():
-    """Читает сохранённый порядок матрицы из кэша"""
+    if not os.path.exists(_ORDER_FILE):
+        _save_matrix_order(3)
+
     with open(_ORDER_FILE, "r") as f:
         val = int(f.read().strip())
         return max(1, min(9, val))
 
 
 def _save_matrix_order(order):
-    """Сохраняет порядок матрицы в кэш-файл"""
     os.makedirs(_CACHE_DIR, exist_ok=True)
     with open(_ORDER_FILE, "w") as f:
         f.write(str(order))

@@ -466,11 +466,17 @@ class Dock(Window):
 
     def _sync_active(self):
         aw = self._parse("j/activewindow")
-        active = _norm(aw["initialClass"])
+        active = _norm(aw.get("initialClass") or aw.get("class") or "") if isinstance(aw, dict) else ""
+
+        if not active:
+            for btn in self.view.get_children():
+                btn.remove_style_class("active")
+            return
+
         for btn in self.view.get_children():
-            cls = btn._cls
+            cls = getattr(btn, "_cls", "")
             n = _norm(cls)
-            match = n == active or n in active or active in n
+            match = (n == active) or (n and (n in active or active in n))
             if match:
                 btn.add_style_class("active")
             else:

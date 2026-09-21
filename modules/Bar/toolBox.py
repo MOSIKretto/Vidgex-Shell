@@ -21,11 +21,23 @@ import services.icons as icons
 
 
 def _get_pictures_dir() -> Path:
-    return Path(os.environ["XDG_PICTURES_DIR"])
+    # Безопасный запрос стандартной папки изображений через GLib
+    pic_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES)
+    if pic_dir:
+        return Path(pic_dir)
+    if "XDG_PICTURES_DIR" in os.environ:
+        return Path(os.environ["XDG_PICTURES_DIR"])
+    return Path.home() / "Pictures"
 
 
 def _get_videos_dir() -> Path:
-    return Path(os.environ["XDG_VIDEOS_DIR"])
+    # Безопасный запрос стандартной папки видео через GLib
+    vid_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_VIDEOS)
+    if vid_dir:
+        return Path(vid_dir)
+    if "XDG_VIDEOS_DIR" in os.environ:
+        return Path(os.environ["XDG_VIDEOS_DIR"])
+    return Path.home() / "Videos"
 
 
 def _send_notification(summary: str, body: str = "", icon: str | Path = None, actions: list[tuple[str, str]] = None) -> str:
@@ -70,7 +82,7 @@ def _run_ocr():
 
 def _run_recording():
     save_dir = _get_videos_dir() / "Recordings"
-    save_dir.mkdir(parents=True)
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     is_running = subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
 
@@ -79,16 +91,16 @@ def _run_recording():
         time.sleep(1)
 
         mp4_files = list(save_dir.glob("*.mp4"))
-        last_video = max(mp4_files, key=lambda f: f.stat().st_mtime)
+        last_video = max(mp4_files, key=lambda f: f.stat().st_mtime) if mp4_files else None
 
         action = _send_notification(
             "⬜ Recording stopped",
             actions=[("view", "View"), ("open", "Open folder")]
         )
 
-        if action == "view":
+        if action == "view" and last_video:
             subprocess.run(["xdg-open", str(last_video)])
-        elif action == "open":
+        elif action in ("view", "open"):
             subprocess.run(["xdg-open", str(save_dir)])
     else:
         output_file = save_dir / f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.mp4"
@@ -138,14 +150,14 @@ def _apply_mockup(full_path: Path):
     subprocess.run(cmd1, capture_output=True)
     subprocess.run(cmd2, capture_output=True)
     mockup_file.replace(full_path)
-    temp_file.unlink()
+    temp_file.unlink(missing_ok=True)
 
 
 def _run_screenshot(mode: str, mockup: bool = False):
     time.sleep(0.5)
 
     save_dir = _get_pictures_dir() / "Screenshots"
-    save_dir.mkdir(parents=True)
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     save_file = f"{datetime.now().strftime('%y%m%d_%Hh%Mm%Ss')}_screenshot.png"
     full_path = save_dir / save_file
@@ -247,7 +259,7 @@ class ToolBox(Window):
         exec_shell_command_async(cmd)
 
     def _create_action_button(self, icon_markup, action_tuple, tooltip, action_type):
-        lbl = Label(markup=icon_markup)
+        lbl = Label(markup=icon_markup or "")
         btn = Button(
             child=lbl,
             tooltip_markup=tooltip,
@@ -295,7 +307,7 @@ class ToolBox(Window):
         self._trigger_sig = btn.connect("size-allocate", self._on_trigger_size_allocate)
 
     def _disconnect_trigger(self):
-        if self._trigger_btn is not None:
+        if self._trigger_btn is not None and self._trigger_sig is not None:
             self._trigger_btn.disconnect(self._trigger_sig)
         self._trigger_sig = None
 
@@ -348,7 +360,8 @@ class ToolBox(Window):
     def _reveal_step(self, index):
         self._reveal_timer = None
 
-        self._revealers[index].set_reveal_child(True)
+        if index < len(self._revealers):
+            self._revealers[index].set_reveal_child(True)
 
         if index + 1 < len(self._revealers):
             self._reveal_timer = GLib.timeout_add(
@@ -384,6 +397,8 @@ class ToolBox(Window):
             self._reveal_timer = None
 
     def _set_trigger_active_state(self, active):
+        if self._trigger_btn is None:
+            return
         style_context = self._trigger_btn.get_style_context()
         if active:
             style_context.add_class(self.CSS_ACTIVE)
@@ -402,17 +417,19 @@ class ToolBox(Window):
     def _refresh_dyn(self, *_):
         is_rec = subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
 
-        lbl = self._dyn["record"]
-        lbl.set_markup(icons.stop if is_rec else icons.screenrecord)
+        lbl = self._dyn.get("record")
+        if lbl:
+            lbl.set_markup((icons.stop if is_rec else icons.screenrecord) or "")
 
-        btn = self._dyn["record_btn"]
-        ctx = btn.get_style_context()
-        if is_rec:
-            ctx.add_class(self.CSS_ACTIVE)
-            ctx.add_class("active")
-        else:
-            ctx.remove_class(self.CSS_ACTIVE)
-            ctx.remove_class("active")
+        btn = self._dyn.get("record_btn")
+        if btn:
+            ctx = btn.get_style_context()
+            if is_rec:
+                ctx.add_class(self.CSS_ACTIVE)
+                ctx.add_class("active")
+            else:
+                ctx.remove_class(self.CSS_ACTIVE)
+                ctx.remove_class("active")
         return False
 
     def _dispatch_action(self, action_type_name: str, *args):
