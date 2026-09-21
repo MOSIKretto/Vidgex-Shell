@@ -1,3 +1,12 @@
+@import url("./styles/Notch/Dashboard/applets.css");
+@import url("./styles/Notch/Dashboard/buttons.css");
+@import url("./styles/Notch/Dashboard/calendar.css");
+@import url("./styles/Notch/Dashboard/controls.css");
+@import url("./styles/Notch/Dashboard/metrics.css");
+@import url("./styles/Notch/Dashboard/systemtray.css");
+@import url("./styles/Notch/Dashboard/time.css");
+
+
 /* Фон шкал (неактивная часть палочек) */
 #net-usage trough,
 #gpu-usage trough,
@@ -100,74 +109,97 @@
   min-height: 28px;
 }
 
-/* --- Вкладки switcher --- */
-#switcher.stack-switcher > * {
-  padding: 4px;
+/* --- Сброс системной склейки GTK (.linked) --- */
+#switcher,
+#switcher.stack-switcher,
+#switcher.linked {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+#switcher.stack-switcher > button,
+#switcher.linked > button,
+#switcher.linked > button:first-child,
+#switcher.linked > button:last-child,
+#switcher.linked > button:not(:first-child),
+#switcher.linked > button:not(:last-child) {
+  border: none;
+  box-shadow: none;
+  outline: none;
+  background-image: none;
   border-radius: 12px;
 }
 
-#switcher.stack-switcher > *:checked {
+/* --- Вкладки switcher --- */
+#switcher.stack-switcher > button:not(#close-notch-button) {
+  padding: 4px 12px;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+/* Активная вкладка (когда фокус НЕ на кнопке close) */
+#switcher.stack-switcher > button:not(#close-notch-button):checked {
   background-color: var(--surface);
 }
 
-#switcher.stack-switcher > *:active,
-#switcher.stack-switcher > *:hover,
-#switcher.stack-switcher > *:focus {
-  background-color: var(--surface-bright);
-}
-
-#switcher.stack-switcher button label {
-  font-weight: bold;
-}
-
-#switcher.stack-switcher > *:checked label {
+#switcher.stack-switcher > button:not(#close-notch-button):checked label {
   color: var(--primary);
 }
 
-/* --- Кнопка закрытия (Уникальный селектор) --- */
-#close-notch-button,
-#close-notch-button:hover,
-#close-notch-button:active,
-#close-notch-button:focus {
+/* Наведение мыши на вкладки */
+#switcher.stack-switcher > button:not(#close-notch-button):hover,
+#switcher.stack-switcher > button:not(#close-notch-button):active {
+  background-color: var(--surface-bright);
+}
+
+#switcher.stack-switcher > button:not(#close-notch-button) label {
+  font-weight: bold;
+}
+
+/* --- Когда фокус на кнопке Close: вкладка гаснет (никаких двух фокусов!) --- */
+#switcher.close-focused > button:not(#close-notch-button):checked {
+  background-color: transparent;
+}
+
+#switcher.close-focused > button:not(#close-notch-button):checked label {
+  color: var(--foreground);
+}
+
+/* --- Кнопка закрытия внутри switcher --- */
+#switcher #close-notch-button {
   padding: 4px 10px;
   border-radius: 12px;
   border: none;
   box-shadow: none;
   outline: none;
   margin: 0;
+  background-color: transparent;
+  background-image: none;
   transition: none;
 }
 
-#close-notch-button {
-  background-color: transparent;
-  background-image: none;
-}
-
-#close-notch-button image {
+#switcher #close-notch-button image {
   color: var(--foreground);
   transition: none;
 }
 
-#close-notch-button:hover,
-#close-notch-button:focus {
+/* Наведение мыши на кнопку закрытия */
+#switcher #close-notch-button:hover,
+#switcher #close-notch-button:active {
   background-color: var(--surface-bright);
-  background-image: none;
 }
 
-/* При нажатии: фон --primary, иконка --surface */
-#close-notch-button:active {
-  background-color: var(--primary);
-  background-image: none;
+/* Когда кнопка закрытия выбрана стрелками — она выглядит ТОЧНО как активная вкладка */
+#switcher #close-notch-button.focused {
+  background-color: var(--surface);
 }
 
-#close-notch-button:active image {
-  color: var(--surface);
-}
-
-#coming-soon-label {
-  font-size: 16px;
-  font-weight: bold;
-  font-style: italic;
+#switcher #close-notch-button.focused image,
+#switcher #close-notch-button:active image {
+  color: var(--primary);
 }
 
 #metrics {

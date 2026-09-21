@@ -91,7 +91,6 @@ class Player(Box):
 
         self.audio = audio
 
-        # ✅ ПЕРЕДАЁМ audio И is_input
         out = self._out = MixerSection(
             "Outputs",
             audio=audio,
@@ -117,7 +116,7 @@ class Player(Box):
             spacing=_GAP,
             h_expand=True,
             v_expand=True,
-            homogeneous=False,   # ← ВАЖНО
+            homogeneous=False,
             children=(out, inp),
         )
 
@@ -153,8 +152,10 @@ class Player(Box):
 
     def _on_toplevel_click(self, widget, event):
         track_list = self.track_list
+        if not track_list:
+            return False
 
-        search = getattr(track_list, "_search_entry", None)
+        search = getattr(track_list, "_ent", None)
         if not search:
             return False
 
@@ -162,10 +163,8 @@ class Player(Box):
         if not callable(is_click_on_search):
             return False
 
-        if (
-            search.has_focus()
-            and not is_click_on_search(widget, event.x, event.y)
-        ):
+        # Снимаем фокус с окна, если кликнули мимо строки поиска
+        if search.has_focus() and not is_click_on_search(widget, event.x, event.y):
             widget.set_focus(None)
 
         return False

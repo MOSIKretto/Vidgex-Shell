@@ -166,6 +166,7 @@ class ArtistGroup(Box):
             name="artist-expand-button", child=header_content,
             h_expand=True, h_align="fill",
         )
+        self._header_btn.set_can_focus(False)
         self._header_btn.connect("clicked", self._on_toggle)
 
         self._header_btn.connect("enter-notify-event", self._on_btn_enter)
@@ -277,14 +278,16 @@ class TrackList(Box):
             ),
         )
 
+        # Поле поиска: изначально не активно, фокус активируется только по явному клику
         self._ent = Entry(
             name="track-search", placeholder="Search Tracks...",
             h_expand=True, h_align="fill",
         )
-        self._ent.set_can_focus(True)
+        self._ent.set_can_focus(False)
         self._ent.connect("notify::text", self._on_search_changed)
         self._ent.connect("key-press-event", self._ekey)
-        self._ent.connect("map", self._on_entry_map)
+        self._ent.connect("button-press-event", self._on_ent_click)
+        self._ent.connect("focus-out-event", self._on_ent_focus_out)
 
         list_box = self._list_box = Box(
             name="track-content", orientation="v", spacing=2,
@@ -308,12 +311,23 @@ class TrackList(Box):
         threading.Thread(target=self._scan, daemon=True).start()
         self._watch()
 
-    def _on_entry_map(self, *_):
-        GLib.idle_add(self._ent.grab_focus)
+    def _on_ent_click(self, widget, event):
+        if event.button == 1:
+            widget.set_can_focus(True)
+            widget.grab_focus()
+        return False
 
-    def grab_search_focus(self):
-        if self._ent.get_mapped():
-            self._ent.grab_focus()
+    def _on_ent_focus_out(self, widget, _):
+        widget.set_can_focus(False)
+        return False
+
+    def _is_click_on_search(self, widget, x, y):
+        alloc = self._ent.get_allocation()
+        coords = self._ent.translate_coordinates(widget, 0, 0)
+        if not coords:
+            return False
+        ex, ey = coords
+        return ex <= x <= ex + alloc.width and ey <= y <= ey + alloc.height
 
     def _on_search_changed(self, *_):
         self._deb("s", 300, self._do_search)
@@ -349,7 +363,14 @@ class TrackList(Box):
 
     def _ekey(self, _, e):
         if e.keyval == Gdk.KEY_Escape:
-            self._ent.set_text("")
+            if self._ent.get_text():
+                self._ent.set_text("")
+                return True
+            # Снимаем активность со строки поиска и отдаём фокус наверх
+            self._ent.set_can_focus(False)
+            toplevel = self.get_toplevel()
+            if toplevel and hasattr(toplevel, "grab_focus"):
+                toplevel.grab_focus()
             return True
         return False
 
@@ -558,6 +579,7 @@ class TrackList(Box):
                     h_expand=True, h_align="fill",
                     tooltip_text=full,
                 )
+                btn.set_can_focus(False)
                 btn.connect("clicked", on_clicked, full)
 
                 path_map[full] = len(rows)

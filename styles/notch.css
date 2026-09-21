@@ -1,3 +1,10 @@
+@import url("./styles/Notch/dashboard.css");
+@import url("./styles/Notch/launcher.css");
+@import url("./styles/Notch/notifications.css");
+@import url("./styles/Notch/player.css");
+@import url("./styles/Notch/wallpapers.css");
+
+
 #notch-box {
   margin: 0 20px 10px 20px;
 }

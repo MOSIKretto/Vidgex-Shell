@@ -237,7 +237,8 @@ class FixedBox(Box):
         return self._fixed_width, self._fixed_width
 
 
-_NAV_KEYS = frozenset((Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Return, Gdk.KEY_KP_Enter))
+# Клавиши навигации: убраны стрелки влево/вправо, чтобы не перехватывать табы
+_NAV_KEYS = frozenset((Gdk.KEY_Return, Gdk.KEY_KP_Enter))
 _t_add = GLib.timeout_add
 _ri_range = GLib.random_int_range
 _EMPTY = ()
@@ -461,10 +462,9 @@ class WallpaperCarousel(Gtk.DrawingArea):
         self._on_nav = on_navigate
 
         self.set_name("wallpaper-carousel")
-        self.set_can_focus(True)
+        self.set_can_focus(False)  # Не перехватывает клавиатурный фокус
         self.add_events(
-            Gdk.EventMask.KEY_PRESS_MASK
-            | Gdk.EventMask.BUTTON_PRESS_MASK
+            Gdk.EventMask.BUTTON_PRESS_MASK
             | Gdk.EventMask.SCROLL_MASK
             | Gdk.EventMask.SMOOTH_SCROLL_MASK
         )
@@ -688,18 +688,12 @@ class WallpaperCarousel(Gtk.DrawingArea):
 
     def _key(self, _, e):
         k = e.keyval
-        if k == Gdk.KEY_Left:
-            self.nav(-1, glitch=True)
-        elif k == Gdk.KEY_Right:
-            self.nav(1, glitch=True)
-        elif k == Gdk.KEY_Return or k == Gdk.KEY_KP_Enter:
+        if k in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             self._sel()
-        else:
-            return False
-        return True
+            return True
+        return False
 
     def _click(self, w, e):
-        self.grab_focus()
         if e.button != 1:
             return False
         rx = e.x - w.get_allocation().width * 0.5
@@ -891,12 +885,16 @@ class WallpaperSelector(Box):
         )
         car_box.pack_start(car_ov, True, True, 0)
 
+        # Поле поиска: изначально не активно, фокус включается только по явному клику
         self._ent = Entry(
             name="search-entry-walls", placeholder="Search Wallpapers...",
             h_expand=True, h_align="fill",
         )
+        self._ent.set_can_focus(False)
         self._ent.connect("notify::text", self._on_search_changed)
         self._ent.connect("key-press-event", self._ekey)
+        self._ent.connect("button-press-event", self._on_ent_click)
+        self._ent.connect("focus-out-event", self._on_ent_focus_out)
 
         self._sch_idx = 0
         cur = self._ldsch()
@@ -909,6 +907,7 @@ class WallpaperSelector(Box):
             name="scheme-dropdown-btn", label=_SCH[self._sch_idx][1],
             tooltip_text="Click to select scheme, or scroll",
         )
+        self._sch_btn.set_can_focus(False)
         self._sch_btn.connect("clicked", self._on_sch_btn_clicked)
         self._sch_btn.add_events(Gdk.EventMask.SCROLL_MASK)
         self._sch_btn.connect("scroll-event", self._on_sch_scroll)
@@ -925,6 +924,7 @@ class WallpaperSelector(Box):
         self._sch_items = []
         for i, (_, v) in enumerate(_SCH):
             btn = Button(label=v, name="scheme-list-item")
+            btn.set_can_focus(False)
             btn.get_child().set_halign(Gtk.Align.START)
             btn._si = i
             btn.connect("clicked", self._on_sch_item_click)
@@ -939,6 +939,7 @@ class WallpaperSelector(Box):
             child=Label(name="random-wall-label", markup=_DICE[0]),
             tooltip_text="Random Wallpaper",
         )
+        self._rb.set_can_focus(False)
         self._rb.connect("clicked", self.random_wall)
 
         header = Box(
@@ -974,6 +975,7 @@ class WallpaperSelector(Box):
             name="wallpaper-dir-button", child=dir_inner,
             tooltip_text=self._walls or _PICK_PROMPT,
         )
+        self._dir_btn.set_can_focus(False)
         self._dir_btn.connect("clicked", self._toggle_dir_chooser)
 
         label_row = Box(spacing=8, orientation="h", h_expand=True, h_align="fill")
@@ -1013,9 +1015,11 @@ class WallpaperSelector(Box):
         picker_header.pack_start(picker_title, True, True, 0)
 
         cancel_btn = Button(name="dir-chooser-cancel", label="Cancel")
+        cancel_btn.set_can_focus(False)
         cancel_btn.connect("clicked", lambda *_: self._close_dir_chooser())
 
         apply_btn = Button(name="dir-chooser-apply", label="Select")
+        apply_btn.set_can_focus(False)
         apply_btn.connect("clicked", self._on_dir_apply)
 
         btn_row = Box(
@@ -1057,6 +1061,16 @@ class WallpaperSelector(Box):
         self._scan()
         self._watch()
 
+    def _on_ent_click(self, widget, event):
+        if event.button == 1:
+            widget.set_can_focus(True)
+            widget.grab_focus()
+        return False
+
+    def _on_ent_focus_out(self, widget, _):
+        widget.set_can_focus(False)
+        return False
+
     def _on_path_scroll(self, widget, event):
         adj = widget.get_hadjustment()
         if not adj:
@@ -1097,6 +1111,7 @@ class WallpaperSelector(Box):
         n = len(segments)
         for i, (name, target) in enumerate(segments):
             btn = Button(name="custom-path-btn", label=name)
+            btn.set_can_focus(False)
             if i == n - 1:
                 btn.get_style_context().add_class("current")
 
@@ -1178,7 +1193,6 @@ class WallpaperSelector(Box):
         return True
 
     def _on_car_click(self, *_):
-        self._car.grab_focus()
         if self._sch_rev.get_reveal_child():
             self._sch_rev.set_reveal_child(False)
             self._sch_btn.get_style_context().remove_class("open")
@@ -1321,8 +1335,17 @@ class WallpaperSelector(Box):
             if self._dir_revealer.get_reveal_child():
                 self._close_dir_chooser()
                 return True
-            self._ent.set_text("")
+            if self._ent.get_text():
+                self._ent.set_text("")
+                return True
+
+            # Снимаем активность со строки поиска и отдаём фокус окну
+            self._ent.set_can_focus(False)
+            toplevel = self.get_toplevel()
+            if toplevel and hasattr(toplevel, "grab_focus"):
+                toplevel.grab_focus()
             return True
+
         if k in _NAV_KEYS:
             return self._car._key(self._car, e)
         return False

@@ -15,14 +15,15 @@ from fabric.widgets.revealer import Revealer
 from fabric.widgets.stack import Stack
 
 from modules.Notch.mainWindow import MainWindow
-from modules.Notch.clipHist import ClipHistory
-from modules.Notch.appLauncher import AppLauncher
 from modules.Notch.notifications import Notifications
-from modules.Notch.MainWindow.Dashboard.controls import ControlSmall, get_audio
-from modules.Notch.MainWindow.Dashboard.Controls.brightness import Brightness
+from modules.Notch.MainWindow.Dashboard.controls import ControlOSD
+
 from modules.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
+
+from modules.Notch.clipHist import ClipHistory
+from modules.Notch.appLauncher import AppLauncher
 
 
 APPLET_MAP = {
@@ -60,15 +61,14 @@ class Notch(Window):
     def __init__(self, **kwargs):
         super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
 
-        self._cw: str | None = None  # имя текущего открытого виджета
-        self._cht: int | None = None  # id таймера ctrl_rev
+        self._cw: str | None = None
+        self._cht: int | None = None
         self._last_win: tuple = (None, None, None)
         self._conn = get_hyprland_connection()
         self._init = False
 
         self._build()
         self._bind()
-        self._watch()
         GLib.idle_add(self._final)
 
     def _build(self) -> None:
@@ -81,38 +81,40 @@ class Notch(Window):
         self.awc = Box(
             name="active-window-container",
             spacing=8,
+            v_align="center",
             children=[self.win_ic, self.ws_lbl],
         )
         self.awb = Box(
             name="active-window-box",
             h_align="center",
+            v_align="center",
             children=[self.awc],
         )
 
-        self.cs = Stack(name="notch-compact-stack", transition_type="slide-up-down")
-        self.cs.add_named(self.awb, "window")
+        # OSD контроллер
+        self.ctrl_osd = ControlOSD(on_changed=self._on_ctrl_changed)
 
-        self.ctrl_rev = Revealer(
-            name="control-revealer",
-            transition_type="slide-down",
-            transition_duration=200,
-            child_revealed=False,
-            child=Box(
-                name="control-revealer-box",
-                h_align="center",
-                children=[ControlSmall()],
-            ),
+        # Стек компактного режима: переключение Заголовок окна <-> OSD
+        self.cs = Stack(
+            name="notch-compact-stack",
+            transition_type="slide-up-down",
+            transition_duration=220,
         )
+        self.cs.set_interpolate_size(True)  # Плавное сглаживание ширины
+        self.cs.add_named(self.awb, "window")
+        self.cs.add_named(self.ctrl_osd, "control")
 
         self.compact = Gtk.EventBox(name="notch-compact", visible=True)
         self.compact.add(
             Box(
                 name="compact-content",
-                orientation="v",
-                children=[self.cs, self.ctrl_rev],
+                h_align="center",
+                v_align="center",
+                children=[self.cs],
             )
         )
-        self.compact.set_size_request(260, -1)
+        # 290px идеально вмещают 10 крупных точек, иконку и надпись 100%
+        self.compact.set_size_request(290, 36)
 
         self.main_window  = MainWindow(notch=self)
         self.app_launcher = AppLauncher(notch=self)
@@ -208,49 +210,31 @@ class Notch(Window):
         if self._conn:
             self._conn.connect("event", lambda *_: self._schedule_updwin())
 
-    def _watch(self) -> None:
-        self.audio = get_audio()
-        self._br   = Brightness.get_initial()
-        self._vals: dict = {"speaker": None, "microphone": None, "screen": None}
-
-        for dev in ("speaker", "microphone"):
-            self._bind_dev(dev)
-            self.audio.connect(
-                f"notify::{dev}", lambda *_, d=dev: self._bind_dev(d)
-            )
-
-        if self._br.screen_brightness != -1:
-            self._vals["screen"] = self._br.screen_brightness
-            self._br.connect(
-                "screen",
-                lambda *_: self._val_chg("screen", self._br.screen_brightness, 0),
-            )
-
-    def _bind_dev(self, dev: str) -> None:
-        d = getattr(self.audio, dev, None)
-        if d:
-            self._vals[dev] = d.volume
-            d.connect(
-                "changed",
-                lambda *_, name=dev: self._val_chg(
-                    name, getattr(self.audio, name).volume, 0.5
-                ),
-            )
-
-    def _val_chg(self, name: str, cur, threshold: float) -> None:
-        if not self._init or cur is None:
+    def _on_ctrl_changed(self) -> None:
+        """Показ OSD на 2.2 сек при изменении громкости/яркости."""
+        if not self._init or self._cw:
             return
-        prev = self._vals.get(name)
-        if prev is not None and abs(cur - prev) > threshold:
-            if not self._cw:
-                if self._cht:
-                    GLib.source_remove(self._cht)
-                self.ctrl_rev.set_reveal_child(True)
-                self._cht = GLib.timeout_add(
-                    2000,
-                    lambda: self.ctrl_rev.set_reveal_child(False) or False,
-                )
-        self._vals[name] = cur
+        if self._cht:
+            GLib.source_remove(self._cht)
+
+        self.cs.set_visible_child_name("control")
+        self._cht = GLib.timeout_add(
+            2200,
+            self._reset_compact_stack,
+        )
+
+    def _reset_compact_stack(self) -> bool:
+        self._cht = None
+        if not self._cw:
+            self.cs.set_visible_child_name("window")
+        return False
+
+    def _stop_ctrl_rev(self) -> None:
+        """Остановка таймера и возврат заголовка окна."""
+        if self._cht:
+            GLib.source_remove(self._cht)
+            self._cht = None
+        self.cs.set_visible_child_name("window")
 
     def _final(self) -> bool:
         self.show_all()
@@ -333,7 +317,6 @@ class Notch(Window):
         self.stack.set_visible_child(self.compact)
         self._schedule_updwin()
 
-    # Вспомогательные методы
     def _widget_by_name(self, name: str) -> Gtk.Widget | None:
         return {
             "main_window":  self.main_window,
@@ -341,12 +324,6 @@ class Notch(Window):
             "cliphist":     self.clip_history,
             "notification": self.notif_popup,
         }.get(name)
-
-    def _stop_ctrl_rev(self) -> None:
-        if self._cht:
-            GLib.source_remove(self._cht)
-            self._cht = None
-        self.ctrl_rev.set_reveal_child(False)
 
     def _schedule_updwin(self) -> None:
         threading.Thread(target=self._fetch_win_info, daemon=True).start()
