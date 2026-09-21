@@ -1348,7 +1348,7 @@ print_separator
 echo ""
 echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}${BOLD}║                                                                ║${NC}"
-echo -e "${GREEN}${BOLD}║                    $(msg "install_complete")                      ║${NC}"
+echo -e "${GREEN}${BOLD}║                    $(msg "install_complete")                        ║${NC}"
 echo -e "${GREEN}${BOLD}║                                                                ║${NC}"
 echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
