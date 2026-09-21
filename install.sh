@@ -1172,14 +1172,15 @@ step_configure_network() {
 step_configure_hyprland() {
   print_step "$(msg "config_hyprland")"
 
-  # ~/.config/hypr гарантированно существует (создан в step_clone_repo)
+  local target_require='require("Vidgex-Shell/vidgex-shell-conf/vidgex-shell")'
+
   if [ ! -d "$HOME/.config/hypr" ]; then
     mkdir -p "$HOME/.config/hypr" || { print_error "Cannot create ~/.config/hypr"; return 1; }
     print_info "Created ~/.config/hypr directory"
   fi
 
   if [ -f "$HYPRLAND_CONF" ]; then
-    if grep -qF 'require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")' "$HYPRLAND_CONF" 2>/dev/null; then
+    if grep -qF "$target_require" "$HYPRLAND_CONF" 2>/dev/null; then
       print_success "$(msg "hyprland_already_configured")"
       print_info "$(msg "hyprland_skip")"
       echo -e "         ${GRAY}→ $HYPRLAND_CONF${NC}"
@@ -1187,7 +1188,6 @@ step_configure_hyprland() {
     fi
   fi
 
-  # Резервная копия старого конфига
   if [ -f "$HYPRLAND_CONF" ]; then
     local backup_file="${HYPRLAND_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
     print_info "$(msg "hyprland_backup")"
@@ -1202,7 +1202,6 @@ step_configure_hyprland() {
 
   print_info "$(msg "hyprland_creating")"
 
-  # Записываем Lua-конфиг
   if ! cat > "$HYPRLAND_CONF" <<'HYPR_EOF'
 -- ###############################
 -- ### ARLOTT HYPERLAND CONFIG ###
@@ -1274,8 +1273,7 @@ HYPR_EOF
     print_error "Failed to write hyprland.lua"; return 1
   fi
 
-  # Верификация
-  if ! grep -qF 'require("Vidgex-Shell.vidgex-shell-conf-lua.vidgex-shell")' "$HYPRLAND_CONF" 2>/dev/null; then
+  if ! grep -qF "$target_require" "$HYPRLAND_CONF" 2>/dev/null; then
     print_error "Verification failed: config was not written correctly"
     return 1
   fi
@@ -1356,9 +1354,9 @@ echo -e "${GREEN}${BOLD}╚═════════════════�
 echo ""
 echo -e "${GRAY}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/hypr/Vidgex-Shell${NC}                          ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.lua${NC}                    ${GRAY}║${NC}"
-echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                            ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Vidgex-Shell:${NC} ${CYAN}~/.config/hypr/Vidgex-Shell${NC}                      ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Hyprland cfg:${NC} ${CYAN}~/.config/hypr/hyprland.lua${NC}                     ${GRAY}║${NC}"
+echo -e "${GRAY}║${NC}  ${WHITE}Branch:${NC}       ${CYAN}$REPO_BRANCH${NC}                                       ${GRAY}║${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
 echo -e "${GRAY}╠════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GRAY}║                                                                ║${NC}"
