@@ -386,23 +386,38 @@ class FolderBrowser(Box):
     def _reload(self):
         self._clear_rows()
         cur = self._cur
-        if not cur:
+        if not cur or not os.path.isdir(cur):
             return
-        entries = list(os.scandir(cur))
+
+        try:
+            entries = list(os.scandir(cur))
+        except OSError:
+            return
 
         dirs, dot_dirs, files = [], [], []
         for e in entries:
-            name = e.name
-            is_dir = e.is_dir(follow_symlinks=True)
-            st = e.stat(follow_symlinks=True)
-            mtime, size = st.st_mtime, st.st_size
-            if is_dir:
-                entry = (name, e.path, True, size, mtime, "Folder")
-                (dot_dirs if name.startswith(".") else dirs).append(entry)
-            else:
-                ext = os.path.splitext(name)[1].lstrip(".").upper()
-                files.append((name, e.path, False, size, mtime,
-                              ext if ext else "File"))
+            try:
+                name = e.name
+                try:
+                    is_dir = e.is_dir(follow_symlinks=True)
+                except OSError:
+                    is_dir = False
+
+                try:
+                    st = e.stat(follow_symlinks=True)
+                except OSError:
+                    st = e.stat(follow_symlinks=False)
+
+                mtime, size = st.st_mtime, st.st_size
+
+                if is_dir:
+                    entry = (name, e.path, True, size, mtime, "Folder")
+                    (dot_dirs if name.startswith(".") else dirs).append(entry)
+                else:
+                    ext = os.path.splitext(name)[1].lstrip(".").upper()
+                    files.append((name, e.path, False, size, mtime, ext if ext else "File"))
+            except OSError:
+                continue
 
         dirs.sort(key=lambda t: t[0].casefold())
         dot_dirs.sort(key=lambda t: t[0].casefold())
