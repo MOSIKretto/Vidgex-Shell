@@ -10,6 +10,7 @@ from modules.Notch.MainWindow.wallpapers import WallpaperSelector
 from modules.Notch.MainWindow.dashboard import Dashboard
 
 _NAV_ITEMS = ("dashboard", "player", "wallpapers", "close")
+_DASHBOARD_APPLETS = {"dashboard", "network_applet", "bluetooth"}
 
 
 class MainWindow(Box):
@@ -88,7 +89,12 @@ class MainWindow(Box):
                 self.switcher.get_style_context().remove_class("close-focused")
                 self.close_button.get_style_context().remove_class("focused")
                 if self.notch:
-                    self.notch._cw = name
+                    # Не перезаписываем _cw, если внутри открыт конкретный апплет (network_applet, bluetooth)
+                    if name == "dashboard":
+                        if self.notch._cw not in _DASHBOARD_APPLETS:
+                            self.notch._cw = "dashboard"
+                    else:
+                        self.notch._cw = name
                 break
 
     def _set_nav_index(self, idx: int):
@@ -103,7 +109,12 @@ class MainWindow(Box):
             if tgt := self._sections.get(section_name):
                 self.stack.set_visible_child(tgt)
             if self.notch:
-                self.notch._cw = section_name
+                # Аналогично защищаем под-апплеты
+                if section_name == "dashboard":
+                    if self.notch._cw not in _DASHBOARD_APPLETS:
+                        self.notch._cw = "dashboard"
+                else:
+                    self.notch._cw = section_name
         else:
             sw_ctx.add_class("close-focused")
             btn_ctx.add_class("focused")

@@ -49,20 +49,17 @@ hl.bind("SUPER + mouse:272", hl.dsp.window.drag(),   { mouse = true })
 hl.bind("ALT + mouse:272",   hl.dsp.window.resize(), { mouse = true })
 
 -- Громкость
-hl.bind("XF86AudioRaiseVolume",
-    hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 10%+"),
-    { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume",
-    hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"),
-    { locked = true, repeating = true })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 10%+"), { locked = true, repeating = true })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"), { locked = true, repeating = true })
 
 -- Яркость
-hl.bind("XF86MonBrightnessUp",
-    hl.dsp.exec_cmd("brightnessctl set 10%+"),
-    { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown",
-    hl.dsp.exec_cmd("brightnessctl set 10%-"),
-    { locked = true, repeating = true })
+hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl set 10%+"), { locked = true, repeating = true })
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl set 10%-"), { locked = true, repeating = true })
+
+-- Микрофон
+hl.bind("F9", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 10%-"), { locked = true, repeating = true })
+hl.bind("F10", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SOURCE@ 10%+"), { locked = true, repeating = true })
+
 
 
 -- Работа с Vidgex‑Shell
