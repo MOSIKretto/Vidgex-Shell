@@ -1,12 +1,18 @@
 import json
+import math
+import os
 import random
 import subprocess
 import time as _time
 from gi.repository import Gst, GLib, Gtk
 
-from modules.Notch.MainWindow.Dashboard.Controls.volume import Volume
+try:
+    from modules.Notch.MainWindow.Dashboard.Controls.volume import Volume
+except Exception:
+    Volume = None
 
 _NUM_BARS = 80
+# Число полос FFT спектра. Должно совпадать с _SPECTRUM_BANDS в player.py.
 _FFT_BINS = 512
 _FPS_MS = 20  # ~50 fps — не менять
 
@@ -109,7 +115,11 @@ class _SystemVolumePoller:
 
     def _poll(self):
         self.value = _read_wpctl_volume()
-        for cb in list(self._subs): cb()
+        for cb in list(self._subs):
+            try:
+                cb()
+            except Exception:
+                pass
         return True
 
 
@@ -266,10 +276,18 @@ class GlitchVisualizer(Gtk.DrawingArea):
         self._vol_target = self._vol_current = 1.0
         self._vol_svc = self._vol_sig_id = None
         self._poller = None
+
+        # ВАЖНО: _timer_id должен существовать ДО вызова _init_volume_tracker(),
+        # т.к. тот сразу вызывает _update_volume() -> _ensure_timer(), которая
+        # обращается к self._timer_id. Если плеер уже играет в момент создания
+        # виджета (типичная ситуация для Telegram — MPRIS появляется сразу в
+        # состоянии Playing), это раньше приводило к AttributeError прямо
+        # внутри конструктора и обрывало создание вкладки на середине.
+        self._timer_id = None
+
         self._init_volume_tracker()
 
         self.connect("draw", self._on_draw)
-        self._timer_id = None
 
     def _inject_css(self):
         try:

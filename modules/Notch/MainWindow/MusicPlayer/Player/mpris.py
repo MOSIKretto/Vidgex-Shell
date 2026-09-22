@@ -4,6 +4,7 @@ import os
 import base64
 import hashlib
 import contextlib
+import traceback
 import gi
 
 gi.require_version("Playerctl", "2.0")
@@ -29,6 +30,14 @@ _ART_KEYS = ("mpris:artUrl", "xesam:artUrl")
 _ALBUM_KEYS = ("xesam:album", "xesam:albumTitle", "album")
 _TITLE_FALLBACK_KEYS = ("xesam:title", "title", "xesam:name", "xesam:displayName")
 _ARTIST_FALLBACK_KEYS = ("xesam:artist", "xesam:albumArtist", "xesam:composer", "artist")
+
+# Как часто пере-сверяем список player-names с уже управляемыми плеерами.
+# Это основной механизм подхвата плееров вроде Telegram, которые регистрируют
+# своё MPRIS DBus-имя с небольшой задержкой относительно сигнала
+# "name-appeared" (в момент сигнала объект PlayerName ещё может быть не готов
+# к использованию, а повторно использовать его позже небезопасно — GI boxed
+# структуры такого рода валидны обычно только на время самого callback'а).
+_RECONCILE_INTERVAL_S = 1
 
 
 def _decode_data_uri(data_uri: str) -> tuple[bytes | None, str]:
@@ -543,37 +552,89 @@ class MprisPlayerManager(Service):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._manager = Playerctl.PlayerManager.new()
+        # id-ы (instance/name) уже подключённых плееров — чтобы не подключать
+        # один и тот же плеер дважды (сигнал + reconciliation могут
+        # пересечься по времени).
+        self._managed_ids: set[str] = set()
+        self._reconcile_id = None
 
         self._sig_appeared = self._manager.connect("name-appeared", self._on_appeared)
         self._sig_vanished = self._manager.connect("name-vanished", self._on_vanished)
 
         self._add_existing_players()
 
+        # Некоторые клиенты (например, Telegram) регистрируют своё MPRIS
+        # DBus-имя с небольшой задержкой относительно самого сигнала
+        # "name-appeared", либо интерфейс в момент сигнала ещё не готов
+        # к использованию. Повторно использовать объект PlayerName из
+        # сигнала позже — небезопасно (GI boxed-структуры такого типа обычно
+        # валидны только на время самого callback'а). Поэтому вместо ретраев
+        # с сохранённой ссылкой держим лёгкий цикл сверки: каждую секунду
+        # заново запрашиваем актуальный player-names и подключаем всё, что
+        # ещё не подключено, используя каждый раз свежую ссылку.
+        self._reconcile_id = GLib.timeout_add_seconds(_RECONCILE_INTERVAL_S, self._reconcile)
+
+    @staticmethod
+    def _pname_id(pname) -> str:
+        return str(getattr(pname, "instance", None) or getattr(pname, "name", None) or pname)
+
     def _add_existing_players(self):
         try:
             for player_name in self._manager.get_property("player-names") or []:
-                player = Playerctl.Player.new_from_name(player_name)
-                self._manager.manage_player(player)
-                self.emit("player-appeared", player)
+                self._try_manage(player_name)
         except Exception:
-            pass
+            print("[MprisPlayerManager] ошибка чтения существующих плееров:")
+            print(traceback.format_exc())
 
-    def _on_appeared(self, manager, player_name):
+    def _try_manage(self, player_name) -> bool:
+        """
+        Пытается подключить плеер по СВЕЖЕМУ объекту PlayerName (полученному
+        либо прямо из сигнала name-appeared, либо только что запрошенному
+        из manager.get_property("player-names") — важно не хранить и не
+        переиспользовать этот объект между вызовами GLib.timeout_add.
+        """
+        if not self._manager:
+            return False
+
+        pid = self._pname_id(player_name)
+        if pid in self._managed_ids:
+            return True
+
         try:
             new_player = Playerctl.Player.new_from_name(player_name)
-            manager.manage_player(new_player)
+            self._manager.manage_player(new_player)
+            self._managed_ids.add(pid)
             self.emit("player-appeared", new_player)
+            return True
         except Exception:
-            pass
+            print(f"[MprisPlayerManager] не удалось подключить плеер '{pid}':")
+            print(traceback.format_exc())
+            return False
+
+    def _on_appeared(self, manager, player_name):
+        # player_name здесь гарантированно свежий (только что из сигнала) —
+        # использовать его напрямую безопасно.
+        self._try_manage(player_name)
 
     def _on_vanished(self, manager, player_name):
-        try:
-            pid = player_name.instance if player_name.instance else player_name.name
-        except Exception:
-            pid = getattr(player_name, "name", str(player_name))
-
+        pid = self._pname_id(player_name)
+        self._managed_ids.discard(pid)
         if pid:
-            self.emit("player-vanished", str(pid))
+            self.emit("player-vanished", pid)
+
+    def _reconcile(self):
+        if not self._manager:
+            self._reconcile_id = None
+            return False
+        try:
+            for player_name in self._manager.get_property("player-names") or []:
+                pid = self._pname_id(player_name)
+                if pid not in self._managed_ids:
+                    self._try_manage(player_name)
+        except Exception:
+            print("[MprisPlayerManager] ошибка при сверке списка плееров:")
+            print(traceback.format_exc())
+        return True
 
     @Property(object, "readable")
     def players(self):
@@ -595,6 +656,9 @@ class MprisPlayerManager(Service):
             return []
 
     def destroy(self):
+        if self._reconcile_id:
+            GLib.source_remove(self._reconcile_id)
+            self._reconcile_id = None
         if self._manager:
             try:
                 self._manager.disconnect(self._sig_appeared)
@@ -602,3 +666,4 @@ class MprisPlayerManager(Service):
             except Exception:
                 pass
             self._manager = None
+        self._managed_ids.clear()
