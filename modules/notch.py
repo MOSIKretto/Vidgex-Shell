@@ -91,10 +91,8 @@ class Notch(Window):
             children=[self.awc],
         )
 
-        # OSD контроллер
         self.ctrl_osd = ControlOSD(on_changed=self._on_ctrl_changed)
 
-        # Стек компактного режима: переключение Заголовок окна <-> OSD
         self.cs = Stack(
             name="notch-compact-stack",
             transition_type="slide-up-down",
@@ -275,7 +273,6 @@ class Notch(Window):
         self.nb.add_style_class("open")
         self.stack.add_style_class("open")
         self.keyboard_mode = "exclusive"
-        self._cw = name
 
         if name in APPLET_MAP or name in {"wallpapers", "player"}:
             self.stack.set_visible_child(self.main_window)
@@ -299,6 +296,8 @@ class Notch(Window):
                 if name == "launcher" and hasattr(widget, "ent"):
                     widget.ent.set_text("")
                     widget.ent.grab_focus()
+
+        self._cw = name
 
     def close_notch(self) -> None:
         self.keyboard_mode = "none"

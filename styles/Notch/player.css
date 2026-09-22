@@ -497,3 +497,20 @@
   min-width: 0; min-height: 0; padding: 0;
   border: none; background: transparent;
 }
+
+/* ПРАВИЛЬНЫЙ ВАРИАНТ ДЛЯ GTK3 (без !important) */
+#player-box,
+#player-info-box,
+#player-overlay {
+  background-color: transparent;
+  background-image: none;
+}
+
+#player {
+  background-color: alpha(var(--surface), 0.82);
+  border-radius: 16px;
+}
+
+#glitch-visualizer {
+  color: var(--primary);
+}

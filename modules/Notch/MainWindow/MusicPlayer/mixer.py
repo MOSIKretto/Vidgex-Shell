@@ -584,22 +584,6 @@ class MixerSection(Box):
         self.pack_start(self._overlay, False, False, 0)
         self.show_all()
 
-    def do_get_preferred_width(self):
-        min_w, _ = super().do_get_preferred_width()
-        return (min_w, min_w)
-
-    def do_get_preferred_width_for_height(self, height):
-        min_w, _ = super().do_get_preferred_width_for_height(height)
-        return (min_w, min_w)
-
-    def do_get_preferred_height(self):
-        min_h, _ = super().do_get_preferred_height()
-        return (min_h, min_h)
-
-    def do_get_preferred_height_for_width(self, width):
-        min_h, _ = super().do_get_preferred_height_for_width(width)
-        return (min_h, min_h)
-
     def _on_mute_clicked(self, _btn):
         if self._anim_id:
             GLib.source_remove(self._anim_id)

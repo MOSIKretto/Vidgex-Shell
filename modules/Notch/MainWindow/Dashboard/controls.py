@@ -59,7 +59,6 @@ DOT_INACTIVE = "○"
 
 
 class ControlOSD(Box):
-    """Единичный OSD индикатор: иконка, 10 точек с ASCII-глитчем и процентное значение."""
     __slots__ = (
         '_icon_lbl', '_val_lbl', '_dots', '_dots_box',
         '_dot_rem', '_dot_tid', '_dot_target',
@@ -88,7 +87,6 @@ class ControlOSD(Box):
         icon_box = Box(name="osd-icon-box", v_align="center", children=[self._icon_lbl])
         self.add(icon_box)
 
-        # 2. 10 крупных точек (строгая моноширина)
         self._dots = []
         self._dots_box = Box(name="osd-dots-box", orientation="h", spacing=2, v_align="center")
         
@@ -180,7 +178,6 @@ class ControlOSD(Box):
                 ctx.remove_class("active")
             return False
 
-        # Кадр ASCII-глитча
         char = random.choice(_ASCII_CHARS)
         dot.set_text(char)
         ctx.remove_class("active")
