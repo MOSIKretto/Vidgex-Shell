@@ -59,10 +59,21 @@
     color: var(--shadow);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   ОСТРОВА БАРА, "ПРИРОЩЁННЫЕ" К ЭКРАНУ
+   ════════════════════════════════════════════════════════════════ */
+
+/* Обёртки-группы (остров + MyCorner) — чисто layout, без фона */
+#bar-group-left,
+#bar-group-right,
+#bar-group-right-top {
+    background-color: transparent;
+}
+
 #power-battery-container {
   background-color: var(--shadow);
   padding: 0;
-  border-radius: 12px;
+  border-radius: 0px 0px 0px 12px;
   min-height: 36px;
 }
 
@@ -73,7 +84,6 @@
   min-height: 36px;
 }
 
-/* ── Фиксированная ширина без запрещенного text-align ── */
 #power-battery-container #language-indicator #lang-label {
   font-weight: bold;
   font-size: 14px;
@@ -103,14 +113,55 @@
 
 #workspaces-container-top {
   background-color: var(--shadow);
-  border-radius: 12px 12px 12px 0px; 
+  border-radius: 0px 0px 12px 0px;
 }
 
 #workspaces-container-left {
   background-color: var(--shadow);
-  border-radius: 0px 0px 12px 12px;
+  border-radius: 0px 0px 12px 0px;
   margin-top: -16px; 
-  padding-top: 14px;
+  padding-top: 16px;
+}
+
+/* ── Контейнеры вокруг MyCorner обязаны быть прозрачными ── */
+#bar-left-corner,
+#bar-right-corner,
+#bar-right-bottom-corner,
+#sidebar-bottom-corner,
+#sidebar-top-corner,
+#sidebar-top-corner-static,
+#bar-left-corner #corner-container,
+#bar-right-corner #corner-container,
+#bar-right-bottom-corner #corner-container,
+#sidebar-bottom-corner #corner-container,
+#sidebar-top-corner #corner-container,
+#sidebar-top-corner-static #corner-container {
+  background-color: transparent;
+}
+
+/* ── Сама фигура MyCorner красится в цвет островов ── */
+#bar-left-corner #corner,
+#bar-right-corner #corner,
+#bar-right-bottom-corner #corner,
+#sidebar-bottom-corner #corner,
+#sidebar-top-corner #corner,
+#sidebar-top-corner-static #corner {
+  background-color: var(--shadow);
+}
+
+/* ── Уголок, живущий ВНУТРИ Revealer.
+   Никаких сдвигов — он и так стоит вплотную к правому краю панели,
+   потому что в GTK-контейнере является её горизонтальным соседом. */
+#sidebar-top-corner {
+  margin: 0px;
+  padding: 0px;
+}
+
+/* ── Статичный уголок, показываемый только когда панель скрыта.
+   Компенсирует смещение окна на -8px, чтобы прижаться к левому краю экрана. */
+#sidebar-top-corner-static {
+  margin: 0px 0px 0px 8px;
+  padding: 0px;
 }
 
 /* Точки рядов */

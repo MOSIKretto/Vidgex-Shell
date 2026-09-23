@@ -1,5 +1,16 @@
 import weakref
 
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk
+
+# Импортируем GtkLayerShell для жесткой фиксации отступа
+try:
+    gi.require_version("GtkLayerShell", "0.1")
+    from gi.repository import GtkLayerShell
+except ValueError:
+    GtkLayerShell = None
+
 from fabric.hyprland.widgets import (
     HyprlandLanguage as Language,
     get_hyprland_connection,
@@ -15,6 +26,7 @@ from modules.Bar.powerMenu import PowerMenu
 from modules.Bar.toolBox import ToolBox
 from modules.Bar.workspaces import TopWorkspaces, SideBarWindow
 from modules.Bar.battery import Battery
+from modules.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
 import services.icons as icons
@@ -22,14 +34,19 @@ import services.icons as icons
 
 class Bar(Window):
     def __init__(self, monitor_id=0, **kwargs):
-        super().__init__(exclusivity="auto", monitor_id=monitor_id)
+        # Передаем 36 напрямую или отключаем auto
+        super().__init__(exclusivity=36, monitor_id=monitor_id)
         self.mid = monitor_id
+
+        # Фиксируем размер эксклюзивной зоны ровно в 36px
+        if GtkLayerShell and GtkLayerShell.is_layer_window(self):
+            GtkLayerShell.set_exclusive_zone(self, 36)
 
         notch = kwargs.get("notch")
         self._notch_ref = weakref.ref(notch) if notch else None
 
         self.anchor = "left top right"
-        self.margin = "-4px -4px -8px -4px"
+        self.margin = "0px -8px 0px -8px"
 
         self.conn = get_hyprland_connection()
         self.lang = Language()
@@ -56,11 +73,15 @@ class Bar(Window):
     def _build(self):
         self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")
 
-        self.dt  = DateTime(name="date-time", formatters=["%H:%M"])
+        self.dt = DateTime(name="date-time", formatters=["%H:%M"], v_align="center")
+
         self.bat = Battery()
+        if hasattr(self.bat, "set_valign"):
+            self.bat.set_valign(Gtk.Align.CENTER)
 
         self.bt = Button(
             name="button-bar",
+            v_align="center",
             tooltip_markup="<b>Tools</b>",
             on_clicked=self._tools,
             child=Label(name="button-bar-label", markup=icons.photo),
@@ -69,45 +90,110 @@ class Bar(Window):
 
         self.bp = Button(
             name="button-bar",
+            v_align="center",
             tooltip_markup="<b>Power menu</b>",
             on_clicked=self._pwr,
             child=Label(name="button-bar-label", markup=icons.shutdown),
         )
         self.power_menu.set_trigger_button(self.bp)
 
-        self.ll = Label(name="lang-label", xalign=0.5)
+        self.ll = Label(name="lang-label", xalign=0.5, v_align="center")
 
         self.lang_eb = EventBox(
+            v_align="center",
             child=Box(
                 name="language-indicator",
+                v_align="center",
                 spacing=0,
                 children=[self.ll],
-            )
+            ),
         )
 
         self.lang_eb.connect("enter-notify-event", self._lang_enter)
         self.lang_eb.connect("leave-notify-event", self._lang_leave)
 
-        self.add(
-            CenterBox(
-                name="bar-inner",
-                start_children=Box(
-                    name="start-container",
-                    spacing=4,
-                    children=[self.ws],
-                ),
-                end_children=Box(
-                    name="end-container",
-                    spacing=4,
-                    children=[
-                        Box(
-                            name="power-battery-container",
-                            children=[self.dt, self.lang_eb, self.bat, self.bt, self.bp],
-                        ),
-                    ],
-                ),
-            )
+        # ────────────────────────────────────────────────────────────
+        # Левая часть бара: строго прижимаем к верху (v_align="start")
+        # ────────────────────────────────────────────────────────────
+        start_container = Box(
+            name="start-container",
+            spacing=4,
+            v_align="start",
+            children=[self.ws],
         )
+
+        left_group = Box(
+            name="bar-group-left",
+            orientation="h",
+            spacing=0,
+            v_align="start",
+            children=[
+                start_container,
+                Box(
+                    name="bar-left-corner",
+                    orientation="v",
+                    v_align="start",
+                    h_align="start",
+                    children=[MyCorner("top-left")],
+                ),
+            ],
+        )
+
+        # ────────────────────────────────────────────────────────────
+        # Правая часть бара с нижним уголком
+        # ────────────────────────────────────────────────────────────
+        power_battery_container = Box(
+            name="power-battery-container",
+            spacing=4,
+            v_align="fill",
+            children=[self.dt, self.lang_eb, self.bat, self.bt, self.bp],
+        )
+
+        bar_group_right_top = Box(
+            name="bar-group-right-top",
+            orientation="h",
+            spacing=0,
+            v_align="start",
+            children=[
+                Box(
+                    name="bar-right-corner",
+                    orientation="v",
+                    v_align="start",
+                    h_align="end",
+                    children=[MyCorner("top-right")],
+                ),
+                power_battery_container,
+            ],
+        )
+
+        right_group = Box(
+            name="bar-group-right",
+            orientation="v",
+            spacing=0,
+            v_align="start",
+            children=[
+                bar_group_right_top,
+                Box(
+                    name="bar-right-bottom-corner",
+                    orientation="v",
+                    v_align="start",
+                    h_align="end",
+                    children=[MyCorner("top-right")],
+                ),
+            ],
+        )
+
+        # ────────────────────────────────────────────────────────────
+        # Центровщик бара
+        # ────────────────────────────────────────────────────────────
+        self.nb = CenterBox(
+            name="bar-inner",
+            v_align="start",
+            start_children=left_group,
+            end_children=right_group,
+        )
+
+        self.add(self.nb)
 
     def _lang_enter(self, w, event):
         return False

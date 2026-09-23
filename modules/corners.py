@@ -28,15 +28,6 @@ class Corners(Window):
             name="all-corners",
             orientation="v",
             children=(
-                Box(
-                    name="top-corners",
-                    orientation="h",
-                    children=(
-                        MyCorner("top-left"), 
-                        Box(h_expand=True), 
-                        MyCorner("top-right")
-                    ),
-                ),
                 Box(v_expand=True),
                 Box(
                     name="bottom-corners",

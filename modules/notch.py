@@ -59,7 +59,10 @@ def _icon(cls: str, size: int = 20):
 
 class Notch(Window):
     def __init__(self, **kwargs):
-        super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
+        # Было -40px (утягивало за экран на 4px).
+        # -36px опускает выемку ровно на уровень экрана. 
+        # Если захотите опустить ещё чуть ниже — поставьте -34px или -32px.
+        super().__init__(anchor="top", margin="-36px 0px 0px 0px", monitor=0)
 
         self._cw: str | None = None
         self._cht: int | None = None
@@ -111,7 +114,7 @@ class Notch(Window):
                 children=[self.cs],
             )
         )
-        # 290px идеально вмещают 10 крупных точек, иконку и надпись 100%
+        # Высота строго 36px
         self.compact.set_size_request(290, 36)
 
         self.main_window  = MainWindow(notch=self)
