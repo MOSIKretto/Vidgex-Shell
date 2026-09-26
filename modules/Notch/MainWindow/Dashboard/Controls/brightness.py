@@ -1,16 +1,33 @@
+import os
+
 from fabric.core.service import Property, Service, Signal
-from fabric.utils import exec_shell_command_async, monitor_file
+from fabric.utils import monitor_file
 from gi.repository import GLib
 
 from modules.Notch.MainWindow.Dashboard.Controls.common import BaseIconButton, BaseSmallIndicator, BaseSmoothSlider
 import services.icons as icons
 
+
 _BTH = (75, 24)
 _BIC = (icons.brightness_high, icons.brightness_medium, icons.brightness_low)
+_BACKLIGHT_DIR = "/sys/class/backlight"
+
 
 def _bicon(p: int) -> str:
     return _BIC[0] if p >= _BTH[0] else (_BIC[1] if p >= _BTH[1] else _BIC[2])
 
+def _pick_backlight_device() -> str | None:
+    if not os.path.isdir(_BACKLIGHT_DIR):
+        return None
+    entries = sorted(os.listdir(_BACKLIGHT_DIR))
+    if not entries:
+        return None
+    # acpi_video* — generic ACPI-интерфейс, часто присутствует параллельно
+    # с настоящим драйвером панели (intel_backlight, amdgpu_bl0 и т.д.) и
+    # при этом реально не управляет яркостью. Предпочитаем вендор-специфичные
+    # устройства — так же поступает brightnessctl.
+    preferred = [e for e in entries if not e.startswith("acpi_video")]
+    return (preferred or entries)[0]
 
 class Brightness(Service):
     instance = None
@@ -26,30 +43,21 @@ class Brightness(Service):
 
     def __init__(self):
         super().__init__()
-        self.device = None
-        self.base_path = None
-        self.max_screen = 0
+        self.device = _pick_backlight_device()
+        self.base_path = f"{_BACKLIGHT_DIR}/{self.device}" if self.device else None
+        self.max_screen = -1
         self._valid = False
+        self.monitor = None
 
-        try:
-            backlight_dir = "/sys/class/backlight"
-            if GLib.file_test(backlight_dir, GLib.FileTest.IS_DIR):
-                dir_handle = GLib.Dir.open(backlight_dir, 0)
-                name = dir_handle.read_name()
-                if name:
-                    self.device = name
-                    self.base_path = f"{backlight_dir}/{name}"
-        except Exception as e:
-            print(f"[Brightness] Ошибка поиска backlight: {e}")
-
-        if not self.device or not self.base_path:
-            self.max_screen = -1
+        if not self.device:
             return
 
         try:
             with open(f"{self.base_path}/max_brightness") as f:
                 self.max_screen = int(f.read().strip())
-        except Exception:
+        except (OSError, ValueError):
+            # sysfs-запись может быть недоступна сразу после смены режима
+            # питания панели — считаем устройство непригодным.
             self.max_screen = -1
             return
 
@@ -62,11 +70,12 @@ class Brightness(Service):
         try:
             self.monitor = monitor_file(f"{self.base_path}/brightness")
             self.monitor.connect("changed", lambda *_: self._read_and_emit())
-        except Exception:
-            self._valid = False
+        except GLib.Error:
+            # Потеря live-синхронизации с внешними изменениями яркости не
+            # должна отключать собственное чтение/запись через сервис.
+            self.monitor = None
 
-        if self._valid:
-            self._read_and_emit()
+        self._read_and_emit()
 
     def _read_and_emit(self):
         value = self.screen_brightness
@@ -80,7 +89,7 @@ class Brightness(Service):
         try:
             with open(f"{self.base_path}/brightness") as f:
                 return int(f.read().strip())
-        except Exception:
+        except (OSError, ValueError):
             return -1
 
     @screen_brightness.setter
@@ -89,9 +98,12 @@ class Brightness(Service):
             return
         value = max(0, min(int(value), self.max_screen))
         try:
-            exec_shell_command_async(f"brightnessctl --device='{self.device}' set {value}", None)
-        except Exception as e:
-            print(f"[Brightness] Ошибка brightnessctl: {e}")
+            GLib.spawn_command_line_async(f"brightnessctl --device='{self.device}' set {value}")
+        except GLib.Error:
+            # brightnessctl отсутствует в системе или бинарник удалён после
+            # старта сервиса — молча пропускаем попытку установки яркости,
+            # как и с недоступным sysfs-чтением у GPU-опроса.
+            pass
 
 
 class BrightnessSlider(BaseSmoothSlider):
@@ -100,6 +112,7 @@ class BrightnessSlider(BaseSmoothSlider):
         self.service = Brightness.get_initial()
         self._tid = None
         self._target = -1
+        self._hid = None
 
         if self.service.max_screen <= 0:
             self.set_no_show_all(True)
@@ -139,18 +152,23 @@ class BrightnessSmall(BaseSmallIndicator):
     def __init__(self, **kwargs):
         super().__init__("button-bar-brightness", "button-brightness", "brightness-label", **kwargs)
         self.service = Brightness.get_initial()
-        if self.service.screen_brightness == -1:
+        self._hid = None
+
+        if self.service.max_screen <= 0:
             return
+
         self._hid = self.service.connect("screen", self._chg)
         self._chg()
 
     def _chg(self, *_):
         mx = self.service.max_screen
-        if mx <= 0: return
+        if mx <= 0:
+            return
         p = int(self.service.screen_brightness * 100 / mx)
         self.update_ui(p / 100.0, _bicon(p), f"Brightness: {p}%")
 
     def cleanup(self):
+        super().cleanup()
         if self._hid:
             self.service.disconnect(self._hid)
             self._hid = None
@@ -160,8 +178,11 @@ class BrightnessIcon(BaseIconButton):
     def __init__(self, **kwargs):
         super().__init__("brightness-icon", "brightness-label-dash", **kwargs)
         self.service = Brightness.get_initial()
-        if self.service.screen_brightness == -1:
+        self._hid = None
+
+        if self.service.max_screen <= 0:
             return
+
         self._hid = self.service.connect("screen", self._chg)
         self._chg()
 
@@ -173,7 +194,8 @@ class BrightnessIcon(BaseIconButton):
 
     def _chg(self, *_):
         mx = self.service.max_screen
-        if mx <= 0: return
+        if mx <= 0:
+            return
         p = int(self.service.screen_brightness * 100 / mx)
         self.update_ui(_bicon(p), f"Brightness: {p}%")
 

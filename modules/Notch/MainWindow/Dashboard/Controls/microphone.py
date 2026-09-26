@@ -4,6 +4,12 @@ from modules.Notch.MainWindow.Dashboard.Controls.common import BaseIconButton, B
 import services.icons as icons
 
 
+def _icon_and_tip(service: "Microphone", cur: int) -> tuple[str, str]:
+    is_off = cur == 0 or service.muted
+    icon = icons.mic if not is_off else icons.mic_mute
+    tip = f"Microphone: {cur}%" if not is_off else "Microphone off"
+    return icon, tip
+
 class Microphone(Service):
     instance = None
 
@@ -30,8 +36,13 @@ class Microphone(Service):
 
     def _on_stream_notify(self, *_):
         if self._stream and self._stream_hid:
-            try: self._stream.disconnect(self._stream_hid)
-            except Exception: pass
+            # Стрим может успеть стать невалидным (устройство отключено
+            # физически раньше, чем пришло событие об удалении) — тогда
+            # disconnect на уже мёртвом GObject кидает TypeError.
+            try:
+                self._stream.disconnect(self._stream_hid)
+            except TypeError:
+                pass
             self._stream_hid = None
 
         self._stream = self.audio.microphone
@@ -44,7 +55,8 @@ class Microphone(Service):
             self.emit("changed", 0)
 
     def _on_stream_changed(self, *_):
-        if not self._stream: return
+        if not self._stream:
+            return
         val = int(round(self._stream.volume))
         muted = bool(self._stream.muted)
         if val != self._last_val or muted != self._last_muted:
@@ -58,7 +70,8 @@ class Microphone(Service):
 
     @volume.setter
     def volume(self, value: int):
-        if not self._stream: return
+        if not self._stream:
+            return
         value = max(0, min(self.max_volume, int(value)))
         if int(round(self._stream.volume)) != value:
             self._stream.volume = float(value)
@@ -100,11 +113,11 @@ class MicSmall(BaseSmallIndicator):
         self._chg(None, self.service.volume)
 
     def _chg(self, _, cur):
-        is_off = cur == 0 or self.service.muted
-        icon = icons.mic if not is_off else icons.mic_mute
-        self.update_ui(cur / 100.0, icon, f"Microphone: {cur}%" if not is_off else "Microphone off")
+        icon, tip = _icon_and_tip(self.service, cur)
+        self.update_ui(cur / 100.0, icon, tip)
 
     def cleanup(self):
+        super().cleanup()
         if self._hid:
             self.service.disconnect(self._hid)
             self._hid = None
@@ -124,9 +137,8 @@ class MicIcon(BaseIconButton):
         self.service.volume = int(val)
 
     def _chg(self, _, cur):
-        is_off = cur == 0 or self.service.muted
-        icon = icons.mic if not is_off else icons.mic_mute
-        self.update_ui(icon, f"Microphone: {cur}%" if not is_off else "Microphone off")
+        icon, tip = _icon_and_tip(self.service, cur)
+        self.update_ui(icon, tip)
 
     def cleanup(self):
         super().cleanup()

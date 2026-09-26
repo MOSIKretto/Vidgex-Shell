@@ -8,6 +8,7 @@ from fabric.widgets.stack import Stack
 from modules.Notch.MainWindow.Dashboard.calendar import Calendar
 from modules.Notch.MainWindow.Dashboard.time import TimeWidget
 from modules.Notch.MainWindow.Dashboard.network import NetworkConnections
+from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 from modules.Notch.MainWindow.Dashboard.bluetooth import BluetoothConnections
 from modules.Notch.MainWindow.Dashboard.buttons import Buttons
 from modules.Notch.MainWindow.Dashboard.controls import ControlSliders
@@ -36,6 +37,11 @@ class Dashboard(Box):
         self._size_group_left = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
         self._size_group_left.add_widget(self.time_widget)
         self._size_group_left.add_widget(self.calendar)
+
+        # Единый NetworkClient на всё приложение: создаётся здесь, до Buttons
+        # и NetworkConnections, чтобы оба потребителя получили общий D-Bus
+        # клиент к NetworkManager вместо двух независимых.
+        self.network_client = NetworkClient()
 
         self.buttons = Buttons(widgets=self)
         self.bluetooth = BluetoothConnections(widgets=self)
@@ -154,7 +160,6 @@ class Dashboard(Box):
     def show_network_applet(self):
         self.applet_stack.set_visible_child(self.network_connections)
 
-
     def cleanup(self):
         for widget in (
             self.controls,
@@ -173,6 +178,12 @@ class Dashboard(Box):
             self.remove(self._root_container)
             self._root_container.destroy()
 
+        # network_client уничтожается последним: к этому моменту оба
+        # потребителя (NetworkConnections — явно выше, NetworkButton —
+        # через каскад destroy() root_container->buttons) уже отписались
+        # от его сигналов.
+        self.network_client.cleanup()
+
         self.notch = None
         self.time_widget = None
         self.calendar = None
@@ -184,6 +195,7 @@ class Dashboard(Box):
         self.notification_history = None
         self.network_connections = None
         self.applet_stack = None
+        self.network_client = None
         self._size_group_left = None
         self._size_group_right = None
         self._top_row = None

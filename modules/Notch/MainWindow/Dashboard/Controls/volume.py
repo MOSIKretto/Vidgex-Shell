@@ -3,9 +3,17 @@ from fabric.core.service import Property, Service, Signal
 from modules.Notch.MainWindow.Dashboard.Controls.common import BaseIconButton, BaseSmallIndicator, BaseSmoothSlider
 import services.icons as icons
 
+
 _IS = {"high": icons.vol_high, "medium": icons.vol_medium, "off": icons.vol_mute}
 _IB = {"high": icons.bluetooth_connected, "medium": icons.bluetooth, "off": icons.bluetooth_disconnected}
 
+
+def _icon_and_tip(service: "Volume", cur: int) -> tuple[str, str]:
+    is_off = cur == 0 or service.muted
+    im = _IB if service.is_bluetooth else _IS
+    icon = im["high"] if (cur > 74 and not is_off) else (im["medium"] if not is_off else im["off"])
+    tip = f"Volume: {cur}%" if not is_off else "Muted"
+    return icon, tip
 
 class Volume(Service):
     instance = None
@@ -33,8 +41,13 @@ class Volume(Service):
 
     def _on_stream_notify(self, *_):
         if self._stream and self._stream_hid:
-            try: self._stream.disconnect(self._stream_hid)
-            except Exception: pass
+            # Стрим может успеть стать невалидным (устройство отключено
+            # физически раньше, чем пришло событие об удалении) — тогда
+            # disconnect на уже мёртвом GObject кидает TypeError.
+            try:
+                self._stream.disconnect(self._stream_hid)
+            except TypeError:
+                pass
             self._stream_hid = None
 
         self._stream = self.audio.speaker
@@ -47,7 +60,8 @@ class Volume(Service):
             self.emit("changed", 0)
 
     def _on_stream_changed(self, *_):
-        if not self._stream: return
+        if not self._stream:
+            return
         val = int(round(self._stream.volume))
         muted = bool(self._stream.muted)
         if val != self._last_val or muted != self._last_muted:
@@ -61,7 +75,8 @@ class Volume(Service):
 
     @volume.setter
     def volume(self, value: int):
-        if not self._stream: return
+        if not self._stream:
+            return
         value = max(0, min(self.max_volume, int(value)))
         if int(round(self._stream.volume)) != value:
             self._stream.volume = float(value)
@@ -77,7 +92,8 @@ class Volume(Service):
 
     @property
     def is_bluetooth(self) -> bool:
-        if not self._stream: return False
+        if not self._stream:
+            return False
         return "bluetooth" in (getattr(self._stream, "icon_name", "") or "").lower()
 
 
@@ -112,12 +128,11 @@ class VolumeSmall(BaseSmallIndicator):
         self._chg(None, self.service.volume)
 
     def _chg(self, _, cur):
-        is_off = cur == 0 or self.service.muted
-        im = _IB if self.service.is_bluetooth else _IS
-        icon = im["high"] if (cur > 74 and not is_off) else (im["medium"] if not is_off else im["off"])
-        self.update_ui(cur / 100.0, icon, f"Volume: {cur}%" if not is_off else "Muted")
+        icon, tip = _icon_and_tip(self.service, cur)
+        self.update_ui(cur / 100.0, icon, tip)
 
     def cleanup(self):
+        super().cleanup()
         if self._hid:
             self.service.disconnect(self._hid)
             self._hid = None
@@ -137,10 +152,8 @@ class VolumeIcon(BaseIconButton):
         self.service.volume = int(val)
 
     def _chg(self, _, cur):
-        is_off = cur == 0 or self.service.muted
-        im = _IB if self.service.is_bluetooth else _IS
-        icon = im["high"] if (cur > 74 and not is_off) else (im["medium"] if not is_off else im["off"])
-        self.update_ui(icon, f"Volume: {cur}%" if not is_off else "Muted")
+        icon, tip = _icon_and_tip(self.service, cur)
+        self.update_ui(icon, tip)
 
     def cleanup(self):
         super().cleanup()

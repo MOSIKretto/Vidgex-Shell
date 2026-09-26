@@ -24,6 +24,7 @@ from modules.Notch.MainWindow.Dashboard.Controls.volume import (
 )
 import services.icons as icons
 
+
 __all__ = [
     "ControlSliders",
     "ControlSmall",
@@ -37,8 +38,10 @@ __all__ = [
 _BTH = (75, 24)
 _BIC = (icons.brightness_high, icons.brightness_medium, icons.brightness_low)
 
+
 def _bicon(p: int) -> str:
     return _BIC[0] if p >= _BTH[0] else (_BIC[1] if p >= _BTH[1] else _BIC[2])
+
 
 _IS = {"high": icons.vol_high, "medium": icons.vol_medium, "off": icons.vol_mute}
 _IB = {"high": icons.bluetooth_connected, "medium": icons.bluetooth, "off": icons.bluetooth_disconnected}
@@ -59,13 +62,6 @@ DOT_INACTIVE = "○"
 
 
 class ControlOSD(Box):
-    __slots__ = (
-        '_icon_lbl', '_val_lbl', '_dots', '_dots_box',
-        '_dot_rem', '_dot_tid', '_dot_target',
-        '_dev_levels', '_dev_dots', '_dev_muted', '_cur_dev',
-        '_on_changed', '_init_done', '_hids',
-    )
-
     def __init__(self, on_changed=None, **kwargs):
         super().__init__(
             name="control-osd",
@@ -75,13 +71,13 @@ class ControlOSD(Box):
             v_align="center",
             **kwargs
         )
+        self.connect("destroy", lambda _: self.cleanup())
 
         self._on_changed = on_changed
         self._init_done = False
         self._hids = []
         self._cur_dev = "speaker"
 
-        # 1. Иконка контрола
         self._icon_lbl = Label(name="osd-icon-label", markup=icons.vol_high, v_align="center")
         self._icon_lbl.set_yalign(0.5)
         icon_box = Box(name="osd-icon-box", v_align="center", children=[self._icon_lbl])
@@ -89,7 +85,7 @@ class ControlOSD(Box):
 
         self._dots = []
         self._dots_box = Box(name="osd-dots-box", orientation="h", spacing=2, v_align="center")
-        
+
         self._dot_rem = [0] * 10
         self._dot_tid = [None] * 10
         self._dot_target = [False] * 10
@@ -107,7 +103,6 @@ class ControlOSD(Box):
 
         self.add(self._dots_box)
 
-        # 3. Числовое значение процента
         self._val_lbl = Label(name="osd-value-label", label="0%", v_align="center")
         self._val_lbl.set_yalign(0.5)
         self.add(self._val_lbl)
@@ -116,19 +111,17 @@ class ControlOSD(Box):
         self._dev_dots = {"speaker": 0, "microphone": 0, "screen": 0}
         self._dev_muted = {"speaker": False, "microphone": False, "screen": False}
 
-        # Подключение к шинам управления звуком и яркостью
         vol = Volume.get_initial()
         mic = Microphone.get_initial()
         br = Brightness.get_initial()
 
-        self._hids.append(vol.connect("changed", lambda _, v: self._check_change("speaker", v, vol.muted)))
-        self._hids.append(mic.connect("changed", lambda _, v: self._check_change("microphone", v, mic.muted)))
+        self._hids.append((vol, vol.connect("changed", lambda _, v: self._check_change("speaker", v, vol.muted))))
+        self._hids.append((mic, mic.connect("changed", lambda _, v: self._check_change("microphone", v, mic.muted))))
         if br.screen_brightness != -1:
-            self._hids.append(br.connect("screen", lambda _, v: self._check_change(
+            self._hids.append((br, br.connect("screen", lambda _, v: self._check_change(
                 "screen", int(v * 100 / br.max_screen) if br.max_screen > 0 else 0, False
-            )))
+            ))))
 
-        # Первоначальная инициализация
         self._dev_levels["speaker"] = vol.volume
         self._dev_dots["speaker"] = max(0, min(10, int(round(vol.volume / 10.0))))
         self._dev_levels["microphone"] = mic.volume
@@ -158,8 +151,6 @@ class ControlOSD(Box):
         self._dot_tid[idx] = GLib.timeout_add(_GL_FRAME_MS, self._glitch_tick, idx)
 
     def _glitch_tick(self, idx: int) -> bool:
-        if idx >= 10:
-            return False
         dot = self._dots[idx]
         ctx = dot.get_style_context()
         for cls in _CLASSES:
@@ -188,7 +179,7 @@ class ControlOSD(Box):
         return True
 
     def _check_change(self, dev: str, val: int, is_muted: bool = False):
-        if not self._init_done or val is None:
+        if not self._init_done:
             return
         prev = self._dev_levels.get(dev)
         prev_muted = self._dev_muted.get(dev)
@@ -197,7 +188,6 @@ class ControlOSD(Box):
             self._update_display(dev, val, is_muted)
 
     def _update_display(self, dev: str, val: int, is_muted: bool = False, is_init: bool = False):
-        # 1. Иконка контрола
         if dev == "speaker":
             vol = Volume.get_initial()
             im = _IB if vol.is_bluetooth else _IS
@@ -209,7 +199,6 @@ class ControlOSD(Box):
 
         self._icon_lbl.set_markup(icon)
 
-        # 2. Числовые проценты
         effective_val = 0 if is_muted else val
         self._val_lbl.set_label(f"{effective_val}%")
 
@@ -217,7 +206,6 @@ class ControlOSD(Box):
         old_dots = self._dev_dots.get(dev, 0)
         old_val = self._dev_levels.get(dev, 0)
 
-        # Сброс и переключение устройства
         if self._cur_dev != dev:
             self._cur_dev = dev
             for i in range(10):
@@ -245,7 +233,6 @@ class ControlOSD(Box):
                 ctx.remove_class("inactive" if is_act else "active")
             return
 
-        # 3. Запуск точечного глитча
         if new_dots > old_dots:
             for i in range(old_dots, new_dots):
                 self._start_dot_glitch(i, target_active=True)
@@ -268,21 +255,15 @@ class ControlOSD(Box):
                 GLib.source_remove(self._dot_tid[i])
                 self._dot_tid[i] = None
 
-        vol = Volume.get_initial()
-        mic = Microphone.get_initial()
-        br = Brightness.get_initial()
-        for hid in self._hids:
-            for s in (vol, mic, br):
-                try: s.disconnect(hid)
-                except Exception: pass
+        for service, hid in self._hids:
+            service.disconnect(hid)
         self._hids.clear()
 
 
 class ControlSliders(Box):
-    __slots__ = ('_br', '_vol', '_mic')
-
     def __init__(self, **kwargs):
         super().__init__(name="control-sliders", spacing=8, **kwargs)
+        self.connect("destroy", lambda _: self.cleanup())
 
         br = Brightness.get_initial()
         if br.screen_brightness != -1:
@@ -302,22 +283,19 @@ class ControlSliders(Box):
         boxes = (self._vol, self._mic, self._br) if self._br else (self._vol, self._mic)
         for box in boxes:
             for c in box.get_children():
-                if hasattr(c, "cleanup"):
-                    c.cleanup()
+                c.cleanup()
 
 
 class ControlSmall(Box):
-    __slots__ = ('_widgets',)
-
     def __init__(self, **kwargs):
         br = Brightness.get_initial()
         ch = ((BrightnessSmall(),) if br.screen_brightness != -1 else ()) + (VolumeSmall(), MicSmall())
         super().__init__(name="control-small", spacing=4, children=ch, **kwargs)
+        self.connect("destroy", lambda _: self.cleanup())
         self._widgets = ch
         self.show_all()
 
     def cleanup(self):
         for w in self._widgets:
-            if hasattr(w, "cleanup"):
-                w.cleanup()
+            w.cleanup()
         self._widgets = ()

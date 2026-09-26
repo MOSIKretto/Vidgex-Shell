@@ -1,4 +1,4 @@
-import os
+import shutil
 import subprocess
 
 from gi.repository import Gtk, NM, GLib
@@ -12,7 +12,6 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
 
 
 class WifiSlot(Gtk.Box):
@@ -21,6 +20,7 @@ class WifiSlot(Gtk.Box):
     def __init__(self, nc, parent_net):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
 
+        self._destroyed = False
         self.nc = nc
         self.parent_net = parent_net
 
@@ -81,7 +81,7 @@ class WifiSlot(Gtk.Box):
 
         self.pw_entry = Gtk.Entry(
             visibility=False,
-            invisible_char=ord('•'), 
+            invisible_char=ord('•'),
             placeholder_text="Password...",
         )
         self.pw_entry.set_hexpand(True)
@@ -107,6 +107,23 @@ class WifiSlot(Gtk.Box):
         self.pack_start(self.pw_rev, False, False, 0)
         self.show_all()
         self.pw_rev.set_reveal_child(False)
+
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, _widget):
+        self.cleanup()
+
+    def cleanup(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
+        if self._anim_id:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
+        if WifiSlot._active_pw_slot is self:
+            WifiSlot._active_pw_slot = None
+        self.parent_net = None
+        self.nc = None
 
     def _on_reveal_clicked(self, btn):
         new_visibility = not self.pw_entry.get_visibility()
@@ -141,11 +158,8 @@ class WifiSlot(Gtk.Box):
         self.name_lbl.set_label(self.ssid)
 
         avail = False
-        try:
-            if self.nc and self.ssid:
-                avail = self.nc.is_network_available(self.ssid)
-        except (AttributeError, Exception):
-            pass
+        if self.nc and self.ssid:
+            avail = self.nc.is_network_available(self.ssid)
 
         if conn or saved:
             self.btn_settings.set_visible(True)
@@ -227,6 +241,10 @@ class WifiSlot(Gtk.Box):
         self._anim_id = GLib.timeout_add(16, self._scroll_tick, scroll)
 
     def _scroll_tick(self, scroll):
+        if self._destroyed:
+            self._anim_id = None
+            return False
+
         coords = self.translate_coordinates(scroll, 0, 0)
         if not coords:
             self._anim_id = None
@@ -278,14 +296,20 @@ class WifiSlot(Gtk.Box):
             self.nc.connect_to_new_network(self.ssid, pwd, self._ok, self._err)
 
     def _ok(self, _ssid):
+        if self._destroyed:
+            return
         if self.parent_net:
             GLib.timeout_add(500, self.parent_net._req_ref)
 
     def _err(self, *_args):
+        if self._destroyed:
+            return
         self.status_lbl.set_label("Failed to connect")
         GLib.timeout_add(3000, self._restore)
 
     def _restore(self):
+        if self._destroyed:
+            return False
         if not self.conn:
             self.status_lbl.set_label("Saved" if self.saved else "Secured")
         return False
@@ -293,17 +317,6 @@ class WifiSlot(Gtk.Box):
     def _on_settings(self, _btn):
         if self.parent_net and self.ssid:
             self.parent_net.open_settings(self.ssid)
-
-    def destroy(self):
-        if self._anim_id:
-            GLib.source_remove(self._anim_id)
-            self._anim_id = None
-        self.parent_net = None
-        self.nc = None
-        try:
-            super().destroy()
-        except Exception:
-            pass
 
 
 class NetworkConnections(Box):
@@ -319,36 +332,31 @@ class NetworkConnections(Box):
             **kwargs,
         )
 
-        self._btns = None
-        if self.widgets and hasattr(self.widgets, "buttons"):
-            self._btns = getattr(self.widgets.buttons, "network_button", None)
+        # Контракт: NetworkConnections требует объект widgets (Dashboard) с уже
+        # созданными `.network_client` (единый общий NetworkClient) и
+        # `.buttons.network_button`. Порядок создания в Dashboard.__init__
+        # гарантирует, что оба атрибута существуют к этому моменту.
+        self.nc = self.widgets.network_client
+        self._btns = self.widgets.buttons.network_button
 
         self._rid = None
         self._scan = False
+        self._destroyed = False
         self.current_settings_ssid = None
         self._previous_page = "main"
         self._slots = {"connected": [], "avail": [], "saved": []}
         self._is_current_connected = False
-        self.nc = None
-
-        try:
-            self.nc = NetworkClient()
-        except Exception:
-            pass
+        self._wifi_changed_hid = None
 
         self._build()
 
-        if self.nc:
-            try:
-                self.nc.connect("device-ready", self._rdy)
-            except Exception:
-                pass
-            try:
-                self.nc.connect("connection-error", self._cerr)
-            except Exception:
-                pass
-            if getattr(self.nc, "wifi_device", None):
-                GLib.idle_add(self._rdy)
+        self._device_ready_hid = self.nc.connect("device-ready", self._rdy)
+        self._connection_error_hid = self.nc.connect("connection-error", self._cerr)
+
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, _widget):
+        self.cleanup()
 
     def _build(self):
         self.scan_lbl = Label(markup=icons.radar, name="network-scan-label")
@@ -587,27 +595,9 @@ class NetworkConnections(Box):
         self.qr_revealer.set_reveal_child(False)
         self.btn_net_share.get_style_context().remove_class("active")
 
-        details = {}
-        if self.nc:
-            try:
-                details = self.nc.get_network_details(ssid) or {}
-            except Exception:
-                pass
-
+        details = self.nc.get_network_details(ssid)
         self._is_current_connected = details.get("connected", False)
-
-        is_available = False
-        try:
-            if self.nc:
-                if hasattr(self.nc, "is_network_available"):
-                    is_available = self.nc.is_network_available(ssid)
-                elif hasattr(self.nc, "wifi_device") and self.nc.wifi_device:
-                    for ap in getattr(self.nc.wifi_device, "access_points", []):
-                        if ap.get("ssid") == ssid:
-                            is_available = True
-                            break
-        except Exception:
-            pass
+        is_available = self.nc.is_network_available(ssid)
 
         if self._is_current_connected:
             self.lbl_net_disconnect.set_markup(
@@ -635,37 +625,23 @@ class NetworkConnections(Box):
         self.lists_stack.set_visible_child_name("settings")
 
     def _do_forget(self, _btn):
-        if not self.current_settings_ssid or not self.nc:
+        if not self.current_settings_ssid:
             return
-        try:
-            self.nc.delete_saved_network(self.current_settings_ssid)
-        except Exception:
-            pass
+        self.nc.delete_saved_network(self.current_settings_ssid)
         self._on_back_click(None)
         GLib.timeout_add(300, self._req_ref)
 
     def _do_disconnect_or_connect(self, _btn):
-        if not self.nc or not self.current_settings_ssid:
+        if not self.current_settings_ssid:
             return
 
         if self._is_current_connected:
-            try:
-                self.nc.disconnect_network()
-            except Exception:
-                pass
+            self.nc.disconnect_network()
         else:
-            def on_success(*_args):
-                GLib.timeout_add(500, self._req_ref)
-
-            def on_error(*_args):
-                pass
-
-            try:
-                self.nc.connect_to_saved_network(
-                    self.current_settings_ssid, on_success, on_error,
-                )
-            except Exception:
-                pass
+            self.nc.connect_to_saved_network(
+                self.current_settings_ssid,
+                success_cb=lambda _ssid: GLib.timeout_add(500, self._req_ref),
+            )
 
         self._on_back_click(None)
         GLib.timeout_add(300, self._req_ref)
@@ -677,15 +653,10 @@ class NetworkConnections(Box):
             return
 
         ssid = self.current_settings_ssid
-        if not ssid or not self.nc:
+        if not ssid:
             return
 
-        password = None
-        try:
-            password = self.nc.get_network_password(ssid)
-        except Exception:
-            pass
-
+        password = self.nc.get_network_password(ssid)
         sec_raw = (self.lbl_sec.get_label() or "").upper()
 
         if "WPA" in sec_raw:
@@ -696,49 +667,46 @@ class NetworkConnections(Box):
             sec_type = "nopass"
 
         qr_string = f"WIFI:S:{ssid};"
-        if password:
-            qr_string += f"T:{sec_type};P:{password};;"
-        else:
-            qr_string += "T:nopass;;"
+        qr_string += f"T:{sec_type};P:{password};;" if password else "T:nopass;;"
 
         qr_path = f"/tmp/wifi_qr_{ssid}.png"
-        generated = False
+        generated = self._generate_qr(qr_string, qr_path)
 
-        try:
-            import qrcode
-
-            qr = qrcode.QRCode(version=1, box_size=5, border=1)
-            qr.add_data(qr_string)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            img.save(qr_path)
-            generated = True
-        except ImportError:
-            try:
-                subprocess.run(
-                    ["qrencode", "-o", qr_path, qr_string],
-                    check=True,
-                    timeout=5,
-                )
-                generated = True
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-        if generated and os.path.exists(qr_path):
+        if generated:
             self.qr_image.set_from_file(qr_path)
-            if password:
-                self.qr_password_lbl.set_label(f"Password: {password}")
-            else:
-                self.qr_password_lbl.set_label("Open network")
-            self.qr_revealer.set_reveal_child(True)
+            self.qr_password_lbl.set_label(
+                f"Password: {password}" if password else "Open network",
+            )
             btn.get_style_context().add_class("active")
         else:
             self.qr_password_lbl.set_label(
                 "Install 'python3-qrcode' or 'qrencode' for QR code",
             )
-            self.qr_revealer.set_reveal_child(True)
+
+        self.qr_revealer.set_reveal_child(True)
+
+    def _generate_qr(self, data: str, path: str) -> bool:
+        try:
+            import qrcode
+        except ImportError:
+            # python3-qrcode не установлен — падаем на внешний бинарь qrencode
+            return self._generate_qr_via_qrencode(data, path)
+
+        qr = qrcode.QRCode(version=1, box_size=5, border=1)
+        qr.add_data(data)
+        qr.make(fit=True)
+        qr.make_image(fill_color="black", back_color="white").save(path)
+        return True
+
+    def _generate_qr_via_qrencode(self, data: str, path: str) -> bool:
+        if shutil.which("qrencode") is None:
+            return False
+        try:
+            subprocess.run(["qrencode", "-o", path, data], check=True, timeout=5)
+        except subprocess.CalledProcessError:
+            # переданная строка (SSID/пароль) не влезает в выбранную версию QR-кода
+            return False
+        return True
 
     def _on_back_click(self, _btn):
         curr = self.lists_stack.get_visible_child_name()
@@ -759,8 +727,7 @@ class NetworkConnections(Box):
             self.saved_btn.remove_style_class("pressed")
 
         else:
-            if self.widgets:
-                self.widgets.show_notif()
+            self.widgets.show_notif()
 
     def _on_saved_toggle(self, btn):
         if self.lists_stack.get_visible_child_name() == "main":
@@ -771,27 +738,16 @@ class NetworkConnections(Box):
             btn.remove_style_class("pressed")
 
     def _turn_on_wifi(self, *_args):
-        if self._btns and hasattr(self._btns, "network_status_button"):
-            try:
-                self._btns.network_status_button.clicked()
-            except Exception:
-                pass
-        else:
-            dev = getattr(self.nc, "wifi_device", None)
-            if dev and hasattr(dev, "toggle_wifi"):
-                try:
-                    dev.toggle_wifi()
-                except Exception:
-                    pass
+        if self._btns:
+            self._btns.network_status_button.clicked()
+        elif self.nc.wifi_device:
+            self.nc.wifi_device.toggle_wifi()
         GLib.timeout_add(400, self._req_ref)
 
     def _rdy(self, _client=None):
-        dev = getattr(self.nc, "wifi_device", None)
+        dev = self.nc.wifi_device
         if dev:
-            try:
-                dev.connect("changed", self._sched)
-            except Exception:
-                pass
+            self._wifi_changed_hid = dev.connect("changed", self._sched)
             self._sched()
 
     def _cerr(self, _client, ssid, _msg):
@@ -802,24 +758,28 @@ class NetworkConnections(Box):
                     return
 
     def _sched(self, *_args):
+        if self._destroyed:
+            return
         if self._rid is None:
             self._rid = GLib.timeout_add(500, self._ref)
 
     def _req_ref(self):
+        if self._destroyed:
+            return False
         self._ref()
         return False
 
     def _ref(self):
         self._rid = None
 
-        if getattr(WifiSlot, "_active_pw_slot", None):
+        if self._destroyed:
             return False
 
-        if not self.nc:
+        if WifiSlot._active_pw_slot:
             return False
 
-        dev = getattr(self.nc, "wifi_device", None)
-        enabled = bool(dev and getattr(dev, "enabled", False))
+        dev = self.nc.wifi_device
+        enabled = bool(dev and dev.enabled)
 
         self.stack.set_visible_child_name("on" if enabled else "off")
         if not enabled:
@@ -827,7 +787,7 @@ class NetworkConnections(Box):
 
         cur = self._get_current_ssid()
         saved = self._get_saved_networks()
-        avail = getattr(dev, "access_points", []) if dev else []
+        avail = dev.access_points
 
         avail_d = {}
         for ap in avail:
@@ -878,16 +838,9 @@ class NetworkConnections(Box):
         else:
             self.avail_stack.set_visible_child_name("empty")
 
-        strength = getattr(dev, "strength", 0) if dev else 0
-        display_text = "Off" if not enabled else (cur or "Disconnected")
+        self.widgets.update_network_display(cur or "Disconnected", dev.strength, enabled)
 
-        if self.widgets and hasattr(self.widgets, "update_network_display"):
-            try:
-                self.widgets.update_network_display(display_text, strength, enabled)
-            except Exception:
-                pass
-
-        if self._btns and hasattr(self._btns, "update_state"):
+        if self._btns:
             GLib.idle_add(self._btns.update_state)
 
         return False
@@ -908,39 +861,35 @@ class NetworkConnections(Box):
             pool[i].show()
 
     def _get_current_ssid(self):
-        dev = getattr(self.nc, "wifi_device", None)
+        dev = self.nc.wifi_device
         if not dev:
             return None
-        ssid = getattr(dev, "ssid", None)
+        ssid = dev.ssid
         if ssid in ("Disconnected", "Off", None, ""):
             return None
         return ssid
 
     def _get_saved_networks(self):
         saved = []
-        client = getattr(self.nc, "_client", None)
-        if not client:
+        if not self.nc._client:
             return saved
 
-        try:
-            for conn in client.get_connections():
-                if conn.get_connection_type() != "802-11-wireless":
-                    continue
-                s = conn.get_setting_wireless()
-                if not s:
-                    continue
-                sd = s.get_ssid()
-                if not sd:
-                    continue
-                ssid = NM.utils_ssid_to_utf8(sd.get_data())
-                if not ssid:
-                    continue
-                c_set = conn.get_setting_connection()
-                ts = c_set.get_timestamp() if c_set else 0
-                if not any(x[0] == ssid for x in saved):
-                    saved.append((ssid, ts))
-        except Exception:
-            pass
+        for conn in self.nc._client.get_connections():
+            if conn.get_connection_type() != "802-11-wireless":
+                continue
+            s = conn.get_setting_wireless()
+            if not s:
+                continue
+            sd = s.get_ssid()
+            if not sd:
+                continue
+            ssid = NM.utils_ssid_to_utf8(sd.get_data())
+            if not ssid:
+                continue
+            c_set = conn.get_setting_connection()
+            ts = c_set.get_timestamp() if c_set else 0
+            if not any(x[0] == ssid for x in saved):
+                saved.append((ssid, ts))
 
         saved.sort(key=lambda x: x[1], reverse=True)
         return [x[0] for x in saved]
@@ -953,40 +902,44 @@ class NetworkConnections(Box):
         self.scan_lbl.get_style_context().add_class("scanning")
         self.scan_btn.get_style_context().add_class("scanning")
 
-        dev = getattr(self.nc, "wifi_device", None)
-        if dev and getattr(dev, "enabled", False):
-            try:
-                dev.scan()
-            except Exception:
-                if hasattr(dev, "request_scan"):
-                    try:
-                        dev.request_scan()
-                    except Exception:
-                        pass
+        dev = self.nc.wifi_device
+        if dev and dev.enabled:
+            dev.scan()
 
         GLib.timeout_add(3500, self._rscan)
 
     def _rscan(self):
+        if self._destroyed:
+            return False
         self._scan = False
         self.scan_lbl.get_style_context().remove_class("scanning")
         self.scan_btn.get_style_context().remove_class("scanning")
         return False
 
     def cleanup(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
+
         if self._rid:
             GLib.source_remove(self._rid)
             self._rid = None
 
         WifiSlot._active_pw_slot = None
 
+        self.nc.disconnect(self._device_ready_hid)
+        self.nc.disconnect(self._connection_error_hid)
+        dev = self.nc.wifi_device
+        if dev and self._wifi_changed_hid:
+            dev.disconnect(self._wifi_changed_hid)
+
         for pool in self._slots.values():
             for slot in pool:
-                try:
-                    slot.destroy()
-                except Exception:
-                    pass
+                slot.destroy()
             pool.clear()
 
+        # NetworkClient общий (владелец — Dashboard) — намеренно НЕ вызываем
+        # self.nc.cleanup(), это уничтожило бы клиент для NetworkButton.
         self.nc = None
         self.widgets = None
         self._btns = None

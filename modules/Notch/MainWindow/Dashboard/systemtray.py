@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import subprocess
 
@@ -8,55 +9,61 @@ gi.require_version("Gray", "0.1")
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 
-from gi.repository import GdkPixbuf, GLib, GObject, Gray, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gray, Gtk
 from fabric.widgets.box import Box
 
 
-ICON_CACHE_LIMIT = 128
-ANIMATION_STEPS = 12
-ANIMATION_INTERVAL = 16
-
-
 class SystemTray(Box):
-    def __init__(self, pixel_size: int = 16, **kwargs) -> None:
+    def __init__(self, pixel_size: int = 20, **kwargs) -> None:
         super().__init__(
             name="systray",
-            orientation=Gtk.Orientation.HORIZONTAL,
             spacing=0,
             visible=False,
             **kwargs,
         )
+        self.set_no_show_all(True)
+        self.set_visible(False)
 
         self._pixel_size = pixel_size
         self._destroyed = False
         self._items: dict[str, tuple] = {}
-        self._icon_cache: dict[tuple, GdkPixbuf.Pixbuf] = {}
-        self._theme_cache: dict[str, Gtk.IconTheme] = {}
 
-        self._expanded_ident: str | None = None
+        self._expanded: str | None = None
         self._anim_timer: int | None = None
-        self._anim_step: int = 0
-        self._anim_direction: int = 1
-        self._click_outside_handler: int | None = None
+        self._anim_step = 0
+        self._anim_dir = 1
+        self._outside_handler: int | None = None
 
         self._build_ui()
         self.connect("destroy", lambda _: self.cleanup())
-        self._start_watcher()
+
+        self._watcher = Gray.Watcher()
+        self._watcher.connect("item-added", lambda _w, ident: GLib.idle_add(self._add_item, ident))
+
 
     def _build_ui(self) -> None:
         overlay = Gtk.Overlay(visible=True)
 
         self._inner = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
             spacing=8,
             halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
             visible=True,
         )
         self._inner.set_name("systray-inner")
 
+        self._scroller = Gtk.ScrolledWindow(visible=True)
+        self._scroller.set_name("systray-scroller")
+        self._scroller.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
+        self._scroller.set_shadow_type(Gtk.ShadowType.NONE)
+        self._scroller.set_overlay_scrolling(True)
+        self._scroller.set_kinetic_scrolling(True)
+        self._scroller.add(self._inner)
+        self._scroller.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        self._scroller.connect("scroll-event", self._on_scroll)
+
         self._action_bar = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=0,
             halign=Gtk.Align.FILL,
             valign=Gtk.Align.CENTER,
             no_show_all=True,
@@ -66,239 +73,178 @@ class SystemTray(Box):
         self._action_icon = Gtk.Image(visible=True)
         self._action_bar.pack_start(self._action_icon, False, False, 8)
 
-        spacer = Gtk.Box(hexpand=True, visible=True)
-        self._action_bar.pack_start(spacer, True, True, 0)
+        self._action_bar.pack_start(Gtk.Box(hexpand=True, visible=True), True, True, 0)
 
-        close_btn = Gtk.Button(label="Close", can_focus=False, has_tooltip=False)
+        close_btn = Gtk.Button(label="Close", can_focus=False)
         close_btn.set_name("systray-close-btn")
         close_btn.set_relief(Gtk.ReliefStyle.NONE)
         close_btn.connect("clicked", self._on_close_clicked)
         close_btn.show()
         self._action_bar.pack_end(close_btn, False, False, 8)
 
-        overlay.add(self._inner)
+        overlay.add(self._scroller)
         overlay.add_overlay(self._action_bar)
         overlay.set_overlay_pass_through(self._action_bar, False)
+
         self.pack_start(overlay, True, True, 0)
 
-    def _start_watcher(self) -> None:
-        self._watcher = Gray.Watcher()
-        self._watcher.connect(
-            "item-added",
-            lambda _w, ident: GLib.idle_add(self._add_item, ident),
-        )
-        for method in ("run", "start", "own_name", "watch"):
-            if callable(getattr(self._watcher, method, None)):
-                getattr(self._watcher, method)()
-                break
+    def _get_pixbuf(self, item: Gray.Item) -> GdkPixbuf.Pixbuf:
+        pixmaps = item.get_icon_pixmaps()
+        if pixmaps:
+            pm = Gray.get_pixmap_for_pixmaps(pixmaps, self._pixel_size)
+            return pm.as_pixbuf(self._pixel_size, GdkPixbuf.InterpType.HYPER)
 
-    def _get_theme(self, path: str) -> Gtk.IconTheme:
-        if not path:
-            return Gtk.IconTheme.get_default()
-        if path not in self._theme_cache:
+        name = item.get_icon_name()
+        if name and os.path.exists(name):
+            return GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                name, self._pixel_size, self._pixel_size, True
+            )
+
+        theme = Gtk.IconTheme.get_default()
+        icon_path = item.get_icon_theme_path()
+        if icon_path and os.path.isdir(icon_path):
             theme = Gtk.IconTheme.new()
-            theme.prepend_search_path(path)
-            self._theme_cache[path] = theme
-        return self._theme_cache[path]
+            theme.set_search_path(Gtk.IconTheme.get_default().get_search_path())
+            theme.prepend_search_path(icon_path)
 
-    def _trim_icon_cache(self) -> None:
-        if len(self._icon_cache) > ICON_CACHE_LIMIT:
-            trim = list(self._icon_cache)[: ICON_CACHE_LIMIT // 3]
-            for k in trim:
-                del self._icon_cache[k]
+        return theme.load_icon(
+            name or "image-missing", self._pixel_size, Gtk.IconLookupFlags.FORCE_SIZE
+        )
 
-    def _load_icon(self, item, ident: str) -> GdkPixbuf.Pixbuf | None:
-        sz = self._pixel_size
+    def _refresh_icon(self, item: Gray.Item, button: Gtk.Button) -> None:
+        pixbuf = self._get_pixbuf(item)
+        img = button.get_image()
+        img.set_from_pixbuf(pixbuf)
 
-        key = ("px", ident)
-        if key not in self._icon_cache:
-            try:
-                pixmaps = item.get_icon_pixmaps()
-                if pixmaps:
-                    pm = Gray.get_pixmap_for_pixmaps(pixmaps, sz)
-                    pb = pm.as_pixbuf(sz, GdkPixbuf.InterpType.BILINEAR) if pm else None
-                    if pb:
-                        self._icon_cache[key] = pb
-                        self._trim_icon_cache()
-            except Exception:
-                pass
-        if key in self._icon_cache:
-            return self._icon_cache[key]
-
-        try:
-            name = item.get_icon_name() or ""
-        except Exception:
-            return None
-        if not name:
-            return None
-
-        if "/" in name:
-            key = ("file", name)
-            if key not in self._icon_cache:
-                try:
-                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(name, sz, sz, True)
-                    if pb:
-                        self._icon_cache[key] = pb
-                        self._trim_icon_cache()
-                except Exception:
-                    pass
-            return self._icon_cache.get(key)
-
-        try:
-            theme_path = item.get_icon_theme_path() or ""
-        except Exception:
-            theme_path = ""
-
-        key = ("theme", name, theme_path)
-        if key not in self._icon_cache:
-            try:
-                pb = self._get_theme(theme_path).load_icon(name, sz, Gtk.IconLookupFlags.FORCE_SIZE)
-                if pb:
-                    self._icon_cache[key] = pb
-                    self._trim_icon_cache()
-            except Exception:
-                pass
-        return self._icon_cache.get(key)
-
-    def _invalidate_icon(self, ident: str) -> None:
-        self._icon_cache = {
-            k: v for k, v in self._icon_cache.items()
-            if not (k[0] == "px" and k[1] == ident)
-        }
-
-    def _update_visibility(self) -> None:
-        visible = any(btn.get_visible() for _, btn, _ in self._items.values())
-        self.set_visible(visible)
-
-    def _update_btn(self, item, btn: Gtk.Button, ident: str) -> None:
-        if self._destroyed:
-            return
-
-        try:
-            status = item.get_status() or ""
-        except Exception:
-            status = ""
-
-        pb = None if status == "Passive" else self._load_icon(item, ident)
-
-        if pb:
-            btn.get_image().set_from_pixbuf(pb)
-            tooltip = None
-            for attr in ("get_tooltip_text", "get_title"):
-                try:
-                    tooltip = getattr(item, attr, lambda: None)() or None
-                    if tooltip:
-                        break
-                except Exception:
-                    pass
-            if tooltip:
-                btn.set_tooltip_text(str(tooltip))
-            else:
-                btn.set_has_tooltip(False)
-            btn.show()
+        title = item.get_title()
+        if title:
+            button.set_tooltip_text(str(title))
         else:
-            btn.hide()
+            button.set_has_tooltip(False)
 
         self._update_visibility()
+
+    def _on_scroll(self, _widget, event: Gdk.EventScroll) -> bool:
+        hadj = self._scroller.get_hadjustment()
+
+        has_deltas, dx, dy = event.get_scroll_deltas()
+        if has_deltas:
+            delta = dx if abs(dx) > 0.01 else dy
+        else:
+            delta = -1.0 if event.direction in (Gdk.ScrollDirection.UP, Gdk.ScrollDirection.LEFT) else 1.0
+
+        step = (28 + 8) * delta
+        lower = hadj.get_lower()
+        upper = hadj.get_upper() - hadj.get_page_size()
+        hadj.set_value(max(lower, min(upper, hadj.get_value() + step)))
+        return True
+
+    def _update_carousel_size(self, count: int) -> None:
+        if count > 5:
+            width = 5 * 28 + (5 - 1) * 8
+            self._scroller.set_size_request(width, -1)
+        else:
+            self._scroller.set_size_request(-1, -1)
+
+    def _update_visibility(self) -> None:
+        if self._destroyed:
+            return
+        count = len(self._items)
+        self._update_carousel_size(count)
+        self.set_visible(count > 0)
 
     def _add_item(self, ident: str) -> bool:
         if self._destroyed:
             return False
 
         item = self._watcher.get_item_for_identifier(ident)
-        if item is None:
-            return False
-
         self._remove_item(ident)
 
         btn = Gtk.Button(can_focus=False, no_show_all=True)
         btn.set_name("systray-item")
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_image(Gtk.Image(visible=True))
-        btn.connect("button-press-event", lambda _b, _e, i=ident: self._on_tray_click(i))
-
-        def on_icon(*_, i=ident, it=item, b=btn):
-            self._invalidate_icon(i)
-            GLib.idle_add(self._update_btn, it, b, i)
-
-        def on_status(*_, it=item, b=btn, i=ident):
-            GLib.idle_add(self._update_btn, it, b, i)
-
-        def on_removed(*_, i=ident):
-            GLib.idle_add(self._remove_item, i)
+        btn.connect("button-press-event", lambda b, e, i=ident, it=item: self._on_item_click(it, i, e))
+        btn.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
+        btn.connect("scroll-event", lambda _b, e: self._on_scroll(self._scroller, e))
 
         handlers = [
-            item.connect("notify::icon-pixmaps", on_icon),
-            item.connect("notify::icon-name", on_icon),
-            item.connect("notify::status", on_status),
-            item.connect("removed", on_removed),
+            item.connect("notify::icon-pixmaps", lambda it, _: self._refresh_icon(it, btn)),
+            item.connect("notify::icon-name", lambda it, _: self._refresh_icon(it, btn)),
+            item.connect("removed", lambda *_: GLib.idle_add(self._remove_item, ident)),
         ]
-        if "icon-changed" in GObject.signal_list_names(type(item)):
-            handlers.append(item.connect("icon-changed", on_icon))
 
-        self._items[ident] = (item, btn, handlers)
+        bus_name = ident.split("/")[0]
+        watch_id = Gio.bus_watch_name(
+            Gio.BusType.SESSION,
+            bus_name,
+            Gio.BusNameWatcherFlags.NONE,
+            None,
+            lambda *_a, i=ident: GLib.idle_add(self._remove_item, i),
+        )
+
+        self._items[ident] = (item, btn, handlers, watch_id)
         self._inner.add(btn)
-        self._update_btn(item, btn, ident)
+        self._refresh_icon(item, btn)
+        btn.show()
+        self._update_visibility()
         return False
 
     def _remove_item(self, ident: str) -> bool:
-        if self._expanded_ident == ident:
+        if self._expanded == ident:
             self._collapse(animate=False)
 
         entry = self._items.pop(ident, None)
         if entry is None:
             return False
 
-        item, btn, handlers = entry
+        item, btn, handlers, watch_id = entry
         for hid in handlers:
-            try:
-                item.disconnect(hid)
-            except Exception:
-                pass
-
+            item.disconnect(hid)
+        Gio.bus_unwatch_name(watch_id)
         btn.destroy()
-        self._invalidate_icon(ident)
         self._update_visibility()
         return False
 
-    def _on_tray_click(self, ident: str) -> bool:
-        if self._expanded_ident == ident:
-            self._collapse()
-        else:
-            if self._expanded_ident is not None:
-                self._collapse(animate=False)
-            self._expand(ident)
-        return True
+    def _on_item_click(self, item: Gray.Item, ident: str, event: Gdk.EventButton) -> bool:
+        if event.button == Gdk.BUTTON_SECONDARY:
+            menu = item.get_menu()
+            menu.popup_at_pointer(event)
+            return True
+
+        if event.button == Gdk.BUTTON_PRIMARY:
+            if self._expanded == ident:
+                self._collapse()
+            else:
+                if self._expanded is not None:
+                    self._collapse(animate=False)
+                self._expand(ident)
+            return True
+
+        return False
 
     def _expand(self, ident: str) -> None:
-        if ident not in self._items:
-            return
-        self._expanded_ident = ident
-        item, _btn, _ = self._items[ident]
-        pb = self._load_icon(item, ident)
-        if pb:
-            self._action_icon.set_from_pixbuf(pb)
-        else:
-            self._action_icon.clear()
-        self._start_animation(direction=1)
-        self._attach_click_outside()
+        self._expanded = ident
+        item, _btn, _handlers, _watch_id = self._items[ident]
+        self._action_icon.set_from_pixbuf(self._get_pixbuf(item))
+        self._animate(direction=1)
+        self._attach_outside_handler()
 
     def _collapse(self, animate: bool = True) -> None:
-        self._expanded_ident = None
-        self._detach_click_outside()
+        self._expanded = None
+        self._detach_outside_handler()
         if animate:
-            self._start_animation(direction=-1)
+            self._animate(direction=-1)
         else:
             self._stop_animation()
-            self._apply_animation_state(0.0)
             self._action_bar.hide()
-            self._inner.set_opacity(1.0)
+            self._scroller.set_opacity(1.0)
 
-    def _start_animation(self, direction: int) -> None:
+    def _animate(self, direction: int) -> None:
         self._stop_animation()
-        self._anim_direction = direction
-        self._anim_step = 0 if direction == 1 else ANIMATION_STEPS
-        self._anim_timer = GLib.timeout_add(ANIMATION_INTERVAL, self._animation_tick)
+        self._anim_dir = direction
+        self._anim_step = 0 if direction == 1 else 12
+        self._anim_timer = GLib.timeout_add(16, self._animation_tick)
 
     def _stop_animation(self) -> None:
         if self._anim_timer is not None:
@@ -306,24 +252,11 @@ class SystemTray(Box):
             self._anim_timer = None
 
     def _animation_tick(self) -> bool:
-        self._anim_step += self._anim_direction
-        progress = max(0.0, min(1.0, self._anim_step / ANIMATION_STEPS))
+        self._anim_step += self._anim_dir
+        progress = max(0.0, min(1.0, self._anim_step / 12))
         t = progress * progress * (3 - 2 * progress)
-        self._apply_animation_state(t)
 
-        done = (self._anim_direction == 1 and self._anim_step >= ANIMATION_STEPS) or \
-               (self._anim_direction == -1 and self._anim_step <= 0)
-
-        if done:
-            self._anim_timer = None
-            if self._anim_direction == -1:
-                self._action_bar.hide()
-                self._inner.set_opacity(1.0)
-            return False
-        return True
-
-    def _apply_animation_state(self, t: float) -> None:
-        self._inner.set_opacity(1.0 - t * 0.85)
+        self._scroller.set_opacity(1.0 - t * 0.85)
         if t > 0.05:
             self._action_bar.show()
             self._action_bar.set_opacity(t)
@@ -331,161 +264,83 @@ class SystemTray(Box):
             self._action_bar.set_opacity(0.0)
             self._action_bar.hide()
 
-    def _attach_click_outside(self) -> None:
-        self._detach_click_outside()
+        if (self._anim_dir == 1 and self._anim_step >= 12) or (self._anim_dir == -1 and self._anim_step <= 0):
+            self._anim_timer = None
+            if self._anim_dir == -1:
+                self._action_bar.hide()
+                self._scroller.set_opacity(1.0)
+            return False
+        return True
+
+    def _attach_outside_handler(self) -> None:
+        self._detach_outside_handler()
         top = self.get_toplevel()
-        if isinstance(top, Gtk.Window):
-            self._click_outside_handler = top.connect(
-                "button-press-event", self._on_window_click
-            )
+        self._outside_handler = top.connect("button-press-event", self._on_window_click)
 
-    def _detach_click_outside(self) -> None:
-        if self._click_outside_handler is not None:
-            top = self.get_toplevel()
-            if isinstance(top, Gtk.Window):
-                try:
-                    top.disconnect(self._click_outside_handler)
-                except Exception:
-                    pass
-            self._click_outside_handler = None
+    def _detach_outside_handler(self) -> None:
+        if self._outside_handler is not None:
+            self.get_toplevel().disconnect(self._outside_handler)
+            self._outside_handler = None
 
-    def _on_window_click(self, _window: Gtk.Window, event) -> bool:
-        if self._expanded_ident is None or not self._action_bar.get_visible():
-            self._collapse()
+    def _on_window_click(self, _window: Gtk.Window, event: Gdk.EventButton) -> bool:
+        if self._expanded is None:
             return False
 
         ab_win = self._action_bar.get_window()
-        if ab_win is None:
-            self._collapse()
-            return False
-
         ok, ax, ay = ab_win.get_origin()
-        if not ok:
-            self._collapse()
-            return False
-
         alloc = self._action_bar.get_allocation()
         rel_x = int(event.x_root) - ax
         rel_y = int(event.y_root) - ay
 
-        if not (0 <= rel_x <= alloc.width and 0 <= rel_y <= alloc.height):
+        if not (ok and 0 <= rel_x <= alloc.width and 0 <= rel_y <= alloc.height):
             self._collapse()
         return False
 
     def _on_close_clicked(self, _btn: Gtk.Button) -> None:
-        if self._destroyed or self._expanded_ident is None:
+        if self._destroyed or self._expanded is None:
             return
-        ident = self._expanded_ident
+        ident = self._expanded
+        item, _btn2, _handlers, _watch_id = self._items[ident]
         self._collapse(animate=False)
-        if ident not in self._items:
-            return
-        item, _, _ = self._items[ident]
         self._kill_item(item, ident)
         GLib.idle_add(self._remove_item, ident)
 
-    def _kill_item(self, item, ident: str) -> None:
-        dbus_name = self._get_dbus_name(item, ident)
-        if dbus_name:
-            pid = self._pid_from_dbus(dbus_name)
-            if pid:
-                self._kill_pid(pid)
-                return
-        app_name = self._guess_app_name(item, ident)
-        if app_name:
-            self._kill_by_name(app_name)
+    def _kill_item(self, item: Gray.Item, ident: str) -> None:
+        bus_name = ident.split("/")[0]
+        pid = self._dbus_pid(bus_name)
+        if pid is not None:
+            self._kill_tree(pid)
 
-    def _get_dbus_name(self, item, ident: str) -> str:
-        for attr in ("get_service_name", "get_bus_name", "get_dbus_name"):
-            try:
-                name = getattr(item, attr, lambda: None)()
-                if name:
-                    return str(name)
-            except Exception:
-                pass
-        if "." in ident:
-            return ident.split("/")[0]
-        return ""
-
-    def _pid_from_dbus(self, bus_name: str) -> int | None:
-        try:
-            result = subprocess.run(
-                [
-                    "gdbus", "call", "--session",
-                    "--dest", "org.freedesktop.DBus",
-                    "--object-path", "/org/freedesktop/DBus",
-                    "--method", "org.freedesktop.DBus.GetConnectionUnixProcessID",
-                    bus_name,
-                ],
-                capture_output=True, text=True, timeout=2,
-            )
-            parts = result.stdout.strip().strip("()").split()
-            return int(parts[1].rstrip(","))
-        except Exception:
+    def _dbus_pid(self, bus_name: str) -> int | None:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", "org.freedesktop.DBus",
+                "--object-path", "/org/freedesktop/DBus",
+                "--method", "org.freedesktop.DBus.GetConnectionUnixProcessID",
+                bus_name,
+            ],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode != 0:
             return None
+        match = re.search(r"uint32\s+(\d+)", result.stdout)
+        return int(match.group(1)) if match else None
 
-    def _kill_pid(self, pid: int) -> None:
-        try:
-            result = subprocess.run(
-                ["pgrep", "-P", str(pid)],
-                capture_output=True, text=True, timeout=2,
-            )
-            for child in result.stdout.split():
-                if child.isdigit():
-                    self._kill_pid(int(child))
-        except Exception:
-            pass
-        try:
-            os.kill(pid, signal.SIGTERM)
-            GLib.timeout_add(2000, lambda p=pid: self._force_kill(p))
-        except ProcessLookupError:
-            pass
-
-    def _force_kill(self, pid: int) -> bool:
-        try:
+    def _kill_tree(self, pid: int) -> None:
+        children = subprocess.run(
+            ["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=2
+        ).stdout.split()
+        for child in children:
+            self._kill_tree(int(child))
+        if os.path.exists(f"/proc/{pid}"):
             os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        return False
-
-    def _guess_app_name(self, item, ident: str) -> str:
-        for attr in ("get_title", "get_app_id"):
-            try:
-                name = getattr(item, attr, lambda: None)() or ""
-                if name:
-                    return name.lower().split()[0]
-            except Exception:
-                pass
-        if ident:
-            parts = [p for p in ident.replace("-", ".").split(".") if not p.isdigit()]
-            if parts:
-                return parts[-1].lower()
-        return ""
-
-    def _kill_by_name(self, app_name: str) -> None:
-        try:
-            subprocess.run(["pkill", "-TERM", "-i", "-f", app_name], timeout=2, check=False)
-            GLib.timeout_add(2000, lambda n=app_name: self._force_kill_by_name(n))
-        except Exception:
-            pass
-
-    def _force_kill_by_name(self, app_name: str) -> bool:
-        try:
-            subprocess.run(["pkill", "-KILL", "-i", "-f", app_name], timeout=2, check=False)
-        except Exception:
-            pass
-        return False
 
     def cleanup(self) -> None:
         if self._destroyed:
             return
         self._destroyed = True
         self._stop_animation()
-        self._detach_click_outside()
-        try:
-            self._watcher.disconnect_by_func(GLib.idle_add)
-        except Exception:
-            pass
+        self._detach_outside_handler()
         for ident in list(self._items):
             self._remove_item(ident)
-        self._icon_cache.clear()
-        self._theme_cache.clear()

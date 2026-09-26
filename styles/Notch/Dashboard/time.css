@@ -6,8 +6,7 @@
   padding: 4px;
   border: 4px solid var(--surface);
   border-radius: 12px;
-  transition: border-color 60ms ease-in-out,
-              background-color 60ms ease-in-out;
+  /* transition убран, чтобы рамка не реагировала на события */
 }
 
 #time-label {
@@ -15,6 +14,10 @@
   font-weight: 800;
   font-size: 7pt;
   color: var(--primary);
+
+  /* Резерв под тени глитча (8px во все стороны) - держит фиксированный размер */
+  text-shadow: 0 0 8px transparent;
+
   transition: text-shadow 40ms step-end,
               color       40ms step-end,
               opacity     40ms step-end;
@@ -22,27 +25,32 @@
 
 #time-label.glitch-aberration {
   text-shadow:  2px 0 alpha(#ff0040, 0.85),
-               -2px 0 alpha(#00e5ff, 0.85);
+               -2px 0 alpha(#00e5ff, 0.85),
+                0   0 8px transparent;
 }
 
 #time-label.glitch-shift-right {
   text-shadow:  4px 0 alpha(#ff0040, 0.7),
-                8px 0 alpha(#ff0040, 0.25);
+                8px 0 alpha(#ff0040, 0.25),
+                0   0 8px transparent;
 }
 
 #time-label.glitch-shift-left {
   text-shadow: -4px 0 alpha(#00e5ff, 0.7),
-               -8px 0 alpha(#00e5ff, 0.25);
+               -8px 0 alpha(#00e5ff, 0.25),
+                0   0 8px transparent;
 }
 
 #time-label.glitch-flicker {
   opacity: 0.1;
+  text-shadow: 0 0 8px transparent;
 }
 
 #time-label.glitch-heavy {
   text-shadow:  5px  1px alpha(#ff0040, 0.6),
                -5px -1px alpha(#00e5ff, 0.6),
-                0    3px alpha(#76ff03, 0.35);
+                0    3px alpha(#76ff03, 0.35),
+                0    0   8px transparent;
 }
 
 #time-label.glitch-color-swap {
@@ -59,13 +67,15 @@
 
 #time-label.glitch-shift-right.glitch-flicker {
   opacity: 0.3;
-  text-shadow: 4px 0 alpha(#ff0040, 0.9);
+  text-shadow: 4px 0 alpha(#ff0040, 0.9),
+               0   0 8px transparent;
 }
 
 #time-label.glitch-shift-left.glitch-heavy {
   text-shadow: -5px  0   alpha(#00e5ff, 0.8),
                 5px  1px alpha(#ff0040, 0.5),
-                0    3px alpha(#76ff03, 0.3);
+                0    3px alpha(#76ff03, 0.3),
+                0    0   8px transparent;
 }
 
 #date-label {

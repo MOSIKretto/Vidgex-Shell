@@ -1,10 +1,7 @@
-import json
 import os
-import random
 import threading
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import GLib, Gtk
 
-from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
@@ -12,56 +9,26 @@ from fabric.bluetooth import BluetoothClient
 
 import services.icons as icons
 
-from modules.Notch.MainWindow.Dashboard.network import NetworkClient
 from modules.Notch.MainWindow.Dashboard.Buttons.caffeine import Caffeine
 from modules.Notch.MainWindow.Dashboard.Buttons.workTime import WorkTime
+from modules.Notch.MainWindow.Dashboard.Buttons.timer import _TimerSplitButton, _dis, _content
 
 
 _TH = (25, 50, 75)
 _WI = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3)
 _AN = (icons.wifi_0, icons.wifi_1, icons.wifi_2, icons.wifi_3, icons.wifi_2, icons.wifi_1)
 
-_GLITCH_CLASSES = [
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-]
 
-CACHE_DIR = os.path.expanduser("~/.cache/vidgex-shell")
-SETTINGS_FILE = os.path.join(CACHE_DIR, "timer_settings.json")
-
-
-def _load_saved_durations() -> dict:
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def _save_duration(key: str, value: int) -> None:
-    def worker():
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        data = _load_saved_durations()
-        data[key] = value
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(data, f, indent=2)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-
-def _fast_chk(pat: str) -> bool:
-    pat_b = pat.encode()
+def _proc_running(name: str) -> bool:
     for pid in os.listdir("/proc"):
-        if pid.isdigit():
-            cmd_path = f"/proc/{pid}/cmdline"
-            if os.path.exists(cmd_path):
-                with open(cmd_path, "rb") as f:
-                    data = f.read()
-                    if pat_b in data or pat_b in data.replace(b"\x00", b" "):
-                        return True
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/comm", "r") as f:
+                if f.read().strip() == name:
+                    return True
+        except FileNotFoundError:
+            continue
     return False
 
 
@@ -74,237 +41,26 @@ def _async_exec(target, callback=None):
     threading.Thread(target=worker, daemon=True).start()
 
 
-def _dis(ws, disabled: bool):
-    m = "add_style_class" if disabled else "remove_style_class"
-    for w in ws:
-        getattr(w, m)("disabled")
-
-
-def _get_all_labels(widget) -> list:
-    labels = []
-    if isinstance(widget, Label):
-        labels.append(widget)
-    elif isinstance(widget, (Box, Gtk.Container)):
-        for child in widget.get_children():
-            labels.extend(_get_all_labels(child))
-    return labels
-
-
-def _content(ic: Label, title_box: Box) -> Box:
-    return Box(h_align="start", v_align="center", spacing=10, children=(ic, title_box))
-
-
-class TimerWidget(Box):
-    def __init__(self, name_prefix: str):
-        super().__init__(orientation="v", v_align="center", h_align="center")
-        self.hh_label = Label(name=f"{name_prefix}-timer-hh", label="00", xalign=0.5)
-        self.mm_label = Label(name=f"{name_prefix}-timer-mm", label="05", xalign=0.5)
-        self.add(self.hh_label)
-        self.add(self.mm_label)
-
-        self._last_str = ""
-        self._gl_rem = 0
-        self._gl_tid = None
-
-    def update_time(self, total_seconds: int):
-        total_minutes = total_seconds // 60
-        hh = min(24, total_minutes // 60)
-        mm = total_minutes % 60 if hh < 24 else 0
-        time_str = f"{hh:02d}:{mm:02d}"
-
-        if self._last_str and time_str != self._last_str:
-            self._trigger_glitch()
-
-        self._last_str = time_str
-        self.hh_label.set_label(f"{hh:02d}")
-        self.mm_label.set_label(f"{mm:02d}")
-
-    def _trigger_glitch(self):
-        self._gl_rem = 6
-        if self._gl_tid is None:
-            self._gl_tid = GLib.timeout_add(35, self._glitch_tick)
-
-    def _clear_glitch(self):
-        for lbl in (self.hh_label, self.mm_label):
-            ctx = lbl.get_style_context()
-            for cls in _GLITCH_CLASSES:
-                ctx.remove_class(cls)
-            ctx.remove_class("glitching")
-
-    def _glitch_tick(self) -> bool:
-        self._clear_glitch()
-        if self._gl_rem > 0:
-            for lbl in (self.hh_label, self.mm_label):
-                lbl.get_style_context().add_class("glitching")
-                for cls in random.sample(_GLITCH_CLASSES, random.randint(1, 2)):
-                    lbl.get_style_context().add_class(cls)
-            self._gl_rem -= 1
-            return True
-        self._gl_tid = None
-        return False
-
-
-class _TimerSplitButton(Box):
-    def __init__(self, name_prefix: str, icon_markup: str, title_widget: Box, default_seconds: int = 1500):
-        super().__init__(name=f"{name_prefix}-button")
-        self._name_prefix = name_prefix
-
-        saved_durations = _load_saved_durations()
-        if name_prefix in saved_durations:
-            default_seconds = saved_durations[name_prefix]
-
-        self._duration = default_seconds
-        self._remaining = default_seconds
-        self._is_running = False
-        self._timer_id = None
-        self._scroll_acc = 0.0
-
-        self.icon = Label(name=f"{name_prefix}-icon", markup=icon_markup)
-        self.status_button = Button(
-            name=f"{name_prefix}-status-button",
-            h_expand=True,
-            child=_content(self.icon, title_widget),
-            on_clicked=self._on_status_click,
-        )
-
-        self.timer_widget = TimerWidget(name_prefix)
-        self.timer_button = Button(
-            name=f"{name_prefix}-timer-button",
-            child=self.timer_widget,
-            on_clicked=self._on_timer_click,
-        )
-
-        self.timer_button.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
-        self.timer_button.connect("scroll-event", self._on_timer_scroll)
-
-        self.add(self.status_button)
-        self.add(self.timer_button)
-
-        title_labels = _get_all_labels(title_widget)
-        self._sw = (
-            self,
-            self.icon,
-            self.status_button,
-            self.timer_button,
-            self.timer_widget.hh_label,
-            self.timer_widget.mm_label,
-            *title_labels,
-        )
-        self._dis_ui(True)
-        self.update_timer_display()
-
-    def _dis_ui(self, disabled: bool):
-        _dis(self._sw, disabled)
-
-    def update_timer_display(self):
-        sec = self._remaining if self._is_running else self._duration
-        self.timer_widget.update_time(sec)
-
-    def _on_timer_click(self, *_):
-        self._on_status_click()
-
-    def _on_timer_scroll(self, widget, event: Gdk.EventScroll) -> bool:
-        if self._is_running:
-            return True
-
-        delta_minutes = 0
-        if event.direction == Gdk.ScrollDirection.UP:
-            delta_minutes = 1
-        elif event.direction == Gdk.ScrollDirection.DOWN:
-            delta_minutes = -1
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
-            _, _, dy = event.get_scroll_deltas()
-            if dy != 0.0:
-                self._scroll_acc += dy
-                threshold = 0.25
-                if abs(self._scroll_acc) >= threshold:
-                    steps = int(self._scroll_acc / threshold)
-                    delta_minutes = -steps
-                    self._scroll_acc -= steps * threshold
-
-        if delta_minutes != 0:
-            self._duration = max(60, min(86400, self._duration + delta_minutes * 60))
-            self._remaining = self._duration
-            self.update_timer_display()
-            _save_duration(self._name_prefix, self._duration)
-
-        return True
-
-    def _trigger_tick_pulse(self):
-        ctx = self.timer_button.get_style_context()
-        ctx.add_class("tick-pulse")
-
-        def _clear():
-            ctx.remove_class("tick-pulse")
-            return False
-
-        GLib.timeout_add(120, _clear)
-
-    def start_timer(self):
-        if not self._is_running:
-            self._is_running = True
-            self._remaining = self._duration
-            if self._timer_id is None:
-                self._timer_id = GLib.timeout_add(1000, self._tick)
-            self._dis_ui(False)
-            self.update_timer_display()
-
-    def stop_timer(self):
-        if self._is_running:
-            self._is_running = False
-            if self._timer_id:
-                GLib.source_remove(self._timer_id)
-                self._timer_id = None
-            self._remaining = self._duration
-            self._dis_ui(True)
-            self.update_timer_display()
-
-    def _tick(self) -> bool:
-        if not self._is_running:
-            self._timer_id = None
-            return False
-        self._remaining -= 1
-        self._trigger_tick_pulse()
-        if self._remaining <= 0:
-            self._remaining = 0
-            self.update_timer_display()
-            self._on_timer_finished()
-            self.stop_timer()
-            return False
-        self.update_timer_display()
-        return True
-
-    def _on_status_click(self, *_):
-        pass
-
-    def _on_timer_finished(self):
-        pass
-
-    def cleanup(self):
-        if self._timer_id:
-            GLib.source_remove(self._timer_id)
-            self._timer_id = None
+def _bt_device_name(dev) -> str:
+    return dev.alias or dev.name or dev.address or "Unknown"
 
 
 class NetworkButton(Box):
-    __slots__ = (
-        "_w", "_cl", "_aid", "_uid", "_ast", "_sw",
-        "network_icon", "network_label", "network_ssid", "network_ssid_revealer",
-        "network_status_button", "network_menu_button", "network_menu_label",
-        "_last_ico", "_en_hid", "_ssid_hid", "_title_box",
-    )
-
     def __init__(self, widgets=None):
         super().__init__(name="network-button")
         self._w = widgets
         self._aid = self._uid = None
         self._ast = 0
         self._last_ico = None
-        self._en_hid = self._ssid_hid = None
+        self._en_hid = self._ssid_hid = self._ready_hid = None
+        self._destroyed = False
 
-        self._cl = NetworkClient()
+        # NetworkClient общий на всё приложение (владелец — Dashboard),
+        # чтобы не держать два независимых D-Bus-соединения к NetworkManager.
+        self._cl = widgets.network_client
         self._build()
-        self._cl.connect("device-ready", self._ready)
+        self.connect("destroy", lambda *_: self.cleanup())
+        self._ready_hid = self._cl.connect("device-ready", self._ready)
         self._sched()
 
     def _build(self):
@@ -326,7 +82,7 @@ class NetworkButton(Box):
         )
 
         def _tog(*_):
-            if wifi := getattr(self._cl, "wifi_device", None):
+            if wifi := self._cl.wifi_device:
                 wifi.toggle_wifi()
 
         self.network_status_button = Button(
@@ -352,8 +108,9 @@ class NetworkButton(Box):
         )
 
     def _menu_click(self, *_):
-        if self._w and hasattr(self._w, "show_network_applet"):
-            self._w.show_network_applet()
+        if self._destroyed:
+            return
+        self._w.show_network_applet()
 
     def _ready(self, *_):
         if wifi := self._cl.wifi_device:
@@ -390,8 +147,12 @@ class NetworkButton(Box):
             self._aid = None
 
     def _anim(self) -> bool:
+        if self._destroyed:
+            self._aid = None
+            return False
+
         wifi = self._cl.wifi_device
-        if not wifi or not wifi.enabled or (wifi.state == "activated" and wifi.ssid != "Отключено"):
+        if not wifi or not wifi.enabled or (wifi.state == "activated" and wifi.ssid != "Disconnected"):
             self._stop_anim()
             return False
 
@@ -400,6 +161,9 @@ class NetworkButton(Box):
         return True
 
     def update_state(self):
+        if self._destroyed:
+            return
+
         wifi, eth = self._cl.wifi_device, self._cl.ethernet_device
 
         if wifi and not wifi.enabled:
@@ -411,9 +175,9 @@ class NetworkButton(Box):
 
         _dis(self._sw, False)
 
-        if getattr(self._cl, "primary_device", "wireless") == "wired":
+        if self._cl.primary_device == "wired":
             self._stop_anim()
-            self._set_icon(icons.world if eth and getattr(eth, "internet", "") == "activated" else icons.world_off)
+            self._set_icon(icons.world if eth and eth.internet == "activated" else icons.world_off)
             self.network_ssid_revealer.set_reveal_child(False)
             return
 
@@ -423,10 +187,10 @@ class NetworkButton(Box):
             self.network_ssid_revealer.set_reveal_child(False)
             return
 
-        if wifi.state == "activated" and wifi.ssid and wifi.ssid != "Отключено":
+        if wifi.state == "activated" and wifi.ssid and wifi.ssid != "Disconnected":
             self._stop_anim()
             s = wifi.ssid
-            self.network_ssid.set_label(s[:6].rstrip() + "..." if len(s) > 10 else s)
+            self.network_ssid.set_label(s[:6].rstrip() + "..." if len(s) > 6 else s)
             self.network_ssid_revealer.set_reveal_child(True)
 
             st = wifi.strength
@@ -437,42 +201,68 @@ class NetworkButton(Box):
             self._start_anim()
 
     def cleanup(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
+
         self._stop_anim()
         if self._uid:
             GLib.source_remove(self._uid)
             self._uid = None
 
-        if wifi := getattr(self._cl, "wifi_device", None):
+        if self._ready_hid:
+            self._cl.disconnect(self._ready_hid)
+            self._ready_hid = None
+
+        if wifi := self._cl.wifi_device:
             if self._en_hid:
                 wifi.disconnect(self._en_hid)
             if self._ssid_hid:
                 wifi.disconnect(self._ssid_hid)
 
+        # NetworkClient общий (владелец — Dashboard) — намеренно НЕ вызываем
+        # self._cl.cleanup(), это уничтожило бы клиент для NetworkConnections.
         self._cl = self._w = None
 
 
 class BluetoothButton(Box):
-    __slots__ = (
-        "_w", "_en", "_cl", "_sw", "_pending",
-        "bluetooth_icon", "bluetooth_label",
-        "bluetooth_status_button", "bluetooth_menu_button", "bluetooth_menu_label",
-    )
-
     def __init__(self, widgets=None):
         super().__init__(name="bluetooth-button")
         self._w = widgets
         self._en = self._pending = False
+        self._pending_tid = None
+        self._uid = None
+        self._en_hid = self._changed_hid = self._added_hid = self._removed_hid = None
+        self._destroyed = False
         self._cl = BluetoothClient()
 
         self._build()
-        self._cl.connect("notify::enabled", self.update_state)
+        self.connect("destroy", lambda *_: self.cleanup())
+
+        self._en_hid = self._cl.connect("notify::enabled", self._sched_cb)
+        self._changed_hid = self._cl.connect("changed", self._sched_cb)
+        self._added_hid = self._cl.connect("device-added", self._sched_cb)
+        self._removed_hid = self._cl.connect("device-removed", self._sched_cb)
+
         GLib.idle_add(self.update_state)
 
     def _build(self):
         self.bluetooth_icon = Label(name="bluetooth-icon", markup=icons.bluetooth_off)
         self.bluetooth_label = Label(name="bluetooth-label", label="Bluetooth", xalign=0, h_align="start", justification="left")
+        self.bluetooth_ssid = Label(name="bluetooth-ssid", xalign=0, h_align="start", justification="left")
 
-        title_box = Box(orientation="v", h_align="start", v_align="center", children=(self.bluetooth_label,))
+        self.bluetooth_ssid_revealer = Gtk.Revealer(
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.CENTER,
+            transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN,
+            transition_duration=400,
+        )
+        self.bluetooth_ssid_revealer.add(self.bluetooth_ssid)
+
+        title_box = Box(
+            orientation="v", h_align="start", v_align="center",
+            children=(self.bluetooth_label, self.bluetooth_ssid_revealer),
+        )
 
         self.bluetooth_status_button = Button(
             name="bluetooth-status-button",
@@ -517,31 +307,79 @@ class BluetoothButton(Box):
         cmd = "bluetoothctl power off ; rfkill block bluetooth" if en else "rfkill unblock bluetooth ; bluetoothctl power on"
 
         GLib.spawn_command_line_async(f"/bin/sh -c '{cmd}'")
-        self._upd_ui(not en)
-        GLib.timeout_add(1000, self._clear_pending)
+        self._upd_ui(not en, [])
+        self._pending_tid = GLib.timeout_add(1000, self._clear_pending)
 
     def _clear_pending(self) -> bool:
+        self._pending_tid = None
+        if self._destroyed:
+            return False
         self._pending = False
         self.update_state()
         return False
 
-    def _upd_ui(self, en: bool):
-        if self._en == en:
+    def _sched_cb(self, *_):
+        if self._uid:
+            GLib.source_remove(self._uid)
+        self._uid = GLib.timeout_add(100, self._do_upd)
+
+    def _do_upd(self) -> bool:
+        self._uid = None
+        self.update_state()
+        return False
+
+    def _upd_ui(self, en: bool, connected):
+        if self._en != en:
+            self._en = en
+            self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
+            _dis(self._sw, not en)
+
+        if not en or not connected:
+            self.bluetooth_ssid_revealer.set_reveal_child(False)
             return
-        self._en = en
-        self.bluetooth_icon.set_markup(icons.bluetooth if en else icons.bluetooth_off)
-        _dis(self._sw, not en)
+
+        dev = min(connected, key=lambda d: (d.alias or d.name or "").lower())
+        name = _bt_device_name(dev)
+        self.bluetooth_ssid.set_label(name[:6].rstrip() + "..." if len(name) > 6 else name)
+        self.bluetooth_ssid_revealer.set_reveal_child(True)
 
     def update_state(self, *_):
+        if self._destroyed:
+            return False
         if not self._pending:
-            self._upd_ui(self._get_pwr())
+            self._upd_ui(self._get_pwr(), self._cl.connected_devices)
         return False
 
     def _open_menu(self, *_):
-        if self._w and hasattr(self._w, "show_bt"):
-            self._w.show_bt()
+        if self._destroyed:
+            return
+        self._w.show_bt()
 
     def cleanup(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
+
+        if self._pending_tid:
+            GLib.source_remove(self._pending_tid)
+            self._pending_tid = None
+        if self._uid:
+            GLib.source_remove(self._uid)
+            self._uid = None
+
+        if self._en_hid:
+            self._cl.disconnect(self._en_hid)
+            self._en_hid = None
+        if self._changed_hid:
+            self._cl.disconnect(self._changed_hid)
+            self._changed_hid = None
+        if self._added_hid:
+            self._cl.disconnect(self._added_hid)
+            self._added_hid = None
+        if self._removed_hid:
+            self._cl.disconnect(self._removed_hid)
+            self._removed_hid = None
+
         self._cl = self._w = None
 
 
@@ -565,18 +403,18 @@ class NightModeButton(_TimerSplitButton):
         self.update_state()
 
     def _on_status_click(self, *_):
-        if _fast_chk(self.PAT):
-            exec_shell_command_async(self.STOP)
+        if _proc_running(self.PAT):
+            GLib.spawn_command_line_async(self.STOP)
             self.stop_timer()
         else:
-            exec_shell_command_async(self.START)
+            GLib.spawn_command_line_async(self.START)
             self.start_timer()
 
     def _on_timer_finished(self):
-        exec_shell_command_async(self.STOP)
+        GLib.spawn_command_line_async(self.STOP)
 
     def update_state(self, *_):
-        _async_exec(lambda: _fast_chk(self.PAT), self._upd_proc)
+        _async_exec(lambda: _proc_running(self.PAT), self._upd_proc)
 
     def _upd_proc(self, active: bool) -> bool:
         if active and not self._is_running:
@@ -586,6 +424,13 @@ class NightModeButton(_TimerSplitButton):
         else:
             self._dis_ui(not active)
         return False
+
+    def cleanup(self):
+        if self._destroyed:
+            return
+        super().cleanup()
+        if _proc_running(self.PAT):
+            GLib.spawn_command_line_async(self.STOP)
 
 
 class CaffeineButton(_TimerSplitButton):
@@ -625,6 +470,8 @@ class CaffeineButton(_TimerSplitButton):
         return False
 
     def cleanup(self):
+        if self._destroyed:
+            return
         super().cleanup()
         self._caffeine.disable()
 
@@ -678,6 +525,8 @@ class WorkTimeButton(_TimerSplitButton):
         return False
 
     def cleanup(self):
+        if self._destroyed:
+            return
         super().cleanup()
         self._work_time.stop()
 
@@ -715,5 +564,4 @@ class Buttons(Gtk.Grid):
 
     def cleanup(self):
         for child in self.get_children():
-            if hasattr(child, "cleanup"):
-                child.cleanup()
+            child.cleanup()

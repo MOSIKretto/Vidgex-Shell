@@ -4,12 +4,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-# Импортируем GtkLayerShell для жесткой фиксации отступа
-try:
-    gi.require_version("GtkLayerShell", "0.1")
-    from gi.repository import GtkLayerShell
-except ValueError:
-    GtkLayerShell = None
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import GtkLayerShell
 
 from fabric.hyprland.widgets import (
     HyprlandLanguage as Language,
@@ -34,11 +30,9 @@ import services.icons as icons
 
 class Bar(Window):
     def __init__(self, monitor_id=0, **kwargs):
-        # Передаем 36 напрямую или отключаем auto
         super().__init__(exclusivity=36, monitor_id=monitor_id)
         self.mid = monitor_id
 
-        # Фиксируем размер эксклюзивной зоны ровно в 36px
         if GtkLayerShell and GtkLayerShell.is_layer_window(self):
             GtkLayerShell.set_exclusive_zone(self, 36)
 
@@ -112,9 +106,6 @@ class Bar(Window):
         self.lang_eb.connect("enter-notify-event", self._lang_enter)
         self.lang_eb.connect("leave-notify-event", self._lang_leave)
 
-        # ────────────────────────────────────────────────────────────
-        # Левая часть бара: строго прижимаем к верху (v_align="start")
-        # ────────────────────────────────────────────────────────────
         start_container = Box(
             name="start-container",
             spacing=4,
@@ -139,9 +130,6 @@ class Bar(Window):
             ],
         )
 
-        # ────────────────────────────────────────────────────────────
-        # Правая часть бара с нижним уголком
-        # ────────────────────────────────────────────────────────────
         power_battery_container = Box(
             name="power-battery-container",
             spacing=4,
@@ -183,9 +171,6 @@ class Bar(Window):
             ],
         )
 
-        # ────────────────────────────────────────────────────────────
-        # Центровщик бара
-        # ────────────────────────────────────────────────────────────
         self.nb = CenterBox(
             name="bar-inner",
             v_align="start",

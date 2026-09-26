@@ -59,9 +59,6 @@ def _icon(cls: str, size: int = 20):
 
 class Notch(Window):
     def __init__(self, **kwargs):
-        # Было -40px (утягивало за экран на 4px).
-        # -36px опускает выемку ровно на уровень экрана. 
-        # Если захотите опустить ещё чуть ниже — поставьте -34px или -32px.
         super().__init__(anchor="top", margin="-36px 0px 0px 0px", monitor=0)
 
         self._cw: str | None = None
@@ -101,7 +98,7 @@ class Notch(Window):
             transition_type="slide-up-down",
             transition_duration=220,
         )
-        self.cs.set_interpolate_size(True)  # Плавное сглаживание ширины
+        self.cs.set_interpolate_size(True)
         self.cs.add_named(self.awb, "window")
         self.cs.add_named(self.ctrl_osd, "control")
 
@@ -114,7 +111,6 @@ class Notch(Window):
                 children=[self.cs],
             )
         )
-        # Высота строго 36px
         self.compact.set_size_request(290, 36)
 
         self.main_window  = MainWindow(notch=self)
