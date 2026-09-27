@@ -1,7 +1,14 @@
-import shutil
-import subprocess
+import re
+import qrcode
 
-from gi.repository import Gtk, NM, GLib
+import cairo
+import gi
+
+gi.require_version("Gst", "1.0")
+from gi.repository import Gtk, NM, GLib, Gst
+
+from PIL import Image as PILImage
+from pyzbar.pyzbar import decode
 
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -12,6 +19,30 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
+
+Gst.init(None)
+
+_QR_FRAME_W = 620
+_QR_FRAME_H = 220
+_QR_DEVICE_WAIT_MS = 2000
+_WIFI_QR_FIELD_SPLIT = re.compile(r"(?<!\\);")
+
+
+def _parse_wifi_qr(data: str) -> tuple[str, str] | None:
+    if not data.startswith("WIFI:"):
+        return None
+
+    fields = {}
+    for part in _WIFI_QR_FIELD_SPLIT.split(data[len("WIFI:"):]):
+        if ":" not in part:
+            continue
+        key, _, value = part.partition(":")
+        fields[key] = value.replace("\\;", ";").replace("\\:", ":").replace("\\\\", "\\")
+
+    ssid = fields.get("S")
+    if not ssid:
+        return None
+    return ssid, fields.get("P", "")
 
 
 class WifiSlot(Gtk.Box):
@@ -319,6 +350,293 @@ class WifiSlot(Gtk.Box):
             self.parent_net.open_settings(self.ssid)
 
 
+class QrScanPage(Gtk.Box):
+    def __init__(self, nc, lists_stack, on_connected):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.set_halign(Gtk.Align.CENTER)
+        self.set_valign(Gtk.Align.CENTER)
+
+        self._destroyed = False
+        self.nc = nc
+        self._lists_stack = lists_stack
+        self._on_connected = on_connected
+        self._pipeline = None
+        self._bus_hid = None
+        self._device_monitor = None
+        self._monitor_bus_hid = None
+        self._device_wait_id = None
+        self._frame_surface = None
+        self._frame_polygon = None
+        self._last_attempt = None
+
+        self.status_stack = Stack(transition_type="crossfade", h_expand=True, v_expand=True)
+
+        self.drawing_area = Gtk.DrawingArea()
+        self.drawing_area.set_size_request(_QR_FRAME_W, _QR_FRAME_H)
+        self.drawing_area.connect("draw", self._on_draw)
+
+        self.message_box = Box(
+            orientation="v", v_align="center", h_align="center", spacing=12, v_expand=True,
+        )
+        self.message_icon = Label(markup=f"<span size='32768'>{icons.wifi_off}</span>")
+        self.message_icon.get_style_context().add_class("wifi-off-icon")
+        self.message_label = Label(label="")
+        self.message_label.set_justify(Gtk.Justification.CENTER)
+        self.message_label.get_style_context().add_class("wifi-off-label")
+        self.message_box.add(self.message_icon)
+        self.message_box.add(self.message_label)
+
+        self.status_stack.add_named(self.drawing_area, "camera")
+        self.status_stack.add_named(self.message_box, "message")
+        self.add(self.status_stack)
+        self.show_all()
+
+        self._visible_hid = lists_stack.connect(
+            "notify::visible-child-name", self._on_page_switched,
+        )
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, _widget):
+        self.cleanup()
+
+    def cleanup(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
+        self._cancel_device_wait()
+        self._stop_device_monitor()
+        self._stop_pipeline()
+        self._lists_stack.disconnect(self._visible_hid)
+        self._lists_stack = None
+        self._on_connected = None
+        self.nc = None
+
+    def _on_page_switched(self, stack, _pspec):
+        if stack.get_visible_child_name() == "qr":
+            self._start()
+        else:
+            self._cancel_device_wait()
+            self._stop_device_monitor()
+            self._stop_pipeline()
+
+    def _start(self):
+        self._last_attempt = None
+
+        self._device_monitor = Gst.DeviceMonitor.new()
+        self._device_monitor.add_filter("Video/Source", None)
+
+        bus = self._device_monitor.get_bus()
+        bus.add_signal_watch()
+        self._monitor_bus_hid = bus.connect("message::device-added", self._on_device_added)
+
+        self._device_monitor.start()
+
+        existing = self._device_monitor.get_devices()
+        if existing:
+            self._on_device_found(existing[0])
+            return
+
+        self._show_message("Looking for a camera...")
+        self._device_wait_id = GLib.timeout_add(_QR_DEVICE_WAIT_MS, self._on_device_wait_timeout)
+
+    def _on_device_added(self, _bus, message):
+        if self._destroyed:
+            return
+        device = message.parse_device_added()
+        self._on_device_found(device)
+
+    def _on_device_found(self, device):
+        self._cancel_device_wait()
+        self._stop_device_monitor()
+        self._start_pipeline(device)
+
+    def _on_device_wait_timeout(self):
+        self._device_wait_id = None
+        self._stop_device_monitor()
+        self._show_message("No camera detected.\nPlease connect a camera to your computer.")
+        return False
+
+    def _cancel_device_wait(self):
+        if self._device_wait_id:
+            GLib.source_remove(self._device_wait_id)
+            self._device_wait_id = None
+
+    def _stop_device_monitor(self):
+        if not self._device_monitor:
+            return
+        bus = self._device_monitor.get_bus()
+        bus.remove_signal_watch()
+        bus.disconnect(self._monitor_bus_hid)
+        self._monitor_bus_hid = None
+        self._device_monitor.stop()
+        self._device_monitor = None
+
+    def _start_pipeline(self, device):
+        src = device.create_element(None)
+        src_capsfilter = Gst.ElementFactory.make("capsfilter", None)
+        src_capsfilter.set_property(
+            "caps",
+            Gst.Caps.from_string("video/x-raw,format=YUY2,width=640,height=480"),
+        )
+        convert = Gst.ElementFactory.make("videoconvert", None)
+        scale = Gst.ElementFactory.make("videoscale", None)
+        capsfilter = Gst.ElementFactory.make("capsfilter", None)
+        capsfilter.set_property(
+            "caps",
+            Gst.Caps.from_string(
+                f"video/x-raw,format=BGRx,width={_QR_FRAME_W},height={_QR_FRAME_H}",
+            ),
+        )
+        appsink = Gst.ElementFactory.make("appsink", None)
+        appsink.set_property("emit-signals", True)
+        appsink.set_property("max-buffers", 1)
+        appsink.set_property("drop", True)
+        appsink.set_property("sync", False)
+        appsink.connect("new-sample", self._on_new_sample)
+
+        pipeline = Gst.Pipeline.new("qr-scan")
+        for el in (src, src_capsfilter, convert, scale, capsfilter, appsink):
+            pipeline.add(el)
+        src.link(src_capsfilter)
+        src_capsfilter.link(convert)
+        convert.link(scale)
+        scale.link(capsfilter)
+        capsfilter.link(appsink)
+
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        self._bus_hid = bus.connect("message::error", self._on_bus_error)
+
+        pipeline.set_state(Gst.State.PLAYING)
+        self._pipeline = pipeline
+        self.status_stack.set_visible_child_name("camera")
+
+    def _stop_pipeline(self):
+        if not self._pipeline:
+            return
+        bus = self._pipeline.get_bus()
+        bus.remove_signal_watch()
+        bus.disconnect(self._bus_hid)
+        self._bus_hid = None
+        self._pipeline.set_state(Gst.State.NULL)
+        self._pipeline = None
+        self._frame_surface = None
+        self._frame_polygon = None
+
+    def _on_bus_error(self, _bus, _message):
+        self._stop_pipeline()
+        self._show_message("Camera disconnected.")
+
+    def _show_message(self, text):
+        self.message_label.set_label(text)
+        self.status_stack.set_visible_child_name("message")
+
+    def _show_error_and_restore(self, text):
+        self._show_message(text)
+        GLib.timeout_add(3000, self._restore_camera)
+
+    def _restore_camera(self):
+        if self._destroyed or not self._pipeline:
+            return False
+        self.status_stack.set_visible_child_name("camera")
+        return False
+
+    def _on_new_sample(self, sink):
+        sample = sink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.OK
+
+        buf = sample.get_buffer()
+        ok, mapinfo = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            return Gst.FlowReturn.OK
+        data = bytes(mapinfo.data)
+        buf.unmap(mapinfo)
+
+        gray = PILImage.frombytes(
+            "RGB", (_QR_FRAME_W, _QR_FRAME_H), data, "raw", "BGRX",
+        ).convert("L")
+        decoded = decode(gray)
+
+        qr_result = None
+        if decoded:
+            obj = decoded[0]
+            qr_result = (obj.data.decode("utf-8"), obj.polygon)
+
+        GLib.idle_add(self._on_frame_ready, data, qr_result)
+        return Gst.FlowReturn.OK
+
+    def _on_frame_ready(self, data, qr_result):
+        if self._destroyed or not self._pipeline:
+            return False
+
+        stride = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_RGB24, _QR_FRAME_W)
+        self._frame_surface = cairo.ImageSurface.create_for_data(
+            bytearray(data), cairo.FORMAT_RGB24, _QR_FRAME_W, _QR_FRAME_H, stride,
+        )
+        self._frame_polygon = qr_result[1] if qr_result else None
+        self.drawing_area.queue_draw()
+
+        if qr_result:
+            self._handle_qr(qr_result[0])
+        return False
+
+    def _on_draw(self, _widget, cr):
+        if not self._frame_surface:
+            return False
+
+        # Зеркалим только отображение (эффект как в зеркале для пользователя).
+        # Буфер кадра, переданный в decode, остаётся неизменным —
+        # декодирование QR не зависит от этой трансформации отрисовки.
+        cr.save()
+        cr.translate(_QR_FRAME_W, 0)
+        cr.scale(-1, 1)
+
+        cr.set_source_surface(self._frame_surface, 0, 0)
+        cr.paint()
+
+        if self._frame_polygon:
+            cr.set_source_rgb(0.2, 0.85, 0.4)
+            cr.set_line_width(3)
+            points = self._frame_polygon
+            cr.move_to(points[0].x, points[0].y)
+            for p in points[1:]:
+                cr.line_to(p.x, p.y)
+            cr.close_path()
+            cr.stroke()
+
+        cr.restore()
+        return False
+
+    def _handle_qr(self, data):
+        parsed = _parse_wifi_qr(data)
+        if not parsed:
+            return
+
+        ssid, password = parsed
+        if self._last_attempt == (ssid, password):
+            return
+        self._last_attempt = (ssid, password)
+
+        ok = self.nc.connect_to_new_network(ssid, password, self._on_ok, self._on_err)
+        if not ok:
+            self._show_error_and_restore(
+                f"Can't connect to '{ssid}':\nout of range or unsupported security",
+            )
+
+    def _on_ok(self, _ssid):
+        if self._destroyed:
+            return
+        self._stop_pipeline()
+        self._on_connected()
+
+    def _on_err(self, _ssid, _msg):
+        if self._destroyed:
+            return
+        self._last_attempt = None
+        self._show_error_and_restore("Connection failed. Try again.")
+
+
 class NetworkConnections(Box):
     def __init__(self, **kwargs):
         self.widgets = kwargs.pop("widgets", None)
@@ -375,6 +693,14 @@ class NetworkConnections(Box):
             on_clicked=self._on_saved_toggle,
         )
 
+        self.qr_lbl = Label(markup=icons.scan, name="network-qr-label")
+        self.qr_btn = Button(
+            name="network-qr",
+            child=self.qr_lbl,
+            tooltip_text="Scan QR Code",
+            on_clicked=self._on_qr_toggle,
+        )
+
         back = Button(
             name="network-back",
             child=Label(markup=icons.chevron_left, name="network-back-label"),
@@ -384,7 +710,8 @@ class NetworkConnections(Box):
         self.header_title = Label(label="Wi-Fi", v_align="center", name="header-title")
 
         header_end_box = Box(
-            spacing=4, orientation="horizontal", children=(self.saved_btn, self.scan_btn),
+            spacing=4, orientation="horizontal",
+            children=(self.saved_btn, self.qr_btn, self.scan_btn),
         )
 
         header = CenterBox(
@@ -491,6 +818,9 @@ class NetworkConnections(Box):
         self.lists_stack.add_named(self.main_scroll, "main")
         self.lists_stack.add_named(self.saved_scroll, "saved")
         self.lists_stack.add_named(self.settings_scroll, "settings")
+
+        self.qr_page = QrScanPage(self.nc, self.lists_stack, self._on_qr_connected)
+        self.lists_stack.add_named(self.qr_page, "qr")
 
         self.stack.add_named(self.lists_stack, "on")
 
@@ -622,6 +952,7 @@ class NetworkConnections(Box):
 
         self.scan_btn.set_visible(False)
         self.saved_btn.set_visible(False)
+        self.qr_btn.set_visible(False)
         self.lists_stack.set_visible_child_name("settings")
 
     def _do_forget(self, _btn):
@@ -670,43 +1001,21 @@ class NetworkConnections(Box):
         qr_string += f"T:{sec_type};P:{password};;" if password else "T:nopass;;"
 
         qr_path = f"/tmp/wifi_qr_{ssid}.png"
-        generated = self._generate_qr(qr_string, qr_path)
+        self._generate_qr(qr_string, qr_path)
 
-        if generated:
-            self.qr_image.set_from_file(qr_path)
-            self.qr_password_lbl.set_label(
-                f"Password: {password}" if password else "Open network",
-            )
-            btn.get_style_context().add_class("active")
-        else:
-            self.qr_password_lbl.set_label(
-                "Install 'python3-qrcode' or 'qrencode' for QR code",
-            )
+        self.qr_image.set_from_file(qr_path)
+        self.qr_password_lbl.set_label(
+            f"Password: {password}" if password else "Open network",
+        )
+        btn.get_style_context().add_class("active")
 
         self.qr_revealer.set_reveal_child(True)
 
-    def _generate_qr(self, data: str, path: str) -> bool:
-        try:
-            import qrcode
-        except ImportError:
-            # python3-qrcode не установлен — падаем на внешний бинарь qrencode
-            return self._generate_qr_via_qrencode(data, path)
-
+    def _generate_qr(self, data: str, path: str) -> None:
         qr = qrcode.QRCode(version=1, box_size=5, border=1)
         qr.add_data(data)
         qr.make(fit=True)
         qr.make_image(fill_color="black", back_color="white").save(path)
-        return True
-
-    def _generate_qr_via_qrencode(self, data: str, path: str) -> bool:
-        if shutil.which("qrencode") is None:
-            return False
-        try:
-            subprocess.run(["qrencode", "-o", path, data], check=True, timeout=5)
-        except subprocess.CalledProcessError:
-            # переданная строка (SSID/пароль) не влезает в выбранную версию QR-кода
-            return False
-        return True
 
     def _on_back_click(self, _btn):
         curr = self.lists_stack.get_visible_child_name()
@@ -716,26 +1025,41 @@ class NetworkConnections(Box):
             self.header_title.set_label("Wi-Fi")
             self.scan_btn.set_visible(True)
             self.saved_btn.set_visible(True)
+            self.qr_btn.set_visible(True)
 
             if self._previous_page == "saved":
                 self.saved_btn.add_style_class("pressed")
             else:
                 self.saved_btn.remove_style_class("pressed")
 
-        elif curr == "saved":
+        elif curr in ("saved", "qr"):
             self.lists_stack.set_visible_child_name("main")
             self.saved_btn.remove_style_class("pressed")
+            self.qr_btn.remove_style_class("pressed")
 
         else:
             self.widgets.show_notif()
 
-    def _on_saved_toggle(self, btn):
-        if self.lists_stack.get_visible_child_name() == "main":
-            self.lists_stack.set_visible_child_name("saved")
-            btn.add_style_class("pressed")
-        else:
+    def _switch_list_page(self, target, btn, other_btn):
+        current = self.lists_stack.get_visible_child_name()
+
+        if current == target:
             self.lists_stack.set_visible_child_name("main")
             btn.remove_style_class("pressed")
+        else:
+            self.lists_stack.set_visible_child_name(target)
+            btn.add_style_class("pressed")
+            other_btn.remove_style_class("pressed")
+
+    def _on_saved_toggle(self, btn):
+        self._switch_list_page("saved", btn, self.qr_btn)
+
+    def _on_qr_toggle(self, btn):
+        self._switch_list_page("qr", btn, self.saved_btn)
+
+    def _on_qr_connected(self):
+        self.lists_stack.set_visible_child_name("main")
+        self.qr_btn.remove_style_class("pressed")
 
     def _turn_on_wifi(self, *_args):
         if self._btns:
@@ -938,8 +1262,6 @@ class NetworkConnections(Box):
                 slot.destroy()
             pool.clear()
 
-        # NetworkClient общий (владелец — Dashboard) — намеренно НЕ вызываем
-        # self.nc.cleanup(), это уничтожило бы клиент для NetworkButton.
         self.nc = None
         self.widgets = None
         self._btns = None
