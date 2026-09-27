@@ -7,19 +7,11 @@ from fabric.widgets.overlay import Overlay
 from fabric.widgets.scale import Scale
 from gi.repository import GLib
 
-ANIM_STEPS = 25
-ANIM_INTERVAL_MS = 16
-CLICK_STEPS = 20
-CLICK_MS = 14
-
 
 def ease_out_cubic(t: float) -> float:
     return 1.0 - (1.0 - t) ** 3
 
-
 class BaseSmoothSlider(Scale):
-    __slots__ = ('_upd', '_canim_id', '_canim_s', '_canim_e', '_canim_n', '_pressed', '_last_pct')
-
     def __init__(self, style_class: str = "", **kwargs):
         super().__init__(
             name="control-slider",
@@ -30,7 +22,7 @@ class BaseSmoothSlider(Scale):
             increments=(0.01, 0.1),
             **kwargs,
         )
-        self.set_can_focus(False)  # Запрещаем перехватывать стрелки клавиатуры
+        self.set_can_focus(False)
         self._upd = False
         self._canim_id = None
         self._canim_s = self._canim_e = 0.0
@@ -45,6 +37,7 @@ class BaseSmoothSlider(Scale):
         self.connect("button-press-event", self._on_click_press)
         self.connect("button-release-event", self._on_click_release)
         self.connect("motion-notify-event", self._on_click_motion)
+        self.connect("destroy", lambda _: self.cleanup())
 
     def _on_click_press(self, _, event):
         if event.button != 1:
@@ -59,7 +52,7 @@ class BaseSmoothSlider(Scale):
         self._canim_s = cur
         self._canim_e = target
         self._canim_n = 0
-        self._canim_id = GLib.timeout_add(CLICK_MS, self._canim_tick)
+        self._canim_id = GLib.timeout_add(14, self._canim_tick)
         return True
 
     def _on_click_release(self, _, event):
@@ -78,9 +71,9 @@ class BaseSmoothSlider(Scale):
 
     def _canim_tick(self):
         self._canim_n += 1
-        t = min(self._canim_n / float(CLICK_STEPS), 1.0)
+        t = min(self._canim_n / float(20), 1.0)
         self.set_value(self._canim_s + (self._canim_e - self._canim_s) * ease_out_cubic(t))
-        if self._canim_n >= CLICK_STEPS:
+        if self._canim_n >= 20:
             self._canim_id = None
             return False
         return True
@@ -112,20 +105,23 @@ class BaseSmoothSlider(Scale):
             self._upd = False
 
     def on_user_value_changed(self, norm_val: float):
-        pass
+        # Обязательный контракт: наследник должен решить, что делать со
+        # значением слайдера (менять громкость, яркость и т.д.). Без
+        # переопределения слайдер будет визуально работать, но бесполезно —
+        # поэтому явный сбой лучше молчаливого бездействия.
+        raise NotImplementedError
 
     def cleanup(self):
         self._cancel_anim()
 
 
 class BaseSmallIndicator(Box):
-    __slots__ = ('progress_bar', 'label')
-
     def __init__(self, box_name: str, prog_name: str, lbl_name: str, **kwargs):
         super().__init__(name=box_name, **kwargs)
         self.progress_bar = CircularProgressBar(name=prog_name, size=28, line_width=2, start_angle=150, end_angle=390)
         self.label = Label(name=lbl_name)
         self.add(Overlay(child=self.progress_bar, overlays=self.label))
+        self.connect("destroy", lambda _: self.cleanup())
 
     def update_ui(self, norm_val: float, icon: str, tooltip: str):
         if abs(self.progress_bar.value - norm_val) > 0.005:
@@ -133,15 +129,20 @@ class BaseSmallIndicator(Box):
         self.label.set_markup(icon)
         self.set_tooltip_text(tooltip)
 
+    def cleanup(self):
+        # Легитимный no-op: сам базовый класс не создаёт ни таймеров, ни
+        # подписок — чистить на этом уровне нечего. Точка расширения для
+        # наследников (например, VolumeSmall отписывается от сервиса через
+        # super().cleanup() + собственную логику).
+        pass
+
 
 class BaseIconButton(Box):
-    __slots__ = ('label', 'btn', '_anim_id', '_soft_muted', '_saved_val', '_anim_s', '_anim_e', '_anim_step')
-
     def __init__(self, box_name: str, lbl_name: str, **kwargs):
         super().__init__(name=box_name, **kwargs)
         self.label = Label(name=lbl_name)
         self.btn = Button(on_clicked=self._on_toggle, child=self.label)
-        self.btn.set_can_focus(False)  # Не держим фокус
+        self.btn.set_can_focus(False)
         self.add(EventBox(child=self.btn, h_expand=True))
 
         self._anim_id = None
@@ -149,6 +150,8 @@ class BaseIconButton(Box):
         self._saved_val = 100.0
         self._anim_s = self._anim_e = 0.0
         self._anim_step = 0
+
+        self.connect("destroy", lambda _: self.cleanup())
 
     def _on_toggle(self, *_):
         if self._anim_id is not None:
@@ -171,14 +174,14 @@ class BaseIconButton(Box):
         self._anim_s = start
         self._anim_e = end
         self._anim_step = 0
-        self._anim_id = GLib.timeout_add(ANIM_INTERVAL_MS, self._anim_tick)
+        self._anim_id = GLib.timeout_add(16, self._anim_tick)
 
     def _anim_tick(self):
         self._anim_step += 1
-        t = min(self._anim_step / float(ANIM_STEPS), 1.0)
+        t = min(self._anim_step / float(25), 1.0)
         v = self._anim_s + (self._anim_e - self._anim_s) * ease_out_cubic(t)
         self.set_current_value(v)
-        if self._anim_step >= ANIM_STEPS:
+        if self._anim_step >= 25:
             self._anim_id = None
             return False
         return True

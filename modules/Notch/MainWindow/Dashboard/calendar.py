@@ -9,12 +9,6 @@ import services.icons as icons
 
 
 class Calendar(Gtk.Box):
-    __slots__ = (
-        'view_mode', 'first_weekday', 'ty', 'tm', 'td', 'sy', 'sm', 'sd',
-        '_pb', '_nb', '_ml', 'stack',
-        '_active_page', '_labels'
-    )
-
     _M = (
         "January", "February", "March", "April",
         "May", "June", "July", "August",
@@ -181,11 +175,3 @@ class Calendar(Gtk.Box):
             self.sy, self.sm, self.sd = next_week.year, next_week.month, next_week.day
 
         self._upd(transition=Gtk.StackTransitionType.SLIDE_LEFT)
-
-    def cleanup(self):
-        self.stack.destroy()
-
-        self._pb = self._nb = self._ml = self.stack = None
-
-        self._labels[0].clear()
-        self._labels[1].clear()

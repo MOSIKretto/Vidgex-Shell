@@ -18,6 +18,7 @@
 #notch-content {
   background-color: var(--shadow);
   border-radius: 0 0 12px 12px;
+  min-height: 36px;
 }
 
 #notch-content.open {
@@ -33,7 +34,12 @@
   font-weight: bold;
 }
 
-#active-window-box { margin: 10px; }
+/* Убираем вертикальный margin (оставляем только по бокам 10px), 
+   чтобы выемка держала ровную высоту 36px */
+#active-window-box { 
+  margin: 0 10px; 
+  min-height: 36px;
+}
 
 #app-launcher,
 #dashboard,
@@ -43,10 +49,13 @@
   border-radius: 0 0 12px 12px;
 }
 
+/* Убираем вертикальный margin (оставляем только боковые 8px),
+   чтобы острова бара были ровно 36px и прижаты к верхнему краю */
 #bar-inner {
-  margin: 8px;
+  margin: 0 8px;
   opacity: 1;
   border-radius: 12px;
+  min-height: 36px;
 }
 
 tooltip {
@@ -55,25 +64,29 @@ tooltip {
   border-radius: 12px;
 }
 
+/* Кнопки бара строго 36px с центрированием иконки */
 #button-bar {
-  padding: 4px;
+  padding: 0 6px;
   min-width: 28px;
-  min-height: 28px;
+  min-height: 36px;
   background-color: transparent;
   border-radius: 12px;
+  margin: 0;
 }
 
 #button-bar-label {
   color: var(--primary);
-  font-size: 20px;
-  padding: 4px;
+  font-size: 16px;
+  padding: 0;
   border-radius: 12px;
 }
 
+/* Убираем вертикальный padding, чтобы OSD громкости/яркости 
+   не распирал выемку шире 36px */
 #control,
 #metrics {
   background-color: var(--shadow);
-  padding: 4px 8px;
+  padding: 0 8px;
   border-radius: 12px;
   min-height: 36px;
 }

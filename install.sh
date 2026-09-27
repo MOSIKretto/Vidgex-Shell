@@ -59,6 +59,11 @@ PACKAGES=(
   power-profiles-daemon
   upower
   gray-git
+  pyzbar
+  zbar
+  gstreamer
+  gst-python 
+  gst-plugins-good
 
   python-setproctitle
   python-requests

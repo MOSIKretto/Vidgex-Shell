@@ -13,6 +13,8 @@ from fabric.widgets.eventbox import EventBox
 
 from gi.repository import Gdk, GLib
 
+from modules.corners import MyCorner
+
 from services.wayland import WaylandWindow as Window
 
 _CD = 0.2
@@ -20,7 +22,6 @@ _TH = 0.5
 _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
 _LST = 0.0
 
-# Путь для сохранения порядка матрицы между перезапусками
 _CACHE_DIR = os.path.expanduser("~/.cache/vidgex-shell")
 _ORDER_FILE = os.path.join(_CACHE_DIR, "matrix_order")
 
@@ -40,17 +41,14 @@ def _save_matrix_order(order):
         f.write(str(order))
 
 
-# Глобальное состояние
 _MATRIX_ORDER = _load_matrix_order()
 _GLOBAL_CONN = None
 
-# Реестр активных компонентов
 _top_workspaces = []
 _left_workspaces = []
 _sidebars = []
 _hover_timer_id = None
 
-# Lua-строки анимаций
 LUA_VERT = (
     'hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "overshot", style = "slidevert" }); '
     'hl.animation({ leaf = "workspacesIn", enabled = true, speed = 6, bezier = "overshot", style = "slidevert" }); '
@@ -64,7 +62,6 @@ LUA_HORIZ = (
 
 
 def _apply_persistent_rules(order):
-    """Применяет persistent = true только для столов 1..order^2, для остальных снимает persistent"""
     total = order * order
     lua_code = (
         f"for i = 1, 81 do "
@@ -85,7 +82,6 @@ _apply_persistent_rules(_MATRIX_ORDER)
 
 
 def _apply_order_actions_visible(visible: bool):
-    """Показывает или скрывает кнопки '+' и '-' и управляет выезжанием левой панели"""
     for top in _top_workspaces:
         top.revealer_plus.set_reveal_child(visible)
     for left in _left_workspaces:
@@ -95,7 +91,6 @@ def _apply_order_actions_visible(visible: bool):
 
 
 def _schedule_order_actions(visible: bool):
-    """Управляет задержкой при переходе курсора между цифрой и кнопками '+' / '-'"""
     global _hover_timer_id
     if _hover_timer_id:
         GLib.source_remove(_hover_timer_id)
@@ -150,7 +145,6 @@ def _switch_workspace(conn, target_ws, action="workspace"):
 
 
 def _get_clients_list():
-    """Получает список всех открытых окон через сокет"""
     res = _GLOBAL_CONN.send_command("j/clients")
     if hasattr(res, "reply"): res = res.reply
     if isinstance(res, bytes): res = res.decode("utf-8")
@@ -158,7 +152,6 @@ def _get_clients_list():
 
 
 def _close_excess_windows(new_max, force=False):
-    """Закрывает все окна, находящиеся на столах с номером больше new_max"""
     clients = _get_clients_list()
 
     for client in clients:
@@ -166,7 +159,6 @@ def _close_excess_windows(new_max, force=False):
         ws_id = ws_info.get("id") if isinstance(ws_info, dict) else ws_info
         ws_id = int(ws_id)
 
-        # Обрабатываем только окна на обычных столах выше допустимого максимума
         if ws_id > new_max:
             addr = client.get("address")
             pid = client.get("pid")
@@ -176,23 +168,17 @@ def _close_excess_windows(new_max, force=False):
                 if not addr_str.startswith("0x"):
                     addr_str = f"0x{addr_str}"
 
-                # 1. Запрос закрытия окна через CLI hyprctl (с раздельными аргументами)
                 subprocess.run(["hyprctl", "dispatch", "closewindow", f"address:{addr_str}"], capture_output=True)
-
-                # 2. Запрос закрытия окна через Lua
                 subprocess.run(["hyprctl", "dispatch", f'hl.dsp.window.close({{ address = "{addr_str}" }})'], capture_output=True)
 
-                # 3. Запрос закрытия через прямой сокет Fabric
                 if _GLOBAL_CONN:
                     _GLOBAL_CONN.send_command(f"dispatch closewindow address:{addr_str}")
 
-            # Принудительное закрытие процесса, если окно упорствует при повторном проходе
             if force and pid:
                 os.kill(int(pid), signal.SIGTERM)
 
 
 def matrix_nav(action, direction):
-    """Функция навигации по стрелкам для вызова через fabric-cli"""
     order = _MATRIX_ORDER
     ws = _get_active_ws(_GLOBAL_CONN)
 
@@ -237,12 +223,10 @@ def set_matrix_order(new_order, conn=None):
     new_max = new_order * new_order
 
     if new_order < old_order:
-        # 1. Если активный стол превышает новый максимум — переводим фокус на new_max
         cur_ws = _get_active_ws(conn)
         if cur_ws > new_max:
             _dispatch_ws(new_max, "workspace")
 
-        # 2. Переводим мониторы, если они смотрят на удаляемые столы
         m_data = subprocess.check_output("hyprctl monitors -j", shell=True, stderr=subprocess.DEVNULL).decode("utf-8")
         for m in json.loads(m_data):
             m_ws = m.get("activeWorkspace", {}).get("id", 1)
@@ -518,9 +502,10 @@ class LeftWorkspaces(Box):
 
 class SideBarWindow(Window):
     def __init__(self, conn, monitor_id=0):
-        super().__init__(exclusivity="none", layer="top", monitor_id=monitor_id)
+        super().__init__(exclusivity="none", layer="overlay", monitor_id=monitor_id)
         self.anchor = "left top"
-        self.margin = "-4px -4px -8px -4px"
+        # Возвращаем -8px, чтобы левая панель плотно прилегала к краю экрана
+        self.margin = "0px 0px 0px -8px"
 
         self.conn = conn
         self.monitor_id = monitor_id
@@ -557,7 +542,35 @@ class SideBarWindow(Window):
     def _init_ui(self):
         self.ws = LeftWorkspaces(self.conn, v_align="start", h_align="start")
 
-        self.wrapper = Box(name="bar-inner", children=[self.ws], orientation="v")
+        self.bottom_corner = Box(
+            name="sidebar-bottom-corner",
+            h_align="start",
+            v_align="start",
+            children=[MyCorner("top-left")],
+        )
+
+        self.panel_col = Box(
+            orientation="v",
+            h_align="start",
+            v_align="start",
+            children=[self.ws, self.bottom_corner],
+        )
+
+        self.top_corner_inside = Box(
+            name="sidebar-top-corner",
+            h_align="start",
+            v_align="start",
+            children=[MyCorner("top-left")],
+        )
+
+        # Обёртка: колонка панели + уголок (горизонтально)
+        self.wrapper = Box(
+            name="bar-inner",
+            orientation="h",
+            h_align="start",
+            v_align="start",
+            children=[self.panel_col, self.top_corner_inside],
+        )
         self.wrapper.connect("size-allocate", self._on_size_allocate)
 
         self.revealer = Revealer(
@@ -567,16 +580,39 @@ class SideBarWindow(Window):
             child=self.wrapper,
         )
 
+        # Статичный уголок для состояния "панель скрыта" —
+        # стоит у левого края экрана, скругляет нижний угол верхнего бара
+        self.top_corner_static = Box(
+            name="sidebar-top-corner-static",
+            h_align="start",
+            v_align="start",
+            children=[MyCorner("top-left")],
+        )
+        self.top_corner_static.set_visible(False)  # панель стартует открытой
+
+        # Переключаем видимость статичного уголка по состоянию Revealer
+        self.revealer.connect("notify::reveal-child", self._on_reveal_notify)
+
         self.activator = Box(style="background: transparent;")
         self.activator.set_size_request(15, -1)
 
-        layout_box = Box(orientation="h", children=[self.revealer, self.activator])
+        layout_box = Box(
+            orientation="h",
+            spacing=0,
+            h_align="start",
+            v_align="start",
+            children=[self.revealer, self.top_corner_static, self.activator],
+        )
 
         self.main_eb = EventBox(child=layout_box)
         self.main_eb.connect("enter-notify-event", self._on_hover_enter)
         self.main_eb.connect("leave-notify-event", self._on_hover_leave)
 
         self.add(self.main_eb)
+
+    def _on_reveal_notify(self, *_):
+        revealing = self.revealer.get_reveal_child()
+        self.top_corner_static.set_visible(not revealing)
 
     def _on_size_allocate(self, _, alloc):
         if alloc.width > 20:
@@ -654,8 +690,8 @@ class SideBarWindow(Window):
 
         panel_x1 = mon_x
         panel_x2 = mon_x + bw
-        panel_y1 = mon_y
-        panel_y2 = mon_y + bh
+        panel_y1 = mon_y + 36
+        panel_y2 = mon_y + 36 + bh
 
         clients = self._parse("j/clients")
 

@@ -2,13 +2,13 @@
    DASHBOARD BUTTONS & TOGGLES 
    ========================================================= */
 
-/* --- КРУГЛЫЕ КНОПКИ В ШАПКЕ (Сканировать, Назад, Сохранённые) --- */
 #bluetooth-scan,
 #bluetooth-back,
 #bluetooth-saved,
 #network-scan,
 #network-back,
-#network-saved {
+#network-saved,
+#network-qr {
   background-color: var(--surface);
   border-radius: 24px; 
   padding: 8px;
@@ -23,7 +23,8 @@
 #bluetooth-saved:active,
 #network-scan:active,
 #network-back:active,
-#network-saved:active {
+#network-saved:active,
+#network-qr:active {
   border-radius: 12px;
 }
 
@@ -71,6 +72,7 @@
 #network-scan-label,
 #bluetooth-saved-label,
 #network-saved-label,
+#network-qr-label,
 #wifi-delete-label,
 #bluetooth-delete-label,
 #bluetooth-connection {
@@ -83,6 +85,7 @@
 #network-scan:hover,
 #network-back:hover,
 #network-saved:hover,
+#network-qr:hover,
 #bluetooth-connect:hover,
 #wifi-connect:hover {
   background-color: var(--surface-bright);
@@ -136,6 +139,7 @@
 #network-scan.pressed, 
 #network-back.pressed, 
 #network-saved.pressed,
+#network-qr.pressed,
 #bluetooth-connect.pressed, 
 #wifi-connect.pressed {
   background-color: var(--primary);
@@ -150,6 +154,7 @@
 #network-scan:active, 
 #network-back:active, 
 #network-saved:active,
+#network-qr:active,
 #bluetooth-connect:active, 
 #wifi-connect:active {
   background-color: var(--primary);
@@ -163,6 +168,7 @@
 #network-scan.pressed *,   #network-scan.pressed label,
 #network-back.pressed *,   #network-back.pressed label,
 #network-saved.pressed *,  #network-saved.pressed label,
+#network-qr.pressed *,     #network-qr.pressed label,
 #bluetooth-connect.pressed *, #bluetooth-connect.pressed label,
 #wifi-connect.pressed *,   #wifi-connect.pressed label,
 #bluetooth-scan:active *,  #bluetooth-scan:active label,
@@ -171,6 +177,7 @@
 #network-scan:active *,    #network-scan:active label,
 #network-back:active *,    #network-back:active label,
 #network-saved:active *,   #network-saved:active label,
+#network-qr:active *,      #network-qr:active label,
 #bluetooth-connect:active *, #bluetooth-connect:active label,
 #wifi-connect:active *,    #wifi-connect:active label {
   color: var(--on-primary);

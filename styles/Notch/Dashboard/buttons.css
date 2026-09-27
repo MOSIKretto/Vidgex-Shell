@@ -136,7 +136,8 @@
   transition: color 0.35s ease;
 }
 
-#network-ssid {
+#network-ssid,
+#bluetooth-ssid {
   color: var(--surface-bright);
   font-size: 12px;
   transition: color 0.35s ease;
@@ -200,6 +201,7 @@
 #caffeine-label.disabled,
 #work-time-label.disabled,
 #network-ssid.disabled,
+#bluetooth-ssid.disabled,
 #network-menu-label.disabled,
 #bluetooth-menu-label.disabled,
 #network-icon.disabled,

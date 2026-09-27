@@ -8,14 +8,6 @@ from gi.repository import GLib
 
 
 class TimeWidget(Box):
-    __slots__ = (
-        '_time_lbl', '_date_lbl', '_tid', '_last_min', '_colon_on',
-        '_prev_time_str', '_gl_active', '_gl_rem', '_gl_tid',
-        '_lbl_ctx', '_box_ctx',
-    )
-
-    _GL_FRAMES = 7
-    _GL_FRAME_MS = 40
     _CLASSES = [
         "glitch-shift-right", "glitch-shift-left", "glitch-flicker",
         "glitch-aberration", "glitch-heavy", "glitch-color-swap",
@@ -54,14 +46,16 @@ class TimeWidget(Box):
         self.add(self._date_lbl)
 
         self._lbl_ctx = self._time_lbl.get_style_context()
-        self._box_ctx = self.get_style_context()
 
+        self._destroyed = False
         self._last_min = -1
         self._colon_on = True
         self._prev_time_str = ""
         self._gl_active = False
         self._gl_rem = 0
         self._gl_tid = None
+
+        self.connect("destroy", lambda _: self.cleanup())
 
         self._update()
         self._tid = GLib.timeout_add_seconds(1, self._update)
@@ -73,6 +67,9 @@ class TimeWidget(Box):
         return "\n".join(" ".join(row) for row in zip(*glyphs))
 
     def _update(self) -> bool:
+        if self._destroyed:
+            return False
+
         now = datetime.datetime.now()
         time_str = now.strftime("%H:%M")
         self._colon_on = not self._colon_on
@@ -92,20 +89,21 @@ class TimeWidget(Box):
         return True
 
     def _start_glitch(self) -> None:
-        self._gl_rem = self._GL_FRAMES
+        self._gl_rem = 7
         self._gl_active = True
-        self._gl_tid = GLib.timeout_add(self._GL_FRAME_MS, self._gl_tick)
+        self._gl_tid = GLib.timeout_add(40, self._gl_tick)
 
     def _clear_glitch(self) -> None:
         for cls in self._CLASSES:
             self._lbl_ctx.remove_class(cls)
-        self._box_ctx.remove_class("glitching")
 
     def _gl_tick(self) -> bool:
+        if self._destroyed:
+            return False
+
         self._clear_glitch()
 
-        if random.random() > (1.0 - self._gl_rem / self._GL_FRAMES):
-            self._box_ctx.add_class("glitching")
+        if random.random() > (1.0 - self._gl_rem / 7):
             count = 1 if random.random() > 0.4 else 2
             for cls in random.sample(self._CLASSES, count):
                 self._lbl_ctx.add_class(cls)
@@ -121,8 +119,10 @@ class TimeWidget(Box):
         return True
 
     def cleanup(self) -> None:
+        if self._destroyed:
+            return
+        self._destroyed = True
         for tid in (self._tid, self._gl_tid):
             if tid:
                 GLib.source_remove(tid)
         self._tid = self._gl_tid = None
-        self._time_lbl = self._date_lbl = self._lbl_ctx = self._box_ctx = None

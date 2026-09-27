@@ -59,7 +59,7 @@ def _icon(cls: str, size: int = 20):
 
 class Notch(Window):
     def __init__(self, **kwargs):
-        super().__init__(anchor="top", margin="-40px 0px 0px 0px", monitor=0)
+        super().__init__(anchor="top", margin="-36px 0px 0px 0px", monitor=0)
 
         self._cw: str | None = None
         self._cht: int | None = None
@@ -98,7 +98,7 @@ class Notch(Window):
             transition_type="slide-up-down",
             transition_duration=220,
         )
-        self.cs.set_interpolate_size(True)  # Плавное сглаживание ширины
+        self.cs.set_interpolate_size(True)
         self.cs.add_named(self.awb, "window")
         self.cs.add_named(self.ctrl_osd, "control")
 
@@ -111,7 +111,6 @@ class Notch(Window):
                 children=[self.cs],
             )
         )
-        # 290px идеально вмещают 10 крупных точек, иконку и надпись 100%
         self.compact.set_size_request(290, 36)
 
         self.main_window  = MainWindow(notch=self)

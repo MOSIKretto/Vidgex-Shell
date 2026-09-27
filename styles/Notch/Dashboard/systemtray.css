@@ -1,3 +1,4 @@
+/* ================= ОСНОВНОЙ КОНТЕЙНЕР ================= */
 #systray {
   background-color: var(--shadow);
   border: 3px solid var(--surface);
@@ -7,17 +8,23 @@
   min-width: 48px;
 }
 
+/* ================= КАРУСЕЛЬ И СКРОЛЛЕР ================= */
+#systray-scroller {
+  background-color: transparent;
+  opacity: 1;
+  transition: opacity 200ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* Затемнение значков фона при открытии панели Close */
+#systray-scroller.dimmed {
+  opacity: 0.12;
+}
+
 #systray-inner {
   background-color: transparent;
 }
 
-#systray-action-bar {
-  background-color: transparent;
-  border: none;
-  padding: 0 4px;
-  margin: 0;
-}
-
+/* ================= ИКОНКИ ПРИЛОЖЕНИЙ ================= */
 #systray-item {
   background-color: transparent;
   border-radius: 8px;
@@ -31,25 +38,48 @@
   transition: background-color 150ms ease;
 }
 
-#systray-item:hover  { background-color: var(--surface-bright); }
-#systray-item:active { background-color: var(--primary); }
-#systray-item:focus  { outline: none; box-shadow: none; }
+#systray-item:hover {
+  background-color: var(--surface-bright);
+}
 
+#systray-item:active {
+  background-color: var(--primary);
+}
 
+#systray-item:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ================= ПЛАШКА ЗАКРЫТИЯ ================= */
+#systray-action-bar {
+  background-color: transparent;
+  border: none;
+  padding: 0 2px;
+  margin: 0;
+}
+
+#systray-action-icon {
+  margin-right: 6px;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* ================= КНОПКА CLOSE ================= */
 #systray-close-btn {
   background-color: var(--surface);
   border: 1px solid var(--surface-bright);
   border-radius: 24px;
   padding: 2px 10px;
   margin: 0;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 #systray-close-btn label {
   font-family: "JetBrains Mono", monospace;
   font-weight: bold;
   font-size: 9pt;
-  transition: color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: color 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 #systray-close-btn:hover {
