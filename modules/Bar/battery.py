@@ -91,7 +91,6 @@ class BatteryButton(Button):
                 self.ic.set_style('color: #ffa500;')
                 self.cir.add_style_class('battery-low')
                 self.cir.remove_style_class('battery-normal')
-                GLib.spawn_command_line_async('notify-send -a "Vidgex-Shell" "Power Profile" "30% charge remaining"')
             else:
                 self.cir.set_style('border: 3px solid var(--green);')
                 self.ic.set_style('color: #d3d3d3;')

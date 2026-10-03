@@ -205,7 +205,6 @@ detach: str = "&#xea99;"
 robot: str = "&#xf219;"
 brain: str = "&#xeac3;"
 bulb: str = "&#xea3f;"
-bulb_off: str = "&#xea50;"
 sparkles: str = "&#xf6d7;"
 wand: str = "&#xebcb;"
 

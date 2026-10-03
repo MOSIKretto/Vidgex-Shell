@@ -4,67 +4,56 @@ from pywayland.protocol.wayland import WlCompositor
 
 
 class Caffeine:
-    __slots__ = ("display", "surface", "inhibit_manager", "inhibitor", "_is_active")
+    __slots__ = ("display", "surface", "inhibit_manager", "inhibitor")
 
     def __init__(self):
         self.display = None
         self.surface = None
         self.inhibit_manager = None
         self.inhibitor = None
-        self._is_active = False
 
-    def _handle_registry_global(self, wl_registry, id_num: int, iface_name: str, version: int) -> None:
+    def _on_global(self, wl_registry, id_num: int, iface_name: str, version: int) -> None:
         if iface_name == "wl_compositor":
-            compositor = wl_registry.bind(id_num, WlCompositor, version)
-            self.surface = compositor.create_surface()
+            self.surface = wl_registry.bind(id_num, WlCompositor, version).create_surface()
         elif iface_name == "zwp_idle_inhibit_manager_v1":
             self.inhibit_manager = wl_registry.bind(id_num, ZwpIdleInhibitManagerV1, version)
 
     def enable(self) -> bool:
-        if self._is_active:
+        if self.inhibitor is not None:
             return True
 
-        self.display = Display()
-        self.display.connect()
+        display = Display()
+        display.connect()
+        self.display = display
 
-        registry = self.display.get_registry()
-        registry.dispatcher["global"] = self._handle_registry_global
+        registry = display.get_registry()
+        registry.dispatcher["global"] = self._on_global
+        display.roundtrip()
 
-        self.display.dispatch()
-        self.display.roundtrip()
-
-        if not self.surface or not self.inhibit_manager:
+        if self.surface is None or self.inhibit_manager is None:
             self.disable()
             return False
 
         self.inhibitor = self.inhibit_manager.create_inhibitor(self.surface)
-        self.display.roundtrip()
-        self._is_active = True
+        display.roundtrip()
         return True
 
     def disable(self) -> None:
-        if self.inhibitor:
+        if self.inhibitor is not None:
             self.inhibitor.destroy()
-            self.inhibitor = None
-        if self.display:
-            self.display.dispatch()
-            self.display.roundtrip()
+        if self.display is not None:
             self.display.disconnect()
-            self.display = None
-
-        self.surface = None
-        self.inhibit_manager = None
-        self._is_active = False
+        self.display = self.surface = self.inhibit_manager = self.inhibitor = None
 
     def toggle(self) -> bool:
-        if self._is_active:
+        if self.is_enabled:
             self.disable()
             return False
         return self.enable()
 
     @property
     def is_enabled(self) -> bool:
-        return self._is_active
+        return self.inhibitor is not None
 
     def shutdown(self) -> None:
         self.disable()

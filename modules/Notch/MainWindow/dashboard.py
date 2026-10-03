@@ -7,18 +7,15 @@ from fabric.widgets.stack import Stack
 
 from modules.Notch.MainWindow.Dashboard.calendar import Calendar
 from modules.Notch.MainWindow.Dashboard.time import TimeWidget
-from modules.Notch.MainWindow.Dashboard.network import NetworkConnections
-from modules.Notch.MainWindow.Dashboard.Network.network import NetworkClient
-from modules.Notch.MainWindow.Dashboard.bluetooth import BluetoothConnections
 from modules.Notch.MainWindow.Dashboard.buttons import Buttons
 from modules.Notch.MainWindow.Dashboard.controls import ControlSliders
 from modules.Notch.MainWindow.Dashboard.systemtray import SystemTray
 from modules.Notch.MainWindow.Dashboard.metrics import Metrics
-from modules.Notch.Notifications.history import get_shared_history
+from modules.Notch.MainWindow.Dashboard.notificationHistory import NotificationHistory
 
 
 class Dashboard(Box):
-    def __init__(self, notch=None, **kwargs):
+    def __init__(self, notch, **kwargs):
         super().__init__(
             name="dash-widgets",
             h_align="fill",
@@ -30,7 +27,6 @@ class Dashboard(Box):
         )
 
         self.notch = notch
-
         self.time_widget = TimeWidget()
         self.calendar = Calendar(view_mode="month")
 
@@ -38,19 +34,14 @@ class Dashboard(Box):
         self._size_group_left.add_widget(self.time_widget)
         self._size_group_left.add_widget(self.calendar)
 
-        # Единый NetworkClient на всё приложение: создаётся здесь, до Buttons
-        # и NetworkConnections, чтобы оба потребителя получили общий D-Bus
-        # клиент к NetworkManager вместо двух независимых.
-        self.network_client = NetworkClient()
-
-        self.buttons = Buttons(widgets=self)
-        self.bluetooth = BluetoothConnections(widgets=self)
-        self.network_connections = NetworkConnections(widgets=self)
+        self.buttons = Buttons(dashboard=self)
+        self.bluetooth = self.buttons.bluetooth
+        self.network_connections = self.buttons.network_connections
 
         self.controls = ControlSliders()
-        self.metrics = Metrics()
+        self.metrics = Metrics(widgets=self)
         self.systray = SystemTray(pixel_size=20)
-        self.notification_history = get_shared_history()
+        self.notification_history = NotificationHistory()
 
         self.applet_stack = Stack(
             transition_type="slide-left-right",
@@ -78,75 +69,74 @@ class Dashboard(Box):
         metrics_tray_col.pack_start(self.metrics, True, True, 0)
         metrics_tray_col.pack_end(self.systray, False, False, 0)
 
-        self._top_row = Box(
-            name="top-row",
-            orientation="h",
-            spacing=8,
-            h_expand=True,
-            v_expand=False,
-            v_align="start",
-            children=(
-                self.time_widget,
-                Box(
-                    name="buttons-controls-col",
-                    orientation="v",
-                    spacing=8,
-                    h_expand=True,
-                    v_expand=True,
-                    v_align="fill",
-                    children=(
-                        Box(
-                            v_align="start",
-                            v_expand=False,
-                            h_expand=True,
-                            children=(self.buttons,),
-                        ),
-                        Box(
-                            orientation="v",
-                            v_expand=True,
-                            v_align="center",
-                            h_expand=True,
-                            children=(self.controls,),
-                        ),
-                    ),
-                ),
-            ),
-        )
-
-        self._bottom_row = Box(
-            name="container-1",
-            orientation="h",
-            spacing=8,
-            h_expand=True,
-            v_expand=True,
-            children=(
-                Box(
-                    name="container-sub-1",
-                    spacing=8,
-                    h_expand=True,
-                    v_expand=True,
-                    children=(
-                        self.calendar,
-                        Box(
-                            name="applet-stack",
-                            h_align="fill",
-                            h_expand=True,
-                            v_expand=True,
-                            children=(self.applet_stack,),
-                        ),
-                    ),
-                ),
-                metrics_tray_col,
-            ),
-        )
-
         self._root_container = Box(
             name="container-2",
             orientation="v",
             spacing=8,
             h_expand=True,
             v_expand=True,
-            children=(self._top_row, self._bottom_row),
+            children=(
+                Box(
+                    name="top-row",
+                    orientation="h",
+                    spacing=8,
+                    h_expand=True,
+                    v_expand=False,
+                    v_align="start",
+                    children=(
+                        self.time_widget,
+                        Box(
+                            name="buttons-controls-col",
+                            orientation="v",
+                            spacing=8,
+                            h_expand=True,
+                            v_expand=True,
+                            v_align="fill",
+                            children=(
+                                Box(
+                                    v_align="start",
+                                    v_expand=False,
+                                    h_expand=True,
+                                    children=(self.buttons,),
+                                ),
+                                Box(
+                                    orientation="v",
+                                    v_expand=True,
+                                    v_align="center",
+                                    h_expand=True,
+                                    children=(self.controls,),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                Box(
+                    name="container-1",
+                    orientation="h",
+                    spacing=8,
+                    h_expand=True,
+                    v_expand=True,
+                    children=(
+                        Box(
+                            name="container-sub-1",
+                            spacing=8,
+                            h_expand=True,
+                            v_expand=True,
+                            children=(
+                                self.calendar,
+                                Box(
+                                    name="applet-stack",
+                                    h_align="fill",
+                                    h_expand=True,
+                                    v_expand=True,
+                                    children=(self.applet_stack,),
+                                ),
+                            ),
+                        ),
+                        metrics_tray_col,
+                    ),
+                ),
+            ),
         )
 
         self.add(self._root_container)
@@ -160,44 +150,14 @@ class Dashboard(Box):
     def show_network_applet(self):
         self.applet_stack.set_visible_child(self.network_connections)
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         for widget in (
             self.controls,
-            self.bluetooth,
-            self.network_connections,
+            self.buttons,
             self.time_widget,
             self.systray,
         ):
-            if widget is None:
-                continue
-            cleanup_fn = getattr(widget, "cleanup", None)
-            if callable(cleanup_fn):
-                cleanup_fn()
+            widget.cleanup()
 
-        if self._root_container is not None:
-            self.remove(self._root_container)
-            self._root_container.destroy()
-
-        # network_client уничтожается последним: к этому моменту оба
-        # потребителя (NetworkConnections — явно выше, NetworkButton —
-        # через каскад destroy() root_container->buttons) уже отписались
-        # от его сигналов.
-        self.network_client.cleanup()
-
-        self.notch = None
-        self.time_widget = None
-        self.calendar = None
-        self.buttons = None
-        self.bluetooth = None
-        self.controls = None
-        self.metrics = None
-        self.systray = None
-        self.notification_history = None
-        self.network_connections = None
-        self.applet_stack = None
-        self.network_client = None
-        self._size_group_left = None
-        self._size_group_right = None
-        self._top_row = None
-        self._bottom_row = None
-        self._root_container = None
+        self.remove(self._root_container)
+        self._root_container.destroy()

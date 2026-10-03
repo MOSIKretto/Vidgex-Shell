@@ -83,8 +83,8 @@
 #ram-label,
 #disk-label,
 #temp-label,
-#gpu-label { 
-  color: var(--primary); 
+#gpu-label {
+  color: var(--primary);
 }
 
 #box-1,

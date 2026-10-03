@@ -64,7 +64,9 @@ PACKAGES=(
   gstreamer
   gst-python 
   gst-plugins-good
+  bash
 
+  python
   python-setproctitle
   python-requests
   python-psutil

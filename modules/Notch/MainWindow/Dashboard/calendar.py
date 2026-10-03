@@ -1,5 +1,9 @@
-import datetime
 import calendar
+import datetime
+
+import gi
+
+gi.require_version("Gtk", "3.0")
 
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
@@ -15,6 +19,11 @@ class Calendar(Gtk.Box):
         "September", "October", "November", "December"
     )
     _D = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+
+    _SLIDE = {
+        -1: Gtk.StackTransitionType.SLIDE_RIGHT,
+        1: Gtk.StackTransitionType.SLIDE_LEFT,
+    }
 
     def __init__(self, view_mode="month", first_weekday=0):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8, name="calendar")
@@ -34,8 +43,7 @@ class Calendar(Gtk.Box):
             self.set_valign(Gtk.Align.CENTER)
             self.set_vexpand(False)
 
-        now = datetime.date.today()
-        self.ty, self.tm, self.td = now.year, now.month, now.day
+        self._sync_today()
         self._rst()
 
         self._pb = Gtk.Button(name="prev-month-button", child=Label(name="month-button-label", markup=icons.chevron_left))
@@ -75,6 +83,10 @@ class Calendar(Gtk.Box):
         self.show_all()
 
         self._upd(transition=Gtk.StackTransitionType.NONE)
+
+    def _sync_today(self):
+        now = datetime.date.today()
+        self.ty, self.tm, self.td = now.year, now.month, now.day
 
     def _rst(self):
         if self.view_mode == "month":
@@ -139,7 +151,6 @@ class Calendar(Gtk.Box):
             y, m, d = curr.year, curr.month, curr.day
 
             lbl.set_text(str(d))
-            lbl.set_name("day-label")
 
             ctx = lbl.get_style_context()
             ctx.remove_class("current-day")
@@ -151,27 +162,22 @@ class Calendar(Gtk.Box):
                 ctx.add_class("dim-label")
 
     def reset_to_current(self):
+        self._sync_today()
         self._rst()
         self._upd(transition=Gtk.StackTransitionType.CROSSFADE)
 
-    def _prev(self, _):
+    def _shift(self, step):
         if self.view_mode == "month":
-            self.sm -= 1
-            if self.sm < 1:
-                self.sm, self.sy = 12, self.sy - 1
+            self.sy, month0 = divmod(self.sy * 12 + self.sm - 1 + step, 12)
+            self.sm = month0 + 1
         else:
-            prev_week = datetime.date(self.sy, self.sm, self.sd) - datetime.timedelta(days=7)
-            self.sy, self.sm, self.sd = prev_week.year, prev_week.month, prev_week.day
+            moved = datetime.date(self.sy, self.sm, self.sd) + datetime.timedelta(days=7 * step)
+            self.sy, self.sm, self.sd = moved.year, moved.month, moved.day
 
-        self._upd(transition=Gtk.StackTransitionType.SLIDE_RIGHT)
+        self._upd(transition=self._SLIDE[step])
+
+    def _prev(self, _):
+        self._shift(-1)
 
     def _next(self, _):
-        if self.view_mode == "month":
-            self.sm += 1
-            if self.sm > 12:
-                self.sm, self.sy = 1, self.sy + 1
-        else:
-            next_week = datetime.date(self.sy, self.sm, self.sd) + datetime.timedelta(days=7)
-            self.sy, self.sm, self.sd = next_week.year, next_week.month, next_week.day
-
-        self._upd(transition=Gtk.StackTransitionType.SLIDE_LEFT)
+        self._shift(1)

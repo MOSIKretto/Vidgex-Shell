@@ -10,6 +10,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gray, Gtk
+
 from fabric.widgets.box import Box
 
 
@@ -164,7 +165,7 @@ class SystemTray(Box):
         btn.set_name("systray-item")
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_image(Gtk.Image(visible=True))
-        btn.connect("button-press-event", lambda b, e, i=ident, it=item: self._on_item_click(it, i, e))
+        btn.connect("button-press-event", lambda _b, _e, i=ident: self._on_item_click(i))
         btn.add_events(Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
         btn.connect("scroll-event", lambda _b, e: self._on_scroll(self._scroller, e))
 
@@ -206,22 +207,14 @@ class SystemTray(Box):
         self._update_visibility()
         return False
 
-    def _on_item_click(self, item: Gray.Item, ident: str, event: Gdk.EventButton) -> bool:
-        if event.button == Gdk.BUTTON_SECONDARY:
-            menu = item.get_menu()
-            menu.popup_at_pointer(event)
-            return True
-
-        if event.button == Gdk.BUTTON_PRIMARY:
-            if self._expanded == ident:
-                self._collapse()
-            else:
-                if self._expanded is not None:
-                    self._collapse(animate=False)
-                self._expand(ident)
-            return True
-
-        return False
+    def _on_item_click(self, ident: str) -> bool:
+        if self._expanded == ident:
+            self._collapse()
+        else:
+            if self._expanded is not None:
+                self._collapse(animate=False)
+            self._expand(ident)
+        return True
 
     def _expand(self, ident: str) -> None:
         self._expanded = ident

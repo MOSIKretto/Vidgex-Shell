@@ -22,7 +22,7 @@ from modules.Bar.powerMenu import PowerMenu
 from modules.Bar.toolBox import ToolBox
 from modules.Bar.workspaces import TopWorkspaces, SideBarWindow
 from modules.Bar.battery import Battery
-from modules.corners import MyCorner
+from services.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
 import services.icons as icons

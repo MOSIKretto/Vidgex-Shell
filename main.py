@@ -9,14 +9,16 @@ from fabric.utils import get_relative_path
 from modules.notch import Notch
 from modules.bar import Bar
 from modules.dock import Dock
-from modules.corners import Corners
 
+from services.corners import Corners
+from services.Notifications.notificationServer import NotificationServer
 from services.session import SessionManager, AppResolver
 
 
 setproctitle.setproctitle("vidgex-shell")
 
 
+notification_server = NotificationServer()
 bar = Bar()
 notch = Notch()
 dock = Dock()
@@ -59,6 +61,7 @@ def run():
     finally:
         GLib.source_remove(autosave_id)
         session.save_all()
+        notification_server.cleanup()
 
 
 if __name__ == "__main__":

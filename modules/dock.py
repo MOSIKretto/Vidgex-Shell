@@ -25,7 +25,7 @@ from modules.Dock.Desktop.infinite_desktop import (
     register_mode_change_callback as register_float_mode_change_callback,
 )
 
-from modules.corners import MyCorner
+from services.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
 from services.icons import layout_tiling, layout_float

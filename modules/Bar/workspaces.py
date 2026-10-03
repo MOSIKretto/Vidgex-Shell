@@ -13,7 +13,7 @@ from fabric.widgets.eventbox import EventBox
 
 from gi.repository import Gdk, GLib
 
-from modules.corners import MyCorner
+from services.corners import MyCorner
 
 from services.wayland import WaylandWindow as Window
 

@@ -74,9 +74,6 @@ hl.bind("ALT + E", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_n
 hl.bind("ALT + R", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_notch(\"player\")'"))
 hl.bind("ALT + T", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_notch(\"wallpapers\")'"))
 
-hl.bind("ALT + A", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_notch(\"launcher\")'"))
-hl.bind("ALT + S", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_notch(\"cliphist\")'"))
-
 hl.bind("Print",   hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'toolbox.toggle_camera()'"))
 
 -- Обзор

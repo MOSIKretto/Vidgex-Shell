@@ -1,12 +1,10 @@
 from fabric.widgets.box import Box
 from fabric.widgets.shapes import Corner
 
-from services.wayland import WaylandWindow as Window
+from services.wayland import WaylandWindow
 
 
 class MyCorner(Box):
-    __slots__ = ()
-
     def __init__(self, corner: str):
         super().__init__(
             name="corner-container",
@@ -14,9 +12,7 @@ class MyCorner(Box):
         )
 
 
-class Corners(Window):
-    __slots__ = ()
-
+class Corners(WaylandWindow):
     def __init__(self):
         super().__init__(
             layer="bottom",
@@ -33,9 +29,9 @@ class Corners(Window):
                     name="bottom-corners",
                     orientation="h",
                     children=(
-                        MyCorner("bottom-left"), 
-                        Box(h_expand=True), 
-                        MyCorner("bottom-right")
+                        MyCorner("bottom-left"),
+                        Box(h_expand=True),
+                        MyCorner("bottom-right"),
                     ),
                 ),
             ),

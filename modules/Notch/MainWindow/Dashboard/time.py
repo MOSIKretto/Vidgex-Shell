@@ -4,6 +4,7 @@ import re
 
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
+
 from gi.repository import GLib
 
 
