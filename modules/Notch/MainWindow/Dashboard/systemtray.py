@@ -1,7 +1,6 @@
 import os
 import re
 import signal
-import subprocess
 
 import gi
 
@@ -15,6 +14,8 @@ from fabric.widgets.box import Box
 
 
 class SystemTray(Box):
+    _PPID_RE = re.compile(rb"^PPid:\s*(\d+)", re.MULTILINE)
+
     def __init__(self, pixel_size: int = 20, **kwargs) -> None:
         super().__init__(
             name="systray",
@@ -26,6 +27,7 @@ class SystemTray(Box):
         self.set_visible(False)
 
         self._pixel_size = pixel_size
+        self._item_width = pixel_size + 8
         self._destroyed = False
         self._items: dict[str, tuple] = {}
 
@@ -34,13 +36,15 @@ class SystemTray(Box):
         self._anim_step = 0
         self._anim_dir = 1
         self._outside_handler: int | None = None
+        self._bus: Gio.DBusConnection | None = None
 
         self._build_ui()
         self.connect("destroy", lambda _: self.cleanup())
 
         self._watcher = Gray.Watcher()
-        self._watcher.connect("item-added", lambda _w, ident: GLib.idle_add(self._add_item, ident))
-
+        self._watcher_handler = self._watcher.connect(
+            "item-added", lambda _w, ident: GLib.idle_add(self._add_item, ident)
+        )
 
     def _build_ui(self) -> None:
         overlay = Gtk.Overlay(visible=True)
@@ -97,9 +101,15 @@ class SystemTray(Box):
 
         name = item.get_icon_name()
         if name and os.path.exists(name):
-            return GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                name, self._pixel_size, self._pixel_size, True
-            )
+            try:
+                return GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                    name, self._pixel_size, self._pixel_size, True
+                )
+            except GLib.Error:
+                # Приложение указало путь на повреждённый/нечитаемый файл
+                # изображения — штатный случай для сторонних трей-приложений
+                # с битыми иконками, падаем дальше на поиск по теме.
+                pass
 
         theme = Gtk.IconTheme.get_default()
         icon_path = item.get_icon_theme_path()
@@ -108,9 +118,16 @@ class SystemTray(Box):
             theme.set_search_path(Gtk.IconTheme.get_default().get_search_path())
             theme.prepend_search_path(icon_path)
 
-        return theme.load_icon(
-            name or "image-missing", self._pixel_size, Gtk.IconLookupFlags.FORCE_SIZE
-        )
+        try:
+            return theme.load_icon(
+                name or "image-missing", self._pixel_size, Gtk.IconLookupFlags.FORCE_SIZE
+            )
+        except GLib.Error:
+            # Имя иконки, сообщённое приложением, отсутствует в теме —
+            # штатная ситуация для плохо упакованных трей-приложений.
+            return theme.load_icon(
+                "image-missing", self._pixel_size, Gtk.IconLookupFlags.FORCE_SIZE
+            )
 
     def _refresh_icon(self, item: Gray.Item, button: Gtk.Button) -> None:
         pixbuf = self._get_pixbuf(item)
@@ -134,7 +151,7 @@ class SystemTray(Box):
         else:
             delta = -1.0 if event.direction in (Gdk.ScrollDirection.UP, Gdk.ScrollDirection.LEFT) else 1.0
 
-        step = (28 + 8) * delta
+        step = (self._item_width + 8) * delta
         lower = hadj.get_lower()
         upper = hadj.get_upper() - hadj.get_page_size()
         hadj.set_value(max(lower, min(upper, hadj.get_value() + step)))
@@ -142,7 +159,7 @@ class SystemTray(Box):
 
     def _update_carousel_size(self, count: int) -> None:
         if count > 5:
-            width = 5 * 28 + (5 - 1) * 8
+            width = 5 * self._item_width + (5 - 1) * 8
             self._scroller.set_size_request(width, -1)
         else:
             self._scroller.set_size_request(-1, -1)
@@ -280,6 +297,10 @@ class SystemTray(Box):
             return False
 
         ab_win = self._action_bar.get_window()
+        if ab_win is None:
+            self._collapse()
+            return False
+
         ok, ax, ay = ab_win.get_origin()
         alloc = self._action_bar.get_allocation()
         rel_x = int(event.x_root) - ax
@@ -293,41 +314,67 @@ class SystemTray(Box):
         if self._destroyed or self._expanded is None:
             return
         ident = self._expanded
-        item, _btn2, _handlers, _watch_id = self._items[ident]
         self._collapse(animate=False)
-        self._kill_item(item, ident)
+        self._kill_item(ident)
         GLib.idle_add(self._remove_item, ident)
 
-    def _kill_item(self, item: Gray.Item, ident: str) -> None:
-        bus_name = ident.split("/")[0]
-        pid = self._dbus_pid(bus_name)
-        if pid is not None:
-            self._kill_tree(pid)
+    def _session_bus(self) -> Gio.DBusConnection:
+        if self._bus is None:
+            self._bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        return self._bus
 
-    def _dbus_pid(self, bus_name: str) -> int | None:
-        result = subprocess.run(
-            [
-                "gdbus", "call", "--session",
-                "--dest", "org.freedesktop.DBus",
-                "--object-path", "/org/freedesktop/DBus",
-                "--method", "org.freedesktop.DBus.GetConnectionUnixProcessID",
-                bus_name,
-            ],
-            capture_output=True, text=True, timeout=2,
+    def _kill_item(self, ident: str) -> None:
+        bus_name = ident.split("/")[0]
+        self._session_bus().call(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetConnectionUnixProcessID",
+            GLib.Variant("(s)", (bus_name,)),
+            GLib.VariantType("(u)"),
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+            self._on_pid_reply,
         )
-        if result.returncode != 0:
-            return None
-        match = re.search(r"uint32\s+(\d+)", result.stdout)
-        return int(match.group(1)) if match else None
+
+    def _on_pid_reply(self, connection: Gio.DBusConnection, result: Gio.AsyncResult) -> None:
+        try:
+            reply = connection.call_finish(result)
+        except GLib.Error:
+            # Приложение уже отключилось от сессионной шины раньше, чем
+            # пришёл ответ на GetConnectionUnixProcessID — обычная гонка
+            # при закрытии трей-иконки.
+            return
+        (pid,) = reply.unpack()
+        self._kill_tree(pid)
+
+    def _child_pids(self, pid: int) -> list[int]:
+        children = []
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/status", "rb") as f:
+                    status = f.read()
+            except OSError:
+                # Процесс завершился или недоступен (чужой/ядерный поток)
+                # ровно в момент сканирования /proc — обычная гонка.
+                continue
+            match = self._PPID_RE.search(status)
+            if match and int(match.group(1)) == pid:
+                children.append(int(entry))
+        return children
 
     def _kill_tree(self, pid: int) -> None:
-        children = subprocess.run(
-            ["pgrep", "-P", str(pid)], capture_output=True, text=True, timeout=2
-        ).stdout.split()
-        for child in children:
-            self._kill_tree(int(child))
-        if os.path.exists(f"/proc/{pid}"):
+        for child in self._child_pids(pid):
+            self._kill_tree(child)
+        try:
             os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            # Процесс успел завершиться сам между чтением /proc и отправкой
+            # сигнала — обычная гонка при убийстве дерева процессов.
+            pass
 
     def cleanup(self) -> None:
         if self._destroyed:
@@ -335,5 +382,6 @@ class SystemTray(Box):
         self._destroyed = True
         self._stop_animation()
         self._detach_outside_handler()
+        self._watcher.disconnect(self._watcher_handler)
         for ident in list(self._items):
             self._remove_item(ident)

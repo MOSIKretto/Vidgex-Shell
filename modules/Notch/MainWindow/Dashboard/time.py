@@ -14,6 +14,8 @@ class TimeWidget(Box):
         "glitch-aberration", "glitch-heavy", "glitch-color-swap",
     ]
 
+    _GLITCH_FRAMES = 7
+
     _GLYPHS = {
         k: [
             re.sub(r'([^ ]+)', r'<b>\1</b>', r.translate(str.maketrans({'&': '&amp;', '<': '&lt;', '>': '&gt;'})))
@@ -55,17 +57,40 @@ class TimeWidget(Box):
         self._gl_active = False
         self._gl_rem = 0
         self._gl_tid = None
+        self._tid = None
 
         self.connect("destroy", lambda _: self.cleanup())
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
 
         self._update()
-        self._tid = GLib.timeout_add_seconds(1, self._update)
 
     @classmethod
     def _get_markup(cls, text: str, colon: bool) -> str:
         c_key = ':' if colon else ':_off'
         glyphs = [cls._GLYPHS[c_key] if c == ':' else cls._GLYPHS[c] for c in text]
         return "\n".join(" ".join(row) for row in zip(*glyphs))
+
+    def _on_map(self, *_args) -> None:
+        if self._tid is not None:
+            return
+        now = datetime.datetime.now()
+        self._prev_time_str = now.strftime("%H:%M")
+        self._last_min = -1
+        self._update()
+        self._tid = GLib.timeout_add_seconds(
+            1, self._update, priority=GLib.PRIORITY_DEFAULT_IDLE,
+        )
+
+    def _on_unmap(self, *_args) -> None:
+        if self._tid is not None:
+            GLib.source_remove(self._tid)
+            self._tid = None
+        if self._gl_tid is not None:
+            GLib.source_remove(self._gl_tid)
+            self._gl_tid = None
+            self._gl_active = False
+            self._clear_glitch()
 
     def _update(self) -> bool:
         if self._destroyed:
@@ -90,7 +115,7 @@ class TimeWidget(Box):
         return True
 
     def _start_glitch(self) -> None:
-        self._gl_rem = 7
+        self._gl_rem = self._GLITCH_FRAMES
         self._gl_active = True
         self._gl_tid = GLib.timeout_add(40, self._gl_tick)
 
@@ -104,7 +129,7 @@ class TimeWidget(Box):
 
         self._clear_glitch()
 
-        if random.random() > (1.0 - self._gl_rem / 7):
+        if random.random() > (1.0 - self._gl_rem / self._GLITCH_FRAMES):
             count = 1 if random.random() > 0.4 else 2
             for cls in random.sample(self._CLASSES, count):
                 self._lbl_ctx.add_class(cls)

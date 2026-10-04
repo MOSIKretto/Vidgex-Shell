@@ -18,6 +18,13 @@ class BrightnessSlider(BaseSmoothSlider):
         super().__init__(style_class="brightness", **kwargs)
         self.service = Brightness.get_initial()
         self._tid = None
+        self._hid = None
+
+        if self.service.max_screen <= 0:
+            self.set_no_show_all(True)
+            self.set_visible(False)
+            return
+
         self._hid = self.service.connect("screen", self._chg)
         self.update_external(self.service.screen_brightness / self.service.max_screen)
 
@@ -51,6 +58,13 @@ class BrightnessIcon(BaseIconButton):
     def __init__(self, **kwargs):
         super().__init__("brightness-icon", "brightness-label-dash", **kwargs)
         self.service = Brightness.get_initial()
+        self._hid = None
+
+        if self.service.max_screen <= 0:
+            self.set_no_show_all(True)
+            self.set_visible(False)
+            return
+
         self._hid = self.service.connect("screen", self._chg)
         self._chg()
 

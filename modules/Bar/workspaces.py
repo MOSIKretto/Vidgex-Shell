@@ -14,8 +14,8 @@ from fabric.widgets.eventbox import EventBox
 from gi.repository import Gdk, GLib
 
 from services.corners import MyCorner
-
 from services.wayland import WaylandWindow as Window
+
 
 _CD = 0.2
 _TH = 0.5
@@ -555,43 +555,29 @@ class SideBarWindow(Window):
             v_align="start",
             children=[self.ws, self.bottom_corner],
         )
+        self.panel_col.connect("size-allocate", self._on_panel_size_allocate)
 
-        self.top_corner_inside = Box(
+        self.revealer = Revealer(
+            name="sidebar-revealer",
+            transition_type="slide-right",
+            child_revealed=True,
+            child=self.panel_col,
+        )
+
+        self.top_corner = Box(
             name="sidebar-top-corner",
             h_align="start",
             v_align="start",
             children=[MyCorner("top-left")],
         )
 
-        # Обёртка: колонка панели + уголок (горизонтально)
         self.wrapper = Box(
             name="bar-inner",
             orientation="h",
             h_align="start",
             v_align="start",
-            children=[self.panel_col, self.top_corner_inside],
+            children=[self.revealer, self.top_corner],
         )
-        self.wrapper.connect("size-allocate", self._on_size_allocate)
-
-        self.revealer = Revealer(
-            name="sidebar-revealer",
-            transition_type="slide-right",
-            child_revealed=True,
-            child=self.wrapper,
-        )
-
-        # Статичный уголок для состояния "панель скрыта" —
-        # стоит у левого края экрана, скругляет нижний угол верхнего бара
-        self.top_corner_static = Box(
-            name="sidebar-top-corner-static",
-            h_align="start",
-            v_align="start",
-            children=[MyCorner("top-left")],
-        )
-        self.top_corner_static.set_visible(False)  # панель стартует открытой
-
-        # Переключаем видимость статичного уголка по состоянию Revealer
-        self.revealer.connect("notify::reveal-child", self._on_reveal_notify)
 
         self.activator = Box(style="background: transparent;")
         self.activator.set_size_request(15, -1)
@@ -601,7 +587,7 @@ class SideBarWindow(Window):
             spacing=0,
             h_align="start",
             v_align="start",
-            children=[self.revealer, self.top_corner_static, self.activator],
+            children=[self.wrapper, self.activator],
         )
 
         self.main_eb = EventBox(child=layout_box)
@@ -610,11 +596,7 @@ class SideBarWindow(Window):
 
         self.add(self.main_eb)
 
-    def _on_reveal_notify(self, *_):
-        revealing = self.revealer.get_reveal_child()
-        self.top_corner_static.set_visible(not revealing)
-
-    def _on_size_allocate(self, _, alloc):
+    def _on_panel_size_allocate(self, _, alloc):
         if alloc.width > 20:
             self._bar_width = alloc.width
         if alloc.height > 20:

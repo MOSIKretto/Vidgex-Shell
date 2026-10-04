@@ -199,6 +199,8 @@ class Notch(Window):
         return False
 
     def _final(self) -> bool:
+        if self._destroyed:
+            return False
         self.show_all()
         self._schedule_updwin()
         self._init = True
@@ -262,6 +264,8 @@ class Notch(Window):
             ws = json.loads(self._conn.send_command("j/activeworkspace").reply.decode())["id"]
             win = json.loads(self._conn.send_command("j/activewindow").reply.decode())
             result = (ws, win.get("class", ""))
+        except (OSError, ValueError):
+            pass
         finally:
             GLib.idle_add(self._on_fetch_done, result)
 

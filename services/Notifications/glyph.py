@@ -121,6 +121,9 @@ class SideGlyph(Gtk.Overlay):
             self._current_markup = _BASE_MARKUP
 
     def trigger(self) -> None:
+        if self._destroyed:
+            return
+
         if self._gl_tid is not None:
             GLib.source_remove(self._gl_tid)
         self._clear_visual()

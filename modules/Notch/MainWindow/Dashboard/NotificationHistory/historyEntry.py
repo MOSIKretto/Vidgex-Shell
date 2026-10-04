@@ -17,8 +17,6 @@ class HistoricalNotification:
 
 
 class HistoryEntry(Box):
-    # server передаётся аргументом и используется как фабрика (make_image / safe_markup):
-    # импортировать модуль сервера в этом файле не нужно
     def __init__(self, notification: HistoricalNotification, server,
                  pixbuf: GdkPixbuf.Pixbuf | None = None):
         super().__init__(name="notification-box", orientation="v", h_align="fill", h_expand=True)
@@ -48,7 +46,6 @@ class HistoryEntry(Box):
         try:
             pb = GdkPixbuf.Pixbuf.new_from_file(path)
         except GLib.Error:
-            # Миниатюра повреждена при аварийном завершении во время записи
             return
         GLib.idle_add(self._apply_pixbuf, pb)
 
@@ -57,7 +54,6 @@ class HistoryEntry(Box):
         try:
             pb.savev(path, "png", [], [])
         except GLib.Error:
-            # Сбой дисковой подсистемы (нет места / ошибка I/O)
             pass
 
     def _apply_pixbuf(self, pb: GdkPixbuf.Pixbuf) -> bool:

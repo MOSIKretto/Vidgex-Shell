@@ -49,8 +49,11 @@ class _DurationStore:
         if self._data is None:
             self._data = {}
             if os.path.exists(SETTINGS_FILE):
-                with open(SETTINGS_FILE) as f:
-                    self._data = json.load(f)
+                try:
+                    with open(SETTINGS_FILE) as f:
+                        self._data = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    self._data = {}
         return self._data
 
     def get(self, key: str, default: int) -> int:
@@ -59,7 +62,9 @@ class _DurationStore:
     def set(self, key: str, value: int) -> None:
         self._load()[key] = value
         self._source = _cancel(self._source)
-        self._source = GLib.timeout_add(_SAVE_DELAY_MS, self._on_timeout)
+        self._source = GLib.timeout_add(
+            _SAVE_DELAY_MS, self._on_timeout, priority=GLib.PRIORITY_DEFAULT_IDLE,
+        )
 
     def flush(self) -> None:
         if self._source is not None:
@@ -157,7 +162,7 @@ class TimerWidget(Box):
         self._gl_tid = _cancel(self._gl_tid)
 
 
-class _TimerSplitButton(Box):
+class TimerSplitButton(Box):
     def __init__(self, name_prefix: str, icon_markup: str, title_widget: Box, default_seconds: int = 1500):
         super().__init__(name=f"{name_prefix}-button")
         self._name_prefix = name_prefix
@@ -246,7 +251,9 @@ class _TimerSplitButton(Box):
             return
         self._is_running = True
         self._remaining = self._duration
-        self._timer_id = GLib.timeout_add(1000, self._tick)
+        self._timer_id = GLib.timeout_add_seconds(
+            1, self._tick, priority=GLib.PRIORITY_DEFAULT_IDLE,
+        )
         self._dis_ui(False)
         self.update_timer_display()
 

@@ -80,6 +80,7 @@ class Calendar(Gtk.Box):
                     self._labels[i].append(lbl)
             self.stack.add_named(grid, f"page_{i}")
 
+        self.connect("map", self._on_map)
         self.show_all()
 
         self._upd(transition=Gtk.StackTransitionType.NONE)
@@ -96,6 +97,19 @@ class Calendar(Gtk.Box):
             offset = (today.weekday() - self.first_weekday) % 7
             start = today - datetime.timedelta(days=offset)
             self.sy, self.sm, self.sd = start.year, start.month, start.day
+
+    def _on_map(self, *_args) -> None:
+        prev = (self.ty, self.tm, self.td)
+        self._sync_today()
+        if (self.ty, self.tm, self.td) != prev:
+            self._refresh_current_page()
+
+    def _refresh_current_page(self) -> None:
+        labels = self._labels[self._active_page]
+        if self.view_mode == "month":
+            self._um(labels)
+        else:
+            self._uw(labels)
 
     def _upd(self, transition=Gtk.StackTransitionType.NONE):
         self._ml.set_text(f"{self._M[self.sm - 1]} {self.sy}")

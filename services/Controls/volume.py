@@ -22,22 +22,25 @@ class Volume(Service):
         self._stream_hid = None
         self._last_val = -1
         self._last_muted = None
-
         self._audio_hid = self.audio.connect("notify::speaker", self._on_stream_notify)
         self._on_stream_notify()
 
     def _on_stream_notify(self, *_):
+        stream = self.audio.speaker
+        if stream is self._stream:
+            # notify::speaker сработал без реальной смены устройства —
+            # не пересоздаём подписку впустую.
+            return
+
         if self._stream is not None:
             self._stream.disconnect(self._stream_hid)
 
-        self._stream = self.audio.speaker
+        self._stream = stream
         if self._stream is not None:
             self._stream_hid = self._stream.connect("changed", self._on_stream_changed)
-            # Новый стрим — безусловный эмит: иконка зависит от его icon_name
-            # (bluetooth), а дедупликация смотрит только на volume/muted.
             self._last_val = -1
             self._on_stream_changed()
-        else:
+        elif self._last_val != 0 or self._last_muted is not True:
             self._last_val = 0
             self._last_muted = True
             self.emit("changed", 0)
@@ -75,7 +78,7 @@ class Volume(Service):
     def is_bluetooth(self) -> bool:
         if self._stream is None:
             return False
-        return "bluetooth" in (getattr(self._stream, "icon_name", "") or "").lower()
+        return "bluetooth" in (self._stream.icon_name or "").lower()
 
 
 def get_audio():

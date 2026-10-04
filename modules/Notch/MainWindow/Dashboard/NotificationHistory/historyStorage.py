@@ -1,6 +1,5 @@
 import hashlib
 import os
-import traceback
 from pathlib import Path
 from queue import Queue
 from threading import Thread
@@ -21,14 +20,12 @@ os.makedirs(PERSISTENT_IMAGES_DIR, exist_ok=True)
 def get_safe_image_path(uuid) -> str:
     return os.path.join(PERSISTENT_IMAGES_DIR, f"{hashlib.md5(str(uuid).encode()).hexdigest()}.png")
 
-
 def is_safe_image_file(path: str) -> bool:
     if not path.startswith("/") or not os.path.isfile(path):
         return False
     try:
         size = os.path.getsize(path)
     except OSError:
-        # Файл удалён фоновым потоком между isfile() и getsize()
         return False
     return 0 < size < MAX_IMAGE_BYTES
 
@@ -46,9 +43,8 @@ class _IOWorker:
             task = self._queue.get()
             try:
                 task()
-            except Exception:
-                # упавшая задача не должна убивать поток: иначе запись остановится молча
-                traceback.print_exc()
+            except OSError:
+                pass
             finally:
                 self._queue.task_done()
 
@@ -62,10 +58,8 @@ _io_worker = _IOWorker()
 def submit_io_task(task) -> None:
     _io_worker.submit(task)
 
-
 def delete_notification_image(uuid) -> None:
     _io_worker.submit(lambda: Path(get_safe_image_path(uuid)).unlink(missing_ok=True))
-
 
 def clear_all_notification_images() -> None:
     def _op():
@@ -73,7 +67,6 @@ def clear_all_notification_images() -> None:
             for fn in os.listdir(PERSISTENT_IMAGES_DIR):
                 Path(PERSISTENT_IMAGES_DIR, fn).unlink(missing_ok=True)
     _io_worker.submit(_op)
-
 
 def cleanup_orphan_images(active_ids) -> None:
     def _op():

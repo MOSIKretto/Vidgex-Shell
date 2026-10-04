@@ -10,7 +10,6 @@ from modules.Notch.NotificationsPopup.notificationBox import NotificationBox
 def _never_blocked() -> bool:
     return False
 
-
 def _noop() -> None:
     pass
 
@@ -23,7 +22,6 @@ class NotificationsPopup(Box):
             h_align="fill",
             h_expand=True,
         )
-        # колбэки владельца: до set_handlers попап работает «вхолостую»
         self._is_blocked: Callable[[], bool] = _never_blocked
         self._on_show: Callable[[], None] = _noop
         self._on_hide: Callable[[], None] = _noop
@@ -33,20 +31,17 @@ class NotificationsPopup(Box):
         self._timeout_id: int | None = None
         self._destroyed = False
 
-        # Два пустых слота по бокам. Владелец layout размещает их рядом с попапом,
-        # а чем они заполнены, Popup не знает
         self.side_left = Box(name="notification-side-left")
         self.side_right = Box(name="notification-side-right")
 
         self._inner = Box(name="notch-notification-inner", orientation="v", h_expand=True)
         self.add(self._inner)
 
-        # сервер не передаётся снаружи: Popup берёт его сам (аргумент нужен для тестов)
         self._server = server if server is not None else NotificationServer.get_default()
+        self._server.attach(self)
         self._server_handler = self._server.connect(
             "notification-added", self._on_notification_added
         )
-        self._server.attach(self)
         self.connect("destroy", self._on_destroy)
 
     def set_handlers(
@@ -55,19 +50,14 @@ class NotificationsPopup(Box):
         on_show: Callable[[], None] = _noop,
         on_hide: Callable[[], None] = _noop,
     ) -> None:
-        """Владелец сообщает, как узнать о блокировке и что делать при показе и скрытии."""
         self._is_blocked = is_blocked
         self._on_show = on_show
         self._on_hide = on_hide
-
-    # ---------- приём уведомлений ----------
 
     def _on_notification_added(self, server, notif_id: int) -> None:
         data = server.get_data(notif_id)
 
         if self._is_blocked():
-            # закрытие отложено: синхронный close внутри обработчика ушёл бы в D-Bus раньше
-            # ответа на Notify и убрал бы уведомление у остальных подписчиков сигнала
             GLib.idle_add(self._close_unseen, data)
             return
 
@@ -96,7 +86,6 @@ class NotificationsPopup(Box):
     def _release_current(self):
         nb = self._current_nb
         if nb is None:
-            # штатно: первое уведомление или повторный вызов
             return None
         data = nb.data
         data.disconnect_closed(self._closed_handler)
@@ -105,7 +94,6 @@ class NotificationsPopup(Box):
         return data
 
     def _on_timeout(self) -> bool:
-        # одноразовый таймер: _on_destroy снимает его через _stop_timeout до разрушения
         self._timeout_id = None
         current = self._release_current()
         if current is not None:
@@ -132,6 +120,5 @@ class NotificationsPopup(Box):
         current = self._release_current()
         if current is not None:
             current.close("unknown")
-        # рвём ссылки на владельца: колбэки обычно держат его bound-методами
         self._is_blocked = _never_blocked
         self._on_show = self._on_hide = _noop

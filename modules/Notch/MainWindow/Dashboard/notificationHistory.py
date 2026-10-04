@@ -58,7 +58,6 @@ def _format_time(arrival_time: datetime) -> str:
 class NotificationHistory(Box):
     def __init__(self, server: NotificationServer | None = None, **kwargs):
         super().__init__(name="notification-history", spacing=4, orientation="vertical", **kwargs)
-        # сервер не передаётся снаружи: история берёт его сама (аргумент нужен для тестов)
         self._server = server if server is not None else NotificationServer.get_default()
 
         self.containers: list[Box] = []
@@ -75,15 +74,11 @@ class NotificationHistory(Box):
 
         self._build_ui()
         self.connect("destroy", self._on_destroy)
-        # история пишет и обычные уведомления, и принятые в DND: во втором случае
-        # Popup и эффекты их не получают (они слушают только notification-added)
         self._server_handlers = (
             self._server.connect("notification-added", self._on_notification_added),
             self._server.connect("notification-dnd-added", self._on_notification_added),
         )
         GLib.idle_add(self._start_loading, priority=GLib.PRIORITY_LOW)
-
-    # ------------------------------------------------------------------ UI
 
     def _build_ui(self) -> None:
         self.header_switch = Gtk.Switch(name="dnd-switch", vexpand=False, valign=Gtk.Align.CENTER)
@@ -128,13 +123,8 @@ class NotificationHistory(Box):
     def _on_dnd_toggled(self, switch, _pspec) -> None:
         self._server.dnd = switch.get_active()
 
-    # ------------------------------------------------- приём от сервера
-
     def _on_notification_added(self, server, notif_id: int) -> None:
-        # данные нужно забрать синхронно: в DND уведомление закрывается сразу после эмита
         self.add_notification(server.get_data(notif_id))
-
-    # ------------------------------------------- вставка групп в список
 
     def _make_date_box(self, category: str) -> Box:
         return Box(
@@ -163,6 +153,8 @@ class NotificationHistory(Box):
         if parent is not None:
             parent.remove(group)
 
+        self._group_category[app] = category
+
         if old_category and old_category != category:
             if not self._sorted_groups_for_category(old_category):
                 date_box = self._date_boxes.pop(old_category, None)
@@ -171,8 +163,6 @@ class NotificationHistory(Box):
                     if p is not None:
                         p.remove(date_box)
                     date_box.destroy()
-
-        self._group_category[app] = category
 
         if category not in self._date_boxes:
             self._date_boxes[category] = self._make_date_box(category)
@@ -213,8 +203,7 @@ class NotificationHistory(Box):
         except ValueError:
             return None
 
-    def _compute_insert_index(self, category: str, category_order: list[str],
-                              children: list, group: NotificationGroup) -> int:
+    def _compute_insert_index(self, category: str, category_order: list[str], children: list, group: NotificationGroup) -> int:
         cat_idx = category_order.index(category) if category in category_order else len(category_order)
 
         idx = 0
@@ -261,8 +250,6 @@ class NotificationHistory(Box):
                     p.remove(date_box)
                 date_box.destroy()
 
-    # ------------------------------------------------ уничтожение виджетов
-
     def _destroy_container(self, container: Box) -> None:
         parent = container.get_parent()
         if parent is not None:
@@ -277,8 +264,6 @@ class NotificationHistory(Box):
         if parent is not None:
             parent.remove(group)
         group.destroy()
-
-    # --------------------------------------------------------- состояние
 
     def _update_empty_state(self) -> None:
         has = bool(self.containers) or self._loading
@@ -297,7 +282,16 @@ class NotificationHistory(Box):
         self.notifications_list.show_all()
         self._update_empty_state()
 
-    # ------------------------------------------------ контейнер записи
+    def _detach_from_group(self, note_id: str) -> None:
+        for app_name, group in list(self.groups.items()):
+            if note_id in group.notification_ids:
+                empty = group.remove_notification_id(note_id)
+                if empty:
+                    self._remove_group_from_list(app_name)
+                    self._destroy_group(self.groups.pop(app_name))
+                else:
+                    self._sync_group(app_name)
+                break
 
     def _create_history_container(self, notification_box: HistoryEntry, arrival_time: datetime) -> Box:
         container = Box(name="notification-container", orientation="v", h_align="fill", h_expand=True)
@@ -329,10 +323,7 @@ class NotificationHistory(Box):
         if cont is not None:
             self.delete_historical_notification(uuid, cont)
 
-    # ------------------------------------------------ публичные операции
-
     def add_notification(self, data) -> None:
-        """data: NotificationData от сервера (уже обрезан, с uuid, временем и миниатюрой)."""
         if self._is_destroyed:
             return
 
@@ -436,19 +427,9 @@ class NotificationHistory(Box):
             self.containers.remove(container)
         self._destroy_container(container)
 
-        for app_name, group in list(self.groups.items()):
-            if note_id in group.notification_ids:
-                empty = group.remove_notification_id(note_id)
-                if empty:
-                    self._remove_group_from_list(app_name)
-                    self._destroy_group(self.groups.pop(app_name))
-                else:
-                    self._sync_group(app_name)
-                break
+        self._detach_from_group(note_id)
 
         self._update_empty_state()
-
-    # ------------------------------------------------ загрузка с диска
 
     def _start_loading(self) -> bool:
         if not self._loading:
@@ -565,14 +546,11 @@ class NotificationHistory(Box):
             app_name=note.get("app_name", "Unknown"),
             timestamp=note.get("timestamp"),
         )
-        # запись из JSON: миниатюру HistoryEntry подтянет с диска в фоне
         box = HistoryEntry(hist, self._server)
         arrival = datetime.fromisoformat(hist.timestamp) if hist.timestamp else datetime.now()
         container = self._create_history_container(box, arrival)
         self.containers.insert(0, container)
         self.containers_by_id[box.uuid] = container
-
-    # ------------------------------------------------ лимит и сохранение
 
     def _evict_oldest_if_needed(self) -> None:
         while len(self.containers) >= MAX_NOTIFICATION_HISTORY:
@@ -584,13 +562,7 @@ class NotificationHistory(Box):
                 self.persistent_notifications = [
                     n for n in self.persistent_notifications if n.get("id") != old_uuid
                 ]
-                for app_name, group in list(self.groups.items()):
-                    if old_uuid in group.notification_ids:
-                        empty = group.remove_notification_id(old_uuid)
-                        if empty:
-                            self._remove_group_from_list(app_name)
-                            self._destroy_group(self.groups.pop(app_name))
-                        break
+                self._detach_from_group(old_uuid)
             self._destroy_container(oldest)
 
     def _schedule_save(self) -> None:
@@ -613,14 +585,11 @@ class NotificationHistory(Box):
             os.fsync(f.fileno())
         os.replace(tmp, PERSISTENT_HISTORY_FILE)
 
-    # ------------------------------------------------------- уничтожение
-
     def _on_destroy(self, _widget) -> None:
         if self._is_destroyed:
             return
         self._is_destroyed = True
 
-        # Сервер живёт дольше виджета: без отписки колбэки остались бы в уничтоженной истории
         for handler in self._server_handlers:
             self._server.disconnect(handler)
 

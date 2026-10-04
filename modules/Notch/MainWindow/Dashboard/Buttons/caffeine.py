@@ -23,7 +23,10 @@ class Caffeine:
             return True
 
         display = Display()
-        display.connect()
+        try:
+            display.connect()
+        except ValueError:
+            return False
         self.display = display
 
         registry = display.get_registry()

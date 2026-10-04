@@ -11,6 +11,7 @@ class CustomImage(Image):
     def do_style_updated(self):
         Image.do_style_updated(self)
         self._cached_radius = None
+        self.queue_draw()
 
     def do_draw(self, cr):
         if self._cached_radius is None:

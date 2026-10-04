@@ -333,7 +333,10 @@ class NetworkClient(_Subscriber):
     def _on_client_ready(self, _source, result):
         if self._destroyed:
             return
-        self._client = NM.Client.new_finish(result)
+        try:
+            self._client = NM.Client.new_finish(result)
+        except GLib.Error:
+            return
         self._connect(self._client, "device-added", lambda *_: self._on_devices_changed())
         self._connect(self._client, "device-removed", lambda _client, device: self._on_devices_changed(device))
         self._sync_devices()
@@ -490,16 +493,22 @@ class NetworkClient(_Subscriber):
         )
         return True
 
-    def get_network_password(self, ssid: str) -> str:
+    def get_network_password(self, ssid: str, callback) -> None:
         connection = self._find_saved(ssid)
         if connection is None:
-            return ""
+            callback("")
+            return
         name = NM.SETTING_WIRELESS_SECURITY_SETTING_NAME
-        try:
-            secrets = connection.get_secrets(name)
-        except GLib.Error:
-            return ""
-        return secrets.unpack().get(name, {}).get("psk", "")
+
+        def on_secrets(source, result):
+            try:
+                secrets = source.get_secrets_finish(result)
+            except GLib.Error:
+                callback("")
+                return
+            callback(secrets.unpack().get(name, {}).get("psk", ""))
+
+        connection.get_secrets_async(name, None, on_secrets)
 
     def get_network_details(self, ssid: str) -> dict:
         details = {

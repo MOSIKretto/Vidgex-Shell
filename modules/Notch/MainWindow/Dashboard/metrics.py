@@ -19,12 +19,12 @@ _prov: "MetricsProvider | None" = None
 _subs: "weakref.WeakSet" = weakref.WeakSet()
 
 
-def _sub(widget) -> None:
+def _sub(widget) -> "MetricsProvider":
     global _prov
     _subs.add(widget)
     if _prov is None:
         _prov = MetricsProvider()
-
+    return _prov
 
 def _unsub(widget) -> None:
     global _prov
@@ -32,7 +32,6 @@ def _unsub(widget) -> None:
     if not _subs and _prov is not None:
         prov, _prov = _prov, None
         prov.cleanup()
-
 
 def _fmt_speed(bps: float) -> str:
     bits = bps * 8.0
@@ -46,6 +45,7 @@ def _fmt_speed(bps: float) -> str:
 
 
 _NET_MAX = 2_500_000.0
+_WARMUP_SECONDS = 0.15
 
 
 def _net_norm(bps: float) -> float:
@@ -60,6 +60,7 @@ class MetricsProvider:
         'net_dl', 'net_ul',
         '_nr', '_ns', '_nt',
         'gpus', '_nv', '_stop', '_intel_proc',
+        '_hw_ready', '_ready_cbs',
     )
 
     def __init__(self):
@@ -69,16 +70,28 @@ class MetricsProvider:
         self.gpu = []
         self.gpus = []
         self._nv = []
-
-        net = psutil.net_io_counters()
-        self._nr, self._ns = net.bytes_recv, net.bytes_sent
+        self._nr = self._ns = 0
         self._nt = time.monotonic()
 
         self._stop = threading.Event()
         self._intel_proc = None
-        self._detect_hw()
+        self._hw_ready = False
+        self._ready_cbs = []
 
         threading.Thread(target=self._worker, daemon=True).start()
+
+    def on_hw_ready(self, callback) -> None:
+        if self._hw_ready:
+            callback()
+        else:
+            self._ready_cbs.append(callback)
+
+    def _hw_detected(self) -> bool:
+        self._hw_ready = True
+        callbacks, self._ready_cbs = self._ready_cbs, []
+        for cb in callbacks:
+            cb()
+        return False
 
     def _detect_hw(self) -> None:
         for i in range(8):
@@ -88,13 +101,7 @@ class MetricsProvider:
                 self.gpu.append(0.0)
 
         if shutil.which('nvidia-smi'):
-            try:
-                out = subprocess.check_output(
-                    ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
-                    text=True,
-                )
-            except subprocess.CalledProcessError:
-                out = ''
+            out = self._query_nvidia(['--query-gpu=name', '--format=csv,noheader'])
             for line in out.splitlines():
                 if line.strip():
                     self._nv.append(len(self.gpus))
@@ -117,6 +124,13 @@ class MetricsProvider:
                 daemon=True,
             ).start()
 
+    @staticmethod
+    def _query_nvidia(args: list) -> str:
+        try:
+            return subprocess.check_output(['nvidia-smi', *args], text=True, timeout=2)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return ''
+
     def _intel_gpu_reader(self, idx: int, stdout) -> None:
         in_render = False
         with stdout:
@@ -133,14 +147,33 @@ class MetricsProvider:
                     in_render = False
 
     def _worker(self) -> None:
-        psutil.cpu_percent(interval=None)
-        while not self._stop.is_set():
+        self._detect_hw()
+        GLib.idle_add(self._hw_detected)
+        self._gather_metrics(first=True)
+        GLib.idle_add(self._notify_ui)
+
+        while not self._stop.wait(2.0):
             self._gather_metrics()
             GLib.idle_add(self._notify_ui)
-            self._stop.wait(2.0)
 
-    def _gather_metrics(self) -> None:
-        self.cpu = psutil.cpu_percent(interval=None)
+    def _gather_metrics(self, first: bool = False) -> None:
+        if first:
+            net_before = psutil.net_io_counters()
+            self.cpu = psutil.cpu_percent(interval=_WARMUP_SECONDS)
+            net_after = psutil.net_io_counters()
+            self.net_dl = max(0.0, (net_after.bytes_recv - net_before.bytes_recv) / _WARMUP_SECONDS)
+            self.net_ul = max(0.0, (net_after.bytes_sent - net_before.bytes_sent) / _WARMUP_SECONDS)
+            self._nr, self._ns, self._nt = net_after.bytes_recv, net_after.bytes_sent, time.monotonic()
+        else:
+            self.cpu = psutil.cpu_percent(interval=None)
+            now = time.monotonic()
+            dt = now - self._nt
+            if dt > 0:
+                net = psutil.net_io_counters()
+                self.net_dl = max(0.0, (net.bytes_recv - self._nr) / dt)
+                self.net_ul = max(0.0, (net.bytes_sent - self._ns) / dt)
+                self._nr, self._ns, self._nt = net.bytes_recv, net.bytes_sent, now
+
         self.mem = psutil.virtual_memory().percent
         self.disk[0] = psutil.disk_usage('/').percent
 
@@ -150,14 +183,6 @@ class MetricsProvider:
                 if entry.current > max_t:
                     max_t = entry.current
         self.temp = max_t
-
-        now = time.monotonic()
-        dt = now - self._nt
-        if dt > 0:
-            net = psutil.net_io_counters()
-            self.net_dl = max(0.0, (net.bytes_recv - self._nr) / dt)
-            self.net_ul = 0.0
-            self._nr, self._ns, self._nt = net.bytes_recv, net.bytes_sent, now
 
         for i, gpu in enumerate(self.gpus):
             if gpu['type'] == 'amd':
@@ -171,13 +196,10 @@ class MetricsProvider:
             self._poll_nvidia()
 
     def _poll_nvidia(self) -> None:
-        try:
-            out = subprocess.check_output(
-                ['nvidia-smi', '--query-gpu=utilization.gpu',
-                 '--format=csv,noheader,nounits'],
-                text=True,
-            )
-        except subprocess.CalledProcessError:
+        out = self._query_nvidia(
+            ['--query-gpu=utilization.gpu', '--format=csv,noheader,nounits']
+        )
+        if not out:
             return
         vals = [float(x) for x in out.split() if x]
         for i, v in zip(self._nv, vals):
@@ -235,26 +257,49 @@ class Metrics(Box):
             name='metrics', spacing=8, h_align='center',
             v_align='fill', visible=True, all_visible=True,
         )
-        self.connect("destroy", lambda _: _unsub(self))
-        _sub(self)
+        self._destroyed = False
+        self._gpu_built = False
 
         self.net  = SingularMetric('net',  'NET',  icons.world)
         self.temp = SingularMetric('temp', 'TEMP', icons.temp)
         self.disk = [SingularMetric('disk', 'DISK', icons.disk)]
         self.ram  = SingularMetric('ram',  'RAM',  icons.memory)
         self.cpu  = SingularMetric('cpu',  'CPU',  icons.cpu)
-        self.gpu  = [
-            SingularMetric('gpu', g['name'], icons.gpu)
-            for g in _prov.get_gpu_info()
-        ]
+        self.gpu = []
 
-        for m in (self.net, self.temp, *self.disk, self.ram, self.cpu, *self.gpu):
+        for m in (self.net, self.temp, *self.disk, self.ram, self.cpu):
             self.add(m.box)
+
+        self.connect("destroy", self._on_destroy)
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
+
+    def _on_map(self, *_args) -> None:
+        prov = _sub(self)
+        if not self._gpu_built:
+            prov.on_hw_ready(lambda: self._build_gpu_widgets(prov))
+
+    def _on_unmap(self, *_args) -> None:
+        _unsub(self)
+
+    def _on_destroy(self, *_args) -> None:
+        self._destroyed = True
+        _unsub(self)
+
+    def _build_gpu_widgets(self, prov: "MetricsProvider") -> None:
+        if self._destroyed or self._gpu_built:
+            return
+        self._gpu_built = True
+        for g in prov.get_gpu_info():
+            sm = SingularMetric('gpu', g['name'], icons.gpu)
+            self.gpu.append(sm)
+            self.add(sm.box)
+            sm.box.show_all()
 
     def _upd(self):
         prov = _prov
 
-        total = prov.net_dl
+        total = prov.net_dl + prov.net_ul
         self.net.set_val(_net_norm(total), _fmt_speed(total))
 
         self.temp.set_val(min(prov.temp / 120.0, 1.0), f'{int(prov.temp + 0.5)}°C')

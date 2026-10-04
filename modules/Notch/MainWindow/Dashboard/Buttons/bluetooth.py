@@ -5,20 +5,17 @@ import threading
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk
+from gi.repository import Gio, GLib, Gtk
 
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image
 from fabric.widgets.label import Label
+from fabric.widgets.scrolledwindow import ScrolledWindow
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-from modules.Notch.MainWindow.Dashboard.Buttons.Network.network import Subscriptions
-from modules.Notch.MainWindow.Dashboard.Buttons.network import (
-    _cancel, _cls, _header_button, _scroll, _section, _styled,
-)
 
 
 CACHE_DIR = os.path.expanduser("~/.cache/vidgex-shell")
@@ -28,27 +25,170 @@ _ADDR_SEPARATORS = str.maketrans("", "", ":-")
 _PLACEHOLDER_NAMES = ("", "Unknown", "unknown")
 _YES_NO = {None: "Unknown", True: "Yes", False: "No"}
 _PAGE_TITLES = {"main": "Bluetooth", "saved": "Saved Devices"}
+_BLUEZ_BUS_NAME = "org.bluez"
+_BLUEZ_ADAPTER_IFACE = "org.bluez.Adapter1"
+_BLUEZ_DEVICE_IFACE = "org.bluez.Device1"
+_BLUEZ_REPLY_TYPE = GLib.VariantType.new("(a{oa{sa{sv}}})")
+
+
+class Subscriptions:
+    __slots__ = ("_items",)
+
+    def __init__(self):
+        self._items = []
+
+    def connect(self, obj, signal: str, callback) -> None:
+        self._items.append((obj, obj.connect(signal, callback)))
+
+    def release(self, target) -> None:
+        kept = []
+        for obj, handler_id in self._items:
+            if obj is target:
+                obj.disconnect(handler_id)
+            else:
+                kept.append((obj, handler_id))
+        self._items = kept
+
+    def clear(self) -> None:
+        while self._items:
+            obj, handler_id = self._items.pop()
+            obj.disconnect(handler_id)
+
+
+def _cancel(source):
+    if source is not None:
+        GLib.source_remove(source)
+
+def _cls(widget, name: str, on: bool = True):
+    ctx = widget.get_style_context()
+    (ctx.add_class if on else ctx.remove_class)(name)
+
+def _styled(widget, *names):
+    for name in names:
+        _cls(widget, name)
+    return widget
+
+def _header_button(name: str, icon: str, tooltip: str, handler):
+    return Button(
+        name=name, child=Label(markup=icon, name=f"{name}-label"),
+        tooltip_text=tooltip, on_clicked=handler,
+    )
+
+def _section(title: str, child):
+    return Box(
+        orientation="v", spacing=4,
+        children=(Label(label=title, h_align="start", name="section-title"), child),
+    )
+
+def _scroll(child):
+    window = ScrolledWindow(
+        name="bluetooth-devices", min_content_size=(-1, -1), child=child,
+        h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
+    )
+    window.set_overlay_scrolling(False)
+    return window
+
+
+class _BlueZ:
+    __slots__ = ("_bus", "_adapter_path", "_bus_waiters")
+
+    def __init__(self):
+        self._bus = None
+        self._adapter_path = None
+        self._bus_waiters = []
+
+    def _with_bus(self, request):
+        if self._bus is not None:
+            request(self._bus)
+            return
+        self._bus_waiters.append(request)
+        if len(self._bus_waiters) == 1:
+            Gio.bus_get(Gio.BusType.SYSTEM, None, self._on_bus_ready)
+
+    def _on_bus_ready(self, _source, result):
+        waiters, self._bus_waiters = self._bus_waiters, []
+        try:
+            self._bus = Gio.bus_get_finish(result)
+        except GLib.Error:
+            # System bus недоступна — окружение без D-Bus/BlueZ, операции
+            # ghost-connect и forget штатно не выполняются.
+            return
+        for request in waiters:
+            request(self._bus)
+
+    def _with_adapter_path(self, adapter_address: str, request):
+        if self._adapter_path is not None:
+            request(self._adapter_path)
+            return
+        self._with_bus(lambda bus: self._lookup_adapter(bus, adapter_address, request))
+
+    def _lookup_adapter(self, bus, adapter_address, request):
+        bus.call(
+            _BLUEZ_BUS_NAME, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+            None, _BLUEZ_REPLY_TYPE, Gio.DBusCallFlags.NONE, -1, None,
+            lambda source, res: self._on_managed_objects(source, res, adapter_address, request),
+        )
+
+    def _on_managed_objects(self, bus, result, adapter_address, request):
+        try:
+            (objects,) = bus.call_finish(result).unpack()
+        except GLib.Error:
+            return
+        for path, ifaces in objects.items():
+            adapter = ifaces.get(_BLUEZ_ADAPTER_IFACE)
+            if adapter is not None and adapter.get("Address") == adapter_address:
+                self._adapter_path = path
+                request(path)
+                return
+
+    @staticmethod
+    def _device_path(adapter_path: str, address: str) -> str:
+        return f"{adapter_path}/dev_{address.replace(':', '_')}"
+
+    def _call_finish(self, source, result, callback):
+        try:
+            source.call_finish(result)
+            callback(True)
+        except GLib.Error:
+            callback(False)
+
+    def connect_device(self, adapter_address: str, address: str, callback) -> None:
+        def do_connect(adapter_path):
+            self._bus.call(
+                _BLUEZ_BUS_NAME, self._device_path(adapter_path, address),
+                _BLUEZ_DEVICE_IFACE, "Connect", None, None, Gio.DBusCallFlags.NONE, -1, None,
+                lambda source, res: self._call_finish(source, res, callback),
+            )
+        self._with_adapter_path(adapter_address, do_connect)
+
+    def remove_device(self, adapter_address: str, address: str, callback) -> None:
+        def do_remove(adapter_path):
+            device_path = GLib.Variant("(o)", (self._device_path(adapter_path, address),))
+            self._bus.call(
+                _BLUEZ_BUS_NAME, adapter_path, _BLUEZ_ADAPTER_IFACE, "RemoveDevice",
+                device_path, None, Gio.DBusCallFlags.NONE, -1, None,
+                lambda source, res: self._call_finish(source, res, callback),
+            )
+        self._with_adapter_path(adapter_address, do_remove)
+
+
+_bluez = _BlueZ()
 
 
 class _KnownStore:
-    """Сохранённые устройства {address: name} с фоновой записью на диск.
-
-    Запись одна за раз: пока поток пишет, новые изменения лишь ставят флаг
-    «нужна ещё одна запись» — поток на каждое изменение не спавнится.
-    Всё состояние трогается только из главного потока.
-    """
-
     __slots__ = ("devices", "_writing", "_dirty")
 
     def __init__(self):
         self.devices: dict[str, str] = {}
         if os.path.exists(KNOWN_DEVICES_FILE):
-            with open(KNOWN_DEVICES_FILE, "r") as f:
-                self.devices = json.load(f)
+            try:
+                with open(KNOWN_DEVICES_FILE, "r") as f:
+                    self.devices = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                self.devices = {}
         self._writing = self._dirty = False
 
     def mark(self, address: str, name: str) -> bool:
-        """Возвращает True, если запись реально изменилась."""
         if self.devices.get(address) == name:
             return False
         self.devices[address] = name
@@ -68,7 +208,6 @@ class _KnownStore:
         threading.Thread(target=self._write, args=(data,), daemon=True).start()
 
     def _write(self, data: str) -> None:
-        # Фоновый поток. Запись через tmp + replace атомарна: обрыв не оставит обрезанный JSON.
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
             tmp = KNOWN_DEVICES_FILE + ".tmp"
@@ -86,38 +225,16 @@ class _KnownStore:
         return False
 
 
-def _run_bt_cmd(argv: list[str], callback) -> None:
-    """Запускает bluetoothctl без shell; callback вызывается в главном потоке по завершении процесса."""
-    def _on_exit(pid, _status, *_args):
-        GLib.spawn_close_pid(pid)
-        callback()
-
-    pid, _, _, _ = GLib.spawn_async(
-        argv,
-        flags=(
-            GLib.SpawnFlags.SEARCH_PATH
-            | GLib.SpawnFlags.DO_NOT_REAP_CHILD
-            | GLib.SpawnFlags.STDOUT_TO_DEV_NULL
-            | GLib.SpawnFlags.STDERR_TO_DEV_NULL
-        ),
-    )
-    GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, _on_exit)
-
-
 def _get_dev_name(dev) -> str | None:
-    """Имя для показа; None — имени нет или это пустышка («Unknown», MAC вместо имени)."""
     name = dev.alias or dev.name
     if not name or name.strip() in _PLACEHOLDER_NAMES:
         return None
-    # Имя-MAC может отличаться от address разделителями и регистром.
     if name.translate(_ADDR_SEPARATORS).strip().upper() == dev.address.translate(_ADDR_SEPARATORS).upper():
         return None
     return name
 
 
 def _display_name(dev) -> str:
-    # У живых устройств в списках имя есть всегда. У «призрака» с именем-MAC
-    # _get_dev_name вернёт None — тогда показываем сохранённое имя как есть.
     return _get_dev_name(dev) or dev.name
 
 
@@ -134,8 +251,6 @@ def _status_page(icon: str, text: str, button_label: str, handler):
 
 
 class _GhostDevice:
-    """Сохранённое устройство, которого сейчас нет среди устройств клиента."""
-
     __slots__ = ("address", "name")
 
     alias = None
@@ -178,7 +293,6 @@ class BTSlot(Gtk.EventBox):
         ))
         self.main_box.add_end(self.btn_settings)
         self.add(self.main_box)
-        # Дети показываются один раз здесь; видимость шестерёнки дальше ведёт update().
         self.show_all()
 
     def update(self, dev) -> None:
@@ -197,7 +311,6 @@ class BTSlot(Gtk.EventBox):
         ):
             _cls(widget, css, connected)
 
-        # connecting не различает направление: у подключённого устройства это отключение.
         if dev.connecting:
             status = "Disconnecting..." if connected else "Connecting..."
         elif connected:
@@ -232,21 +345,20 @@ class BluetoothConnections(Box):
 
         self._rid = self._scan_id = None
         self._destroyed = False
+        self._dirty = False
         self.current_settings_dev = None
         self._previous_page = "main"
         self._slots: dict[str, list[BTSlot]] = {"connected": [], "avail": [], "saved": []}
-        # address -> устройство, на чей "changed" мы подписаны.
         self._watched: dict[str, object] = {}
         self._known = _KnownStore()
         self._subs = Subscriptions()
 
         self._build()
         self._subs.connect(self._cl, "notify::enabled", self._on_enabled)
-        # enabled считается из state, а notify::enabled эмитится только по смене powered:
-        # порядок powered/state не гарантирован, поэтому слушаем и state.
         self._subs.connect(self._cl, "notify::state", self._on_enabled)
         self._subs.connect(self._cl, "device-added", self._sched)
         self._subs.connect(self._cl, "device-removed", self._on_device_removed)
+        self.connect("map", self._on_map)
         self.connect("destroy", lambda *_: self.cleanup())
         self._on_enabled()
 
@@ -333,7 +445,6 @@ class BluetoothConnections(Box):
         )
         actions_box.set_margin_bottom(12)
 
-        # Подписи значений по ключам словаря в open_settings().
         self._info = {}
         info_group = _styled(Box(orientation="vertical", spacing=2), "net-info-group")
         for key, title in (("address", "MAC Address"), ("paired", "Paired"), ("trusted", "Trusted")):
@@ -351,8 +462,6 @@ class BluetoothConnections(Box):
             settings_box.add(child)
         return _scroll(settings_box)
 
-    # ---------- Сохранённые устройства и подключение ----------
-
     def is_known(self, address: str) -> bool:
         return address in self._known.devices
 
@@ -361,15 +470,8 @@ class BluetoothConnections(Box):
             self._sched()
 
     def toggle_connection(self, dev) -> str | None:
-        """Единая точка connect/disconnect для слота и страницы настроек.
-
-        Возвращает подпись статуса для немедленной обратной связи
-        или None, если действие не начато (устройство уже подключается).
-        fabric не эмитит changed при старте connecting, только по завершению,
-        поэтому подпись выставляется сразу здесь.
-        """
         if isinstance(dev, _GhostDevice):
-            _run_bt_cmd(["bluetoothctl", "connect", dev.address], self.request_refresh)
+            _bluez.connect_device(self._cl.address, dev.address, lambda _ok: self.request_refresh())
             return "Connecting..."
         if dev.connecting:
             return None
@@ -379,8 +481,6 @@ class BluetoothConnections(Box):
         self.mark_known(dev.address, _display_name(dev))
         dev.connected = True
         return "Connecting..."
-
-    # ---------- Страницы ----------
 
     def open_settings(self, dev) -> None:
         self._previous_page = self.lists_stack.get_visible_child_name()
@@ -400,7 +500,6 @@ class BluetoothConnections(Box):
         self._show_page("settings", _display_name(dev))
 
     def _show_page(self, name: str, title: str | None = None) -> None:
-        """Единая точка смены подстраницы: стек, заголовок, кнопки шапки, состояние pressed."""
         self.lists_stack.set_visible_child_name(name)
         self.header_title.set_label(title or _PAGE_TITLES[name])
         for btn in (self.scan_btn, self.saved_btn):
@@ -422,12 +521,10 @@ class BluetoothConnections(Box):
 
     def _do_forget(self, _btn) -> None:
         address = self.current_settings_dev.address
-        # remove у BlueZ сам разрывает соединение и стирает pairing/trust.
-        _run_bt_cmd(["bluetoothctl", "remove", address], lambda: self._on_forgotten(address))
+        _bluez.remove_device(self._cl.address, address, lambda _ok: self._on_forgotten(address))
         self._show_page(self._previous_page)
 
     def _on_forgotten(self, address: str) -> None:
-        # Забываем только после remove: иначе _ref успеет заново занести ещё спаренное устройство.
         self._known.forget(address)
         self.request_refresh()
 
@@ -435,17 +532,10 @@ class BluetoothConnections(Box):
         if self.toggle_connection(self.current_settings_dev) is not None:
             self._show_page(self._previous_page)
 
-    # ---------- Питание и сканирование ----------
-
     def _turn_on_bt(self, *_args) -> None:
         self._cl.powered = True
 
     def _sync_enabled(self) -> bool:
-        """Приводит UI к состоянию адаптера: страница on/off, доступность кнопок шапки.
-
-        Идемпотентна и дёшева (читает кэш клиента), поэтому вызывается синхронно
-        на каждое изменение, а не через отложенный _ref.
-        """
         enabled = self._cl.enabled
         self.stack.set_visible_child_name("on" if enabled else "off")
         for btn in (self.scan_btn, self.saved_btn):
@@ -468,7 +558,7 @@ class BluetoothConnections(Box):
             return
         self._set_scanning(True)
         self._cl.scanning = True
-        self._scan_id = GLib.timeout_add(4000, self._on_scan_done)
+        self._scan_id = GLib.timeout_add_seconds(4, self._on_scan_done)
 
     def _on_scan_done(self) -> bool:
         self._scan_id = None
@@ -477,10 +567,7 @@ class BluetoothConnections(Box):
         self.request_refresh()
         return False
 
-    # ---------- Устройства и обновление списков ----------
-
     def _sync_devices(self, devices) -> None:
-        """Идемпотентно приводит подписки на "changed" к текущему списку устройств."""
         live = {dev.address: dev for dev in devices}
         for address, old in list(self._watched.items()):
             if live.get(address) is not old:
@@ -491,7 +578,6 @@ class BluetoothConnections(Box):
                 self._watched[address] = dev
 
     def _on_device_removed(self, _client, address: str) -> None:
-        # Отписываемся сразу, не дожидаясь _ref.
         dev = self._watched.pop(address, None)
         if dev is not None:
             self._subs.release(dev)
@@ -502,15 +588,27 @@ class BluetoothConnections(Box):
             self.request_refresh()
 
     def request_refresh(self, delay: int = 300) -> None:
-        """Единая точка отложенного обновления: новый запрос заменяет ожидающий."""
         if self._destroyed:
+            return
+        if not self.get_mapped():
+            self._dirty = True
             return
         _cancel(self._rid)
         self._rid = GLib.timeout_add(delay, self._ref)
 
+    def _on_map(self, *_args) -> None:
+        if self._dirty:
+            self._dirty = False
+            self.request_refresh(0)
+
     def _ref(self) -> bool:
         self._rid = None
-        if self._destroyed or not self._sync_enabled():
+        if self._destroyed:
+            return False
+        if not self.get_mapped():
+            self._dirty = True
+            return False
+        if not self._sync_enabled():
             return False
 
         devices = self._cl.devices
@@ -569,7 +667,6 @@ class BluetoothConnections(Box):
 
         self._rid = _cancel(self._rid)
         if self._scan_id is not None:
-            # Не оставляем discovery включённым, если закрылись посреди сканирования.
             self._cl.scanning = False
             self._scan_id = _cancel(self._scan_id)
 

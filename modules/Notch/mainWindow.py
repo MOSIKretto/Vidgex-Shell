@@ -18,6 +18,7 @@ class MainWindow(Box):
     def __init__(self, notch, **kwargs):
         self.notch = notch
         self._cur_idx = 0
+        self._destroyed = False
 
         self.dashboard = Dashboard(notch=notch)
         self.wallpapers = WallpaperSelector()
@@ -78,42 +79,51 @@ class MainWindow(Box):
 
         self.set_can_focus(True)
         self.connect("key-press-event", self._on_key_press)
+        self.connect("destroy", lambda *_: self.cleanup())
         self.show_all()
 
+    def _clear_close_focus(self) -> None:
+        self.switcher.get_style_context().remove_class("close-focused")
+        self.close_button.get_style_context().remove_class("focused")
+
+    def _sync_notch_cw(self, name: str) -> None:
+        if name == "dashboard":
+            if self.notch._cw not in _DASHBOARD_APPLETS:
+                self.notch._cw = "dashboard"
+        else:
+            self.notch._cw = name
+
     def _on_stack_child_changed(self, stack, _) -> None:
+        if self._destroyed:
+            return
         cur_child = stack.get_visible_child()
         for idx, name in enumerate(_NAV_ITEMS[:3]):
             if self._sections.get(name) is cur_child:
                 self._cur_idx = idx
-                self.switcher.get_style_context().remove_class("close-focused")
-                self.close_button.get_style_context().remove_class("focused")
-                if name == "dashboard":
-                    if self.notch._cw not in _DASHBOARD_APPLETS:
-                        self.notch._cw = "dashboard"
-                else:
-                    self.notch._cw = name
+                self._clear_close_focus()
+                self._sync_notch_cw(name)
                 break
 
     def _set_nav_index(self, idx: int) -> None:
+        if self._destroyed:
+            return
         self._cur_idx = idx
         sw_ctx  = self.switcher.get_style_context()
         btn_ctx = self.close_button.get_style_context()
 
         if idx < 3:
-            sw_ctx.remove_class("close-focused")
-            btn_ctx.remove_class("focused")
+            self._clear_close_focus()
             name = _NAV_ITEMS[idx]
             self.stack.set_visible_child(self._sections[name])
-            if name == "dashboard":
-                if self.notch._cw not in _DASHBOARD_APPLETS:
-                    self.notch._cw = "dashboard"
-            else:
-                self.notch._cw = name
+            self._sync_notch_cw(name)
         else:
             sw_ctx.add_class("close-focused")
             btn_ctx.add_class("focused")
 
     def _on_key_press(self, _, event) -> bool:
+        if self._destroyed:
+            return False
+
         top = self.get_toplevel()
         focus = top.get_focus()
         if isinstance(focus, Gtk.Entry) and focus.get_can_focus():
@@ -135,6 +145,8 @@ class MainWindow(Box):
         return True
 
     def go_to_section(self, name: str) -> None:
+        if self._destroyed:
+            return
         if name in _NAV_ITEMS[:3]:
             self._set_nav_index(_NAV_ITEMS.index(name))
         else:
@@ -142,6 +154,9 @@ class MainWindow(Box):
         self.grab_focus()
 
     def cleanup(self) -> None:
+        if self._destroyed:
+            return
+        self._destroyed = True
         self.dashboard.cleanup()
         self.player.cleanup()
         self.wallpapers.cleanup()

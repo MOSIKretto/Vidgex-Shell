@@ -19,22 +19,25 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 from fabric.widgets.stack import Stack
 
 import services.icons as icons
-from modules.Notch.MainWindow.Dashboard.Buttons.Network.network import Subscriptions, strength_icon
+from services.network import Subscriptions, strength_icon
 
-Gst.init(None)
 
 _QR_FRAME_W = 620
 _QR_FRAME_H = 220
-# Шаг строки кадра RGB24 постоянен — считаем один раз, а не на каждый кадр.
 _QR_STRIDE = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_RGB24, _QR_FRAME_W)
 _QR_DEVICE_WAIT_MS = 2000
-# Файл с QR содержит пароль: кладём в приватный XDG_RUNTIME_DIR (0700), а не в /tmp.
 _QR_SHARE_PATH = os.path.join(GLib.get_user_runtime_dir(), "wifi-share-qr.png")
-# Поле формата WIFI: — всё до неэкранированной «;».
 _WIFI_QR_FIELD = re.compile(r"((?:\\.|[^;\\])*);")
 _WIFI_QR_UNESCAPE = re.compile(r"\\(.)")
 _WIFI_QR_ESCAPE = str.maketrans({c: "\\" + c for c in '\\;,:"'})
+_gst_initialized = False
 
+
+def _ensure_gst() -> None:
+    global _gst_initialized
+    if not _gst_initialized:
+        Gst.init(None)
+        _gst_initialized = True
 
 def _parse_wifi_qr(data: str) -> tuple[str, str] | None:
     if not data.startswith("WIFI:"):
@@ -49,13 +52,11 @@ def _parse_wifi_qr(data: str) -> tuple[str, str] | None:
         return None
     return ssid, fields.get("P", "")
 
-
 def _build_wifi_qr(ssid: str, password: str) -> str:
     ssid = ssid.translate(_WIFI_QR_ESCAPE)
     if not password:
         return f"WIFI:S:{ssid};T:nopass;;"
     return f"WIFI:S:{ssid};T:WPA;P:{password.translate(_WIFI_QR_ESCAPE)};;"
-
 
 def _save_qr(data: str, path: str) -> None:
     qr = qrcode.QRCode(version=1, box_size=5, border=1)
@@ -63,28 +64,21 @@ def _save_qr(data: str, path: str) -> None:
     qr.make(fit=True)
     qr.make_image(fill_color="black", back_color="white").save(path)
 
-
 def _placeholder(ssid: str, strength: int = 0) -> dict:
-    """Данные слота для сети, которой нет в эфире (сохранённая вне зоны / текущая без AP в списке)."""
     return {"ssid": ssid, "is_secured": True, "icon-name": strength_icon(strength)}
 
-
 def _cancel(source):
-    """Снимает GLib-источник, если он есть. Использовать: self._id = _cancel(self._id)."""
     if source is not None:
         GLib.source_remove(source)
-
 
 def _cls(widget, name: str, on: bool = True):
     ctx = widget.get_style_context()
     (ctx.add_class if on else ctx.remove_class)(name)
 
-
 def _styled(widget, *names):
     for name in names:
         _cls(widget, name)
     return widget
-
 
 def _gst(factory: str, **props):
     element = Gst.ElementFactory.make(factory, None)
@@ -92,14 +86,11 @@ def _gst(factory: str, **props):
         element.set_property(key.replace("_", "-"), value)
     return element
 
-
 def _message(text: str):
     return _styled(Label(label=text), "wifi-off-label")
 
-
 def _action_button(label: str, handler):
     return _styled(Button(label=label, h_align="center", on_clicked=handler), "wifi-turn-on-btn")
-
 
 def _status_box(icon: str, *children):
     glyph = _styled(Label(markup=f"<span size='32768'>{icon}</span>"), "wifi-off-icon")
@@ -108,13 +99,11 @@ def _status_box(icon: str, *children):
         children=(glyph, *children),
     )
 
-
 def _section(title: str, child):
     return Box(
         orientation="v", spacing=4,
         children=(Label(label=title, h_align="start", name="section-title"), child),
     )
-
 
 def _scroll(child):
     window = ScrolledWindow(
@@ -123,7 +112,6 @@ def _scroll(child):
     )
     window.set_overlay_scrolling(False)
     return window
-
 
 def _header_button(name: str, icon: str, tooltip: str, handler):
     return Button(
@@ -267,11 +255,9 @@ class WifiSlot(Gtk.Box):
         if not self.saved and self.is_secured:
             self._tog_pw()
             return
-        # Сохранённая — по профилю; открытая новая — без пароля.
         self._connect(None if self.saved else "")
 
     def _connect(self, password):
-        """password=None — подключение по сохранённому профилю."""
         self.status_lbl.set_label("Connecting...")
         if password is None:
             started = self.nc.connect_to_saved_network(self.ssid, self._ok, self._err)
@@ -338,6 +324,8 @@ class WifiSlot(Gtk.Box):
         self.pw_rev.set_reveal_child(False)
         if WifiSlot._active_pw_slot is self:
             WifiSlot._active_pw_slot = None
+            if not self._destroyed and self.parent_net:
+                self.parent_net.request_refresh()
 
     def _ok(self, _ssid):
         if not self._destroyed and self.parent_net:
@@ -421,13 +409,17 @@ class QrScanPage(Gtk.Box):
             self._stop_all()
 
     def _start(self):
+        _ensure_gst()
         self._last_attempt = None
+        self._show_message("Looking for a camera...")
+        self._wait_for_device()
+
+    def _wait_for_device(self):
         self._start_monitor()
         existing = self._device_monitor.get_devices()
         if existing:
             self._on_device_found(existing[0])
             return
-        self._show_message("Looking for a camera...")
         self._device_wait_id = GLib.timeout_add(_QR_DEVICE_WAIT_MS, self._on_device_wait_timeout)
 
     def _start_monitor(self):
@@ -455,7 +447,6 @@ class QrScanPage(Gtk.Box):
 
     def _on_device_wait_timeout(self):
         self._device_wait_id = None
-        # Монитор остаётся активным: камеру можно подключить в любой момент.
         self._show_message("No camera detected.\nPlease connect a camera to your computer.")
         return False
 
@@ -494,8 +485,7 @@ class QrScanPage(Gtk.Box):
     def _on_bus_error(self, _bus, _message):
         self._stop_pipeline()
         self._show_message("Camera disconnected.")
-        # Ждём повторного подключения камеры (hot-plug).
-        self._start_monitor()
+        self._wait_for_device()
 
     def _show_message(self, text):
         self.message_label.set_label(text)
@@ -513,7 +503,6 @@ class QrScanPage(Gtk.Box):
         return False
 
     def _on_new_sample(self, sink):
-        # Вызывается из стриминг-потока GStreamer: с виджетами здесь не работаем.
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.OK
@@ -521,7 +510,6 @@ class QrScanPage(Gtk.Box):
         ok, mapinfo = buf.map(Gst.MapFlags.READ)
         if not ok:
             return Gst.FlowReturn.OK
-        # Одна копия: bytearray нужен cairo в главном потоке и годится для PIL.
         data = bytearray(mapinfo.data)
         buf.unmap(mapinfo)
 
@@ -547,8 +535,6 @@ class QrScanPage(Gtk.Box):
     def _on_draw(self, _widget, cr):
         if not self._frame_surface:
             return False
-        # Зеркалим только отображение (эффект зеркала для пользователя).
-        # Буфер кадра, переданный в decode, остаётся неизменным.
         cr.save()
         cr.translate(_QR_FRAME_W, 0)
         cr.scale(-1, 1)
@@ -723,7 +709,6 @@ class NetworkConnections(Box):
             "qr-container",
         ))
 
-        # Подписи значений по ключам словаря get_network_details().
         self._info = {}
         info_group = _styled(Box(orientation="vertical", spacing=2), "net-info-group")
         for key, title in (
@@ -745,7 +730,6 @@ class NetworkConnections(Box):
         return _scroll(settings_box)
 
     def _show_page(self, name: str, title: str = "Wi-Fi"):
-        """Единая точка смены подстраницы: стек, заголовок, кнопки шапки, состояние pressed."""
         self.lists_stack.set_visible_child_name(name)
         self.header_title.set_label(title)
         for btn in (self.scan_btn, self.saved_btn, self.qr_btn):
@@ -806,7 +790,13 @@ class NetworkConnections(Box):
         ssid = self.current_settings_ssid
         if not ssid:
             return
-        password = self.nc.get_network_password(ssid)
+        self.nc.get_network_password(ssid, lambda password: self._on_share_password(ssid, btn, password))
+
+    def _on_share_password(self, ssid, btn, password):
+        # Пока секрет запрашивался по D-Bus, пользователь мог открыть
+        # настройки другой сети — не показываем устаревший QR/пароль.
+        if self._destroyed or ssid != self.current_settings_ssid:
+            return
         _save_qr(_build_wifi_qr(ssid, password), _QR_SHARE_PATH)
         self.qr_image.set_from_file(_QR_SHARE_PATH)
         self.qr_password_lbl.set_label(f"Password: {password}" if password else "Open network")
@@ -828,12 +818,6 @@ class NetworkConnections(Box):
             wifi.enabled = True
 
     def _sync_enabled(self) -> bool:
-        """Приводит UI к состоянию Wi-Fi: страница on/off, доступность кнопок шапки.
-
-        Идемпотентна и дешёвая (читает кэш сервиса), поэтому вызывается синхронно
-        на каждое изменение, а не через отложенный _ref. Нет адаптера или
-        сервис ещё не готов — трактуется как «выключено».
-        """
         wifi = self.nc.wifi_device
         enabled = wifi is not None and wifi.enabled
         self.stack.set_visible_child_name("on" if enabled else "off")
@@ -842,7 +826,6 @@ class NetworkConnections(Box):
         if not enabled:
             if WifiSlot._active_pw_slot is not None:
                 WifiSlot._active_pw_slot._close_pw()
-            # Возврат на main останавливает камеру: QrScanPage слушает visible-child-name.
             if self.lists_stack.get_visible_child_name() != "main":
                 self._show_page("main")
                 self.current_settings_ssid = None
@@ -850,7 +833,6 @@ class NetworkConnections(Box):
         return enabled
 
     def _on_device_ready(self, *_):
-        # Wi-Fi сервис может смениться (hot-plug адаптера): переподписываемся один раз.
         self._wifi = self._subs.rebind(self._wifi, self.nc.wifi_device, "changed", self._on_wifi_changed)
         self._on_wifi_changed()
 
@@ -861,7 +843,6 @@ class NetworkConnections(Box):
     def _on_connection_error(self, _client, ssid, _msg):
         for pool in self._slots.values():
             for slot in pool:
-                # Скрытые слоты хранят устаревший ssid — их не трогаем.
                 if slot.get_visible() and slot.ssid == ssid:
                     slot._err()
 
@@ -870,7 +851,6 @@ class NetworkConnections(Box):
             self.request_refresh()
 
     def request_refresh(self, delay: int = 500):
-        """Единая точка отложенного обновления: новый запрос заменяет ожидающий."""
         if self._destroyed:
             return
         _cancel(self._rid)

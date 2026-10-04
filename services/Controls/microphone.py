@@ -22,19 +22,23 @@ class Microphone(Service):
         self._stream_hid = None
         self._last_val = -1
         self._last_muted = None
-
         self._audio_hid = self.audio.connect("notify::microphone", self._on_stream_notify)
         self._on_stream_notify()
 
     def _on_stream_notify(self, *_):
+        stream = self.audio.microphone
+        if stream is self._stream:
+            return
+
         if self._stream is not None:
             self._stream.disconnect(self._stream_hid)
 
-        self._stream = self.audio.microphone
+        self._stream = stream
         if self._stream is not None:
             self._stream_hid = self._stream.connect("changed", self._on_stream_changed)
+            self._last_val = -1
             self._on_stream_changed()
-        else:
+        elif self._last_val != 0 or self._last_muted is not True:
             self._last_val = 0
             self._last_muted = True
             self.emit("changed", 0)
