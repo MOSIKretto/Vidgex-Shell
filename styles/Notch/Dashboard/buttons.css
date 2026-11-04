@@ -2,8 +2,7 @@
 #bluetooth-button,
 #night-mode-button,
 #caffeine-button,
-#work-time-button,
-#pomodoro-button {
+#work-time-button {
   min-height: 52px;
   border-radius: 12px;
   background-color: unset;
@@ -110,8 +109,7 @@
 #bluetooth-icon,
 #night-mode-icon,
 #caffeine-icon,
-#work-time-icon,
-#pomodoro-icon {
+#work-time-icon {
   color: var(--shadow);
   font-size: 24px;
   transition: color 0.35s ease;
@@ -128,8 +126,7 @@
 #bluetooth-label,
 #night-mode-label,
 #caffeine-label,
-#work-time-label,
-#pomodoro-label {
+#work-time-label {
   color: var(--shadow);
   font-size: 14px;
   font-weight: bold;

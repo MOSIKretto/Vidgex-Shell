@@ -18,7 +18,7 @@ from modules.Dock.visibility import Visibility
 from modules.Dock.windowNavigator import WindowNavigator
 from modules.Dock.DnD import Dnd
 
-from modules.Dock.Desktop.infinite_desktop import (
+from modules.Dock.Desktop.infiniteDesktop import (
     start_canvas_daemon,
     toggle_mode as toggle_float_mode,
     is_canvas_mode,

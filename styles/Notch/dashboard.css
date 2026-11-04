@@ -8,14 +8,14 @@
 
 
 /* Фон шкал (неактивная часть палочек) */
-#net-usage trough,
-#gpu-usage trough,
+#rage-usage trough,
+.gpu-usage trough,
 #cpu-usage trough,
 #ram-usage trough,
 #disk-usage trough,
 #temp-usage trough,
-#net-usage:disabled trough,
-#gpu-usage:disabled trough,
+#rage-usage:disabled trough,
+.gpu-usage:disabled trough,
 #cpu-usage:disabled trough,
 #ram-usage:disabled trough,
 #disk-usage:disabled trough,
@@ -33,14 +33,14 @@
 }
 
 /* Активная часть (заполненные палочки) */
-#net-usage trough highlight,
-#gpu-usage trough highlight,
+#rage-usage trough highlight,
+.gpu-usage trough highlight,
 #cpu-usage trough highlight,
 #ram-usage trough highlight,
 #disk-usage trough highlight,
 #temp-usage trough highlight,
-#net-usage:disabled trough highlight,
-#gpu-usage:disabled trough highlight,
+#rage-usage:disabled trough highlight,
+.gpu-usage:disabled trough highlight,
 #cpu-usage:disabled trough highlight,
 #ram-usage:disabled trough highlight,
 #disk-usage:disabled trough highlight,
@@ -57,14 +57,14 @@
 }
 
 /* Скрываем стандартный круглый ползунок */
-#net-usage slider,
-#gpu-usage slider,
+#rage-usage slider,
+.gpu-usage slider,
 #cpu-usage slider,
 #ram-usage slider,
 #disk-usage slider,
 #temp-usage slider,
-#net-usage:disabled slider,
-#gpu-usage:disabled slider,
+#rage-usage:disabled slider,
+.gpu-usage:disabled slider,
 #cpu-usage:disabled slider,
 #ram-usage:disabled slider,
 #disk-usage:disabled slider,
@@ -78,12 +78,12 @@
 }
 
 /* Цвета подписей */
-#net-label,
+#rage-label,
 #cpu-label,
 #ram-label,
 #disk-label,
 #temp-label,
-#gpu-label {
+.gpu-label {
   color: var(--primary);
 }
 

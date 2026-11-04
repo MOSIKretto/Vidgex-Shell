@@ -26,6 +26,7 @@ def _sub(widget) -> "MetricsProvider":
         _prov = MetricsProvider()
     return _prov
 
+
 def _unsub(widget) -> None:
     global _prov
     _subs.discard(widget)
@@ -33,45 +34,57 @@ def _unsub(widget) -> None:
         prov, _prov = _prov, None
         prov.cleanup()
 
-def _fmt_speed(bps: float) -> str:
-    bits = bps * 8.0
-    if bits >= 1_000_000_000:
-        return f"{bits / 1_000_000_000:.1f} Gbit/s"
-    if bits >= 1_000_000:
-        return f"{bits / 1_000_000:.1f} Mbit/s"
-    if bits >= 1_000:
-        return f"{bits / 1_000:.0f} Kbit/s"
-    return f"{bits:.0f} bit/s"
 
-
-_NET_MAX = 2_500_000.0
 _WARMUP_SECONDS = 0.15
 
+_TEMP_MIN = 40.0
+_TEMP_MAX = 90.0
 
-def _net_norm(bps: float) -> float:
-    if bps <= 0:
-        return 0.0
-    return min(bps / _NET_MAX, 1.0)
+_RAGE_W_CPU = 0.30
+_RAGE_W_MEM = 0.20
+_RAGE_W_GPU = 0.20
+_RAGE_W_TEMP = 0.15
+_RAGE_W_DISK = 0.15
+
+_RAGE_ALPHA_UP = 0.5
+_RAGE_ALPHA_DOWN = 0.07
+
+_RAGE_LEVELS = (
+    (0.125, "happy"),
+    (0.25, "smile"),
+    (0.375, "empty"),
+    (0.5, "annoyed"),
+    (0.625, "sad"),
+    (0.75, "sick"),
+    (0.875, "angry"),
+    (1.01, "dead"),
+)
+
+
+def _rage_icon(rage: float) -> str:
+    for threshold, name in _RAGE_LEVELS:
+        if rage < threshold:
+            return getattr(icons, name)
+    return icons.dead
 
 
 class MetricsProvider:
     __slots__ = (
-        'cpu', 'mem', 'disk', 'gpu', 'temp',
-        'net_dl', 'net_ul',
-        '_nr', '_ns', '_nt',
+        'cpu', 'mem', 'disk', 'disk_busy', 'gpu', 'temp', 'rage',
         'gpus', '_nv', '_stop', '_intel_proc',
-        '_hw_ready', '_ready_cbs',
+        '_hw_ready', '_ready_cbs', '_warmed',
+        '_disk_io_prev_busy', '_disk_io_prev_ts',
     )
 
     def __init__(self):
-        self.cpu = self.mem = self.temp = 0.0
-        self.net_dl = self.net_ul = 0.0
+        self.cpu = self.mem = self.temp = self.rage = self.disk_busy = 0.0
         self.disk = [0.0]
         self.gpu = []
         self.gpus = []
         self._nv = []
-        self._nr = self._ns = 0
-        self._nt = time.monotonic()
+        self._warmed = False
+        self._disk_io_prev_busy = None
+        self._disk_io_prev_ts = None
 
         self._stop = threading.Event()
         self._intel_proc = None
@@ -129,6 +142,9 @@ class MetricsProvider:
         try:
             return subprocess.check_output(['nvidia-smi', *args], text=True, timeout=2)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Документированное поведение внешней утилиты: nvidia-smi может
+            # отвечать с задержкой/ошибкой при переходе карты в
+            # runtime-suspend или смене драйвера — это не повод падать.
             return ''
 
     def _intel_gpu_reader(self, idx: int, stdout) -> None:
@@ -149,36 +165,35 @@ class MetricsProvider:
     def _worker(self) -> None:
         self._detect_hw()
         GLib.idle_add(self._hw_detected)
-        self._gather_metrics(first=True)
+        self._gather_metrics()
         GLib.idle_add(self._notify_ui)
 
         while not self._stop.wait(2.0):
             self._gather_metrics()
             GLib.idle_add(self._notify_ui)
 
-    def _gather_metrics(self, first: bool = False) -> None:
-        if first:
-            net_before = psutil.net_io_counters()
-            self.cpu = psutil.cpu_percent(interval=_WARMUP_SECONDS)
-            net_after = psutil.net_io_counters()
-            self.net_dl = max(0.0, (net_after.bytes_recv - net_before.bytes_recv) / _WARMUP_SECONDS)
-            self.net_ul = max(0.0, (net_after.bytes_sent - net_before.bytes_sent) / _WARMUP_SECONDS)
-            self._nr, self._ns, self._nt = net_after.bytes_recv, net_after.bytes_sent, time.monotonic()
-        else:
-            self.cpu = psutil.cpu_percent(interval=None)
-            now = time.monotonic()
-            dt = now - self._nt
-            if dt > 0:
-                net = psutil.net_io_counters()
-                self.net_dl = max(0.0, (net.bytes_recv - self._nr) / dt)
-                self.net_ul = max(0.0, (net.bytes_sent - self._ns) / dt)
-                self._nr, self._ns, self._nt = net.bytes_recv, net.bytes_sent, now
+        self._shutdown_intel_proc()
+
+    def _shutdown_intel_proc(self) -> None:
+        proc, self._intel_proc = self._intel_proc, None
+        if proc is not None:
+            proc.kill()
+            proc.wait()
+
+    def _gather_metrics(self) -> None:
+        interval = None if self._warmed else _WARMUP_SECONDS
+        self.cpu = psutil.cpu_percent(interval=interval)
+        self._warmed = True
 
         self.mem = psutil.virtual_memory().percent
         self.disk[0] = psutil.disk_usage('/').percent
 
         max_t = 0.0
-        for entries in psutil.sensors_temperatures().values():
+        try:
+            sensors = psutil.sensors_temperatures()
+        except NotImplementedError:
+            sensors = {}
+        for entries in sensors.values():
             for entry in entries:
                 if entry.current > max_t:
                     max_t = entry.current
@@ -190,10 +205,15 @@ class MetricsProvider:
                     with open(gpu['path'], 'r') as f:
                         self.gpu[i] = max(0.0, min(100.0, float(f.read().strip())))
                 except OSError:
+                    # sysfs-узел может на мгновение исчезнуть при переходе
+                    # дискретной AMD-карты в runtime-suspend.
                     pass
 
         if self._nv:
             self._poll_nvidia()
+
+        self._update_disk_busy()
+        self._compute_rage()
 
     def _poll_nvidia(self) -> None:
         out = self._query_nvidia(
@@ -204,6 +224,41 @@ class MetricsProvider:
         vals = [float(x) for x in out.split() if x]
         for i, v in zip(self._nv, vals):
             self.gpu[i] = max(0.0, min(100.0, v))
+
+    def _update_disk_busy(self) -> None:
+        io = psutil.disk_io_counters()
+        if io is None:
+            return
+
+        now = time.monotonic()
+        busy_ms = io.read_time + io.write_time
+        if self._disk_io_prev_ts is not None:
+            dt_ms = (now - self._disk_io_prev_ts) * 1000.0
+            if dt_ms > 0:
+                delta = busy_ms - self._disk_io_prev_busy
+                self.disk_busy = max(0.0, min(100.0, delta / dt_ms * 100.0))
+        self._disk_io_prev_busy = busy_ms
+        self._disk_io_prev_ts = now
+
+    def _compute_rage(self) -> None:
+        cpu_n = self.cpu / 100.0
+        mem_n = self.mem / 100.0
+        gpu_n = (sum(self.gpu) / len(self.gpu) / 100.0) if self.gpu else 0.0
+        temp_n = max(0.0, min((self.temp - _TEMP_MIN) / (_TEMP_MAX - _TEMP_MIN), 1.0))
+        disk_n = self.disk_busy / 100.0
+
+        stress = (
+            _RAGE_W_CPU * cpu_n
+            + _RAGE_W_MEM * mem_n
+            + _RAGE_W_GPU * gpu_n
+            + _RAGE_W_TEMP * temp_n
+            + _RAGE_W_DISK * disk_n
+        )
+        overheat_penalty = max(0.0, temp_n - 0.8) * 2.0
+        stress = min(1.0, stress + overheat_penalty)
+
+        alpha = _RAGE_ALPHA_UP if stress > self.rage else _RAGE_ALPHA_DOWN
+        self.rage += (stress - self.rage) * alpha
 
     def _notify_ui(self) -> bool:
         if self._stop.is_set():
@@ -217,18 +272,19 @@ class MetricsProvider:
 
     def cleanup(self) -> None:
         self._stop.set()
-        proc, self._intel_proc = self._intel_proc, None
-        if proc is not None:
-            proc.kill()
-            proc.wait()
 
 
 class SingularMetric:
-    __slots__ = ('usage', 'label', 'box', '_last_v', '_last_suffix', '_tip_base')
+    __slots__ = (
+        'usage', 'label', 'box', '_last_v', '_last_suffix',
+        '_tip_base', '_name', '_icon',
+    )
 
-    def __init__(self, id, name, icon):
+    def __init__(self, id, name, icon, css_class=None):
         self._last_v = -1
         self._last_suffix = None
+        self._name = name
+        self._icon = icon
         self._tip_base = f'{icon} {name}'
         self.usage = Scale(
             name=f'{id}-usage', value=0.25, orientation='v',
@@ -239,8 +295,20 @@ class SingularMetric:
             name=f'{id}-box', orientation='v', spacing=8,
             children=[self.usage, self.label],
         )
+        if css_class is not None:
+            self.usage.get_style_context().add_class(f'{css_class}-usage')
+            self.label.get_style_context().add_class(f'{css_class}-label')
+            self.box.get_style_context().add_class(f'{css_class}-box')
         self.box.set_tooltip_markup(self._tip_base)
         self.usage.set_sensitive(False)
+
+    def set_icon(self, icon: str) -> None:
+        if icon == self._icon:
+            return
+        self._icon = icon
+        self.label.set_markup(icon)
+        self._tip_base = f'{icon} {self._name}'
+        self._last_suffix = None
 
     def set_val(self, v, tip_suffix=None):
         if abs(self._last_v - v) > 0.005:
@@ -253,21 +321,24 @@ class SingularMetric:
 
 class Metrics(Box):
     def __init__(self, widgets=None, **kwargs):
-        super().__init__(
+        box_opts = dict(
             name='metrics', spacing=8, h_align='center',
             v_align='fill', visible=True, all_visible=True,
         )
+        box_opts.update(kwargs)
+        super().__init__(**box_opts)
+
         self._destroyed = False
         self._gpu_built = False
 
-        self.net  = SingularMetric('net',  'NET',  icons.world)
+        self.rage = SingularMetric('rage', 'RAGE', icons.happy)
         self.temp = SingularMetric('temp', 'TEMP', icons.temp)
         self.disk = [SingularMetric('disk', 'DISK', icons.disk)]
         self.ram  = SingularMetric('ram',  'RAM',  icons.memory)
         self.cpu  = SingularMetric('cpu',  'CPU',  icons.cpu)
         self.gpu = []
 
-        for m in (self.net, self.temp, *self.disk, self.ram, self.cpu):
+        for m in (self.rage, self.temp, *self.disk, self.ram, self.cpu):
             self.add(m.box)
 
         self.connect("destroy", self._on_destroy)
@@ -290,8 +361,8 @@ class Metrics(Box):
         if self._destroyed or self._gpu_built:
             return
         self._gpu_built = True
-        for g in prov.get_gpu_info():
-            sm = SingularMetric('gpu', g['name'], icons.gpu)
+        for i, g in enumerate(prov.get_gpu_info()):
+            sm = SingularMetric(f'gpu{i}', g['name'], icons.gpu, css_class='gpu')
             self.gpu.append(sm)
             self.add(sm.box)
             sm.box.show_all()
@@ -299,9 +370,8 @@ class Metrics(Box):
     def _upd(self):
         prov = _prov
 
-        total = prov.net_dl + prov.net_ul
-        self.net.set_val(_net_norm(total), _fmt_speed(total))
-
+        self.rage.set_icon(_rage_icon(prov.rage))
+        self.rage.set_val(min(prov.rage, 1.0), f'{int(prov.rage * 100 + 0.5)}%')
         self.temp.set_val(min(prov.temp / 120.0, 1.0), f'{int(prov.temp + 0.5)}°C')
         self.ram.set_val(prov.mem * 0.01, f'{int(prov.mem)}%')
         self.cpu.set_val(prov.cpu * 0.01, f'{int(prov.cpu)}%')

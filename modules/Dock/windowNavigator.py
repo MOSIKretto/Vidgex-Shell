@@ -3,7 +3,7 @@ import random
 import time
 from fabric.utils import exec_shell_command
 
-from modules.Dock.Desktop.infinite_desktop import st, lock
+from modules.Dock.Desktop.infiniteDesktop import st, lock
 
 _ORDER_FILE = os.path.expanduser("~/.cache/vidgex-shell/matrix_order")
 

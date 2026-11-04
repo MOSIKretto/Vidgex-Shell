@@ -1,0 +1,270 @@
+#workspaces-container-top {
+  background-color: var(--shadow);
+  border-radius: 0px 0px 12px 0px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Ровный стык: от верхней панели осталась только кнопка настроек, левая панель видна под ней */
+#workspaces-container-top.joint-flush {
+  border-radius: 0px;
+}
+
+#workspaces-container-left {
+  background-color: var(--shadow);
+  border-radius: 0px 0px 12px 0px;
+  margin-top: -16px;
+  padding-top: 16px;
+}
+
+/* ── УголкиMyCorner боковой панели (SideBarWindow) ── */
+#sidebar-bottom-corner,
+#sidebar-top-corner,
+#sidebar-top-corner-static,
+#sidebar-bottom-corner #corner-container,
+#sidebar-top-corner #corner-container,
+#sidebar-top-corner-static #corner-container {
+  background-color: transparent;
+}
+
+#sidebar-bottom-corner #corner,
+#sidebar-top-corner #corner,
+#sidebar-top-corner-static #corner {
+  background-color: var(--shadow);
+}
+
+#sidebar-top-corner {
+  margin: 0px;
+  padding: 0px;
+}
+
+#sidebar-top-corner-static {
+  margin: 0px 0px 0px 8px;
+  padding: 0px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ВОРКСПЕЙСЫ: ВЕРХНЯЯ И ЛЕВАЯ ПАНЕЛИ (СТРОГАЯ ОСЕВАЯ СИММЕТРИЯ)
+   ════════════════════════════════════════════════════════════════ */
+
+/* Кнопка настроек (20x20) в квадрате 36x36 на пересечении верхней и левой панелей */
+#workspaces-num-top {
+  padding: 8px;
+  margin: 0;
+}
+
+/* Точки столбцов (верхняя панель, высота 36px = 14 + 8 + 14) */
+#workspaces-top {
+  padding: 14px 10px 14px 2px;
+  margin: 0;
+}
+
+/* Точки строк (левая панель, ширина 36px = 14 + 8 + 14) */
+#workspaces-left {
+  padding: 2px 14px 10px 14px;
+  margin: 0;
+}
+
+/* Выезжающие кнопки '-' и '+' в верхней панели (высота 36px = 8 + 20 + 8) */
+#workspaces-action-top-minus {
+  padding: 8px 8px 8px 0px;
+  margin: 0;
+}
+
+#workspaces-action-top-plus {
+  padding: 8px 8px 8px 0px;
+  margin: 0;
+}
+
+/* Выезжающие кнопки '-' и '+' в левой панели (ширина 36px = 8 + 20 + 8) */
+#workspaces-action-left-minus {
+  padding: 0px 8px 8px 8px;
+  margin: 0;
+}
+
+#workspaces-action-left-plus {
+  padding: 0px 8px 8px 8px;
+  margin: 0;
+}
+
+#workspaces-top > button,
+#workspaces-left > button,
+#workspaces-num-top > button,
+#workspaces-action-top-minus > button,
+#workspaces-action-top-plus > button,
+#workspaces-action-left-minus > button,
+#workspaces-action-left-plus > button {
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background-image: none;
+  text-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+#workspaces-top > button > label,
+#workspaces-left > button > label,
+#workspaces-num-top > button > label,
+#workspaces-action-top-minus > button > label,
+#workspaces-action-top-plus > button > label,
+#workspaces-action-left-minus > button > label,
+#workspaces-action-left-plus > button > label {
+  margin: 0;
+  padding: 0;
+}
+
+#workspaces-top > button,
+#workspaces-left > button {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 12px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#workspaces-top > button > label,
+#workspaces-left > button > label {
+  font-size: 0px;
+}
+
+#workspaces-top > button.empty,
+#workspaces-left > button.empty {
+  background-color: var(--surface-bright);
+}
+
+/* Неоновое свечение активной точки/пилюли — статичное (не мигающее,
+   не меняющееся во времени) состояние, зависящее только от того,
+   активен ли воркспейс прямо сейчас. Классический cyberpunk-акцент
+   "подсвеченный активный сегмент", не противоречащий требованию
+   полной статичности индикаторов. */
+#workspaces-top > button.active {
+  min-width: 48px;
+  background-color: var(--primary);
+}
+
+#workspaces-left > button.row-dot.active {
+  min-height: 48px;
+  background-color: var(--primary);
+}
+
+#workspaces-top > button.empty:hover {
+  min-width: 20px;
+  background-color: var(--foreground);
+}
+
+#workspaces-left > button.row-dot.empty:hover {
+  min-height: 20px;
+  background-color: var(--foreground);
+}
+
+/* ── Глитч-эффекты при добавлении и удалении рабочих столов (без изменения геометрии) ── */
+#workspaces-top > button.glitch-aberration,
+#workspaces-top > button.glitch-shift-right,
+#workspaces-top > button.glitch-shift-left,
+#workspaces-top > button.glitch-flicker,
+#workspaces-top > button.glitch-heavy,
+#workspaces-top > button.glitch-color-swap,
+#workspaces-left > button.row-dot.glitch-aberration,
+#workspaces-left > button.row-dot.glitch-shift-right,
+#workspaces-left > button.row-dot.glitch-shift-left,
+#workspaces-left > button.row-dot.glitch-flicker,
+#workspaces-left > button.row-dot.glitch-heavy,
+#workspaces-left > button.row-dot.glitch-color-swap {
+  transition: min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              min-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#workspaces-top > button.glitch-aberration,
+#workspaces-left > button.row-dot.glitch-aberration {
+  background-color: #ffffff;
+  box-shadow: 3px 0 0 #ff0055, -3px 0 0 #00e5ff;
+}
+
+#workspaces-top > button.glitch-shift-right,
+#workspaces-left > button.row-dot.glitch-shift-right {
+  background-color: #ff0055;
+  box-shadow: 4px 0 0 rgba(255, 0, 85, 0.75);
+}
+
+#workspaces-top > button.glitch-shift-left,
+#workspaces-left > button.row-dot.glitch-shift-left {
+  background-color: #00e5ff;
+  box-shadow: -4px 0 0 rgba(0, 229, 255, 0.75);
+}
+
+#workspaces-top > button.glitch-flicker,
+#workspaces-left > button.row-dot.glitch-flicker {
+  opacity: 0.2;
+  background-color: var(--primary);
+}
+
+#workspaces-top > button.glitch-heavy,
+#workspaces-left > button.row-dot.glitch-heavy {
+  background-color: #ffffff;
+  box-shadow: 4px 0 0 #ff0055, -4px 0 0 #00e5ff, 0 3px 0 #76ff03;
+}
+
+#workspaces-top > button.glitch-color-swap,
+#workspaces-left > button.row-dot.glitch-color-swap {
+  background-color: #ff0055;
+  box-shadow: 0 0 10px #ff0055;
+}
+
+#workspaces-num-top > button {
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 12px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#workspaces-num-top > button > label {
+  font-size: 20px;
+}
+
+#workspaces-num-top > button.empty {
+  background-color: transparent;
+}
+
+#workspaces-num-top > button.empty > label {
+  color: var(--surface-bright);
+}
+
+#workspaces-num-top > button.active {
+  background-color: var(--primary);
+}
+
+#workspaces-num-top > button.active > label {
+  color: var(--shadow);
+}
+
+#workspaces-action-top-minus > button,
+#workspaces-action-top-plus > button,
+#workspaces-action-left-minus > button,
+#workspaces-action-left-plus > button {
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 12px;
+  background-color: var(--surface-bright);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#workspaces-action-top-minus > button > label,
+#workspaces-action-top-plus > button > label,
+#workspaces-action-left-minus > button > label,
+#workspaces-action-left-plus > button > label {
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+#workspaces-action-top-minus > button:hover,
+#workspaces-action-top-plus > button:hover,
+#workspaces-action-left-minus > button:hover,
+#workspaces-action-left-plus > button:hover {
+  background-color: var(--primary);
+}
+
+#workspaces-action-top-minus > button:hover > label,
+#workspaces-action-top-plus > button:hover > label,
+#workspaces-action-left-minus > button:hover > label,
+#workspaces-action-left-plus > button:hover > label {
+  color: var(--shadow);
+}

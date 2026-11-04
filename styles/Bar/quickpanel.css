@@ -1,0 +1,251 @@
+#quick-panel-window { background: transparent; }
+#quick-panel-revealer { background: transparent; }
+
+#quick-panel-card {
+    background-color: var(--shadow);
+    border-radius: 20px 0 0 20px;
+}
+#quick-panel-card.quick-panel-stitched { border-radius: 0 0 0 20px; }
+#power-battery-container.quick-panel-stitched { border-radius: 0; }
+
+#quick-panel-stack {
+    background: transparent;
+    padding: 12px;
+}
+
+#quick-panel-bottom-corner { background: transparent; }
+#quick-panel-bottom-corner #corner { background: var(--shadow); }
+
+.power-icon-btn,
+.toolbox-icon-btn {
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 14px;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background-image: none;
+    text-shadow: none;
+
+    margin: 0px;
+    padding: 0px;
+
+    background-color: alpha(var(--primary), 0.10);
+    color: var(--primary);
+
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.power-icon-btn label,
+.toolbox-icon-btn label {
+    font-size: 24px;
+    color: var(--primary);
+    transition: color 0.25s ease;
+}
+
+.power-icon-btn:hover,
+.toolbox-icon-btn:hover {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+.power-icon-btn:hover label,
+.toolbox-icon-btn:hover label {
+    color: var(--shadow);
+}
+
+.toolbox-icon-btn.active {
+    background-color: var(--primary);
+}
+.toolbox-icon-btn.active label {
+    color: var(--shadow);
+}
+
+#power-battery-container #HyprlandLanguage-indicator {
+    background-color: transparent;
+    transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+                opacity           320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#power-battery-container #HyprlandLanguage-indicator:hover {
+    background-color: var(--surface-bright);
+}
+#power-battery-container #HyprlandLanguage-indicator:active {
+    opacity: 0.6;
+    transition: opacity 110ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+#power-tab, #tools-tab { padding: 4px; }
+
+#dim-label {
+    color: var(--primary);
+    opacity: 0.78;
+    font-size: 12px;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    letter-spacing: 0.2px;
+}
+#wifi-speed-icon { color: var(--primary); font-size: 13px; opacity: 0.9; }
+#wifi-speed-val {
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+}
+
+#battery-tab { padding: 4px; }
+
+#battery-tab-row { margin-top: -4px; margin-left: 0px; }
+
+#battery-bt-column { margin-left: 14px; }
+
+.battery-ring {
+    color: var(--primary);
+    background-color: transparent;
+}
+
+#battery-circle-pct {
+    font-size: 9px; font-weight: 700; color: var(--primary);
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+}
+
+#battery-circle.empty { opacity: 0.4; }
+
+.battery-circle-wrap {
+    color: var(--primary);
+    margin-top: 0;
+    border-radius: 50%;
+    transition: margin-top 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                box-shadow 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.battery-circle-wrap.lifted {
+    margin-top: -4px;
+}
+
+/* Меняет состояние только внутренний кружок и его иконка; внешняя полоска прогресса не затрагивается */
+.battery-ring.battery-trigger {
+    background-color: alpha(var(--primary), 0.10);
+    color: var(--primary);
+    transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                color            0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.battery-ring.battery-trigger:hover,
+.battery-ring.battery-trigger.hovered {
+    background-color: alpha(var(--primary), 0.28);
+    color: var(--primary);
+}
+
+.battery-ring.battery-trigger.active {
+    background-color: var(--primary);
+    color: var(--shadow);
+}
+
+.battery-ring.battery-trigger.pressed {
+    background-color: alpha(var(--primary), 0.55);
+}
+
+#battery-slider-panel {
+    margin-left: 14px;
+    padding-right: 0px;
+}
+
+#battery-threshold-time {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    opacity: 0.9;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    letter-spacing: 0.2px;
+}
+
+.battery-threshold-tick {
+    border-radius: 2px;
+    transition: background-color 80ms ease, box-shadow 80ms ease, opacity 80ms ease;
+}
+
+.battery-threshold-tick.below-threshold {
+    background-color: var(--primary);
+}
+
+.battery-threshold-tick.at-threshold {
+    background-color: var(--error);
+}
+
+.battery-threshold-tick.above-threshold {
+    background-color: var(--outline);
+}
+
+.battery-threshold-tick.glitch-aberration {
+    background-color: #ffffff;
+    box-shadow: 3px 0 0 0 rgba(255, 0, 85, 0.75), -3px 0 0 0 rgba(0, 229, 255, 0.75);
+}
+
+.battery-threshold-tick.glitch-shift-right {
+    background-color: #ff0055;
+    box-shadow: 4px 0 0 0 rgba(255, 0, 85, 0.6);
+}
+
+.battery-threshold-tick.glitch-shift-left {
+    background-color: #00e5ff;
+    box-shadow: -4px 0 0 0 rgba(0, 229, 255, 0.6);
+}
+
+.battery-threshold-tick.glitch-flicker {
+    opacity: 0.2;
+}
+
+.battery-threshold-tick.glitch-heavy {
+    background-color: #ffffff;
+    box-shadow: 4px 0 0 0 #ff0055, -4px 0 0 0 #00e5ff;
+}
+
+.battery-threshold-tick.glitch-color-swap {
+    background-color: #ff0055;
+}
+
+#wifi-tab { padding: 4px; }
+
+#wifi-tab-row { margin-bottom: 0; }
+
+#wifi-tab-icon { font-size: 24px; color: var(--primary); }
+
+#wifi-tab-label {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    letter-spacing: 0.5px;
+}
+
+#wifi-tab-ssid {
+    font-size: 13px; font-weight: 700; color: var(--primary);
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+}
+
+#wifi-tab-signal {
+    font-size: 11px; color: var(--primary); opacity: 0.72;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+}
+
+#wifi-tab-vdivider {
+    min-width: 1px;
+    min-height: 16px;
+    margin: 0 2px;
+    background-color: var(--primary);
+    opacity: 0.18;
+}
+
+#wifi-tab-speed { margin-top: 0; }
+
+#power-battery-container #HyprlandLanguage-indicator {
+    padding: 0 4px; border-radius: 10px; min-height: 36px;
+}
+
+#quick-panel-scroll { background: transparent; }
+#quick-panel-scroll scrollbar { opacity: 0; min-height: 0; min-width: 0; }
+
+#toolbox-menu-window {
+    background-color: transparent;
+}
+#toolbox-menu-wrapper {
+    background-color: transparent;
+}
+#toolbox-menu-icons {
+    padding: 4px;
+}

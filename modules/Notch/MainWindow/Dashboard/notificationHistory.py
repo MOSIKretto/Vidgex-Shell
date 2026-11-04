@@ -34,6 +34,8 @@ from modules.Notch.MainWindow.Dashboard.NotificationHistory.notificationGroup im
 
 locale.setlocale(locale.LC_TIME, "")
 
+def _is_expired(dt: datetime) -> bool:
+    return dt.date() < date.today() - timedelta(days=1)
 
 def _format_date_category(dt: datetime) -> str:
     today = date.today()
@@ -70,6 +72,7 @@ class NotificationHistory(Box):
 
         self._loading = False
         self._save_timer_id = None
+        self._midnight_timer_id = None
         self._is_destroyed = False
 
         self._build_ui()
@@ -79,6 +82,7 @@ class NotificationHistory(Box):
             self._server.connect("notification-dnd-added", self._on_notification_added),
         )
         GLib.idle_add(self._start_loading, priority=GLib.PRIORITY_LOW)
+        self._schedule_midnight_purge()
 
     def _build_ui(self) -> None:
         self.header_switch = Gtk.Switch(name="dnd-switch", vexpand=False, valign=Gtk.Align.CENTER)
@@ -454,8 +458,13 @@ class NotificationHistory(Box):
 
         existing_ids = {n.get("id") for n in self.persistent_notifications}
         for n in loaded:
-            if n.get("id") not in existing_ids:
-                self.persistent_notifications.append(n)
+            if n.get("id") in existing_ids:
+                continue
+            # Храним только сегодня/вчера — устаревшие записи отбрасываем при загрузке.
+            timestamp = n.get("timestamp")
+            if timestamp and _is_expired(datetime.fromisoformat(timestamp)):
+                continue
+            self.persistent_notifications.append(n)
         self.persistent_notifications = self.persistent_notifications[:MAX_NOTIFICATION_HISTORY]
 
         if self.persistent_notifications:
@@ -565,6 +574,34 @@ class NotificationHistory(Box):
                 self._detach_from_group(old_uuid)
             self._destroy_container(oldest)
 
+    def _purge_expired(self) -> None:
+        """Удаляет записи старше 'вчера' из списка и из UI (вызывается на смене суток)."""
+        if self._is_destroyed:
+            return
+        expired_ids = [
+            container.notification_box.uuid
+            for container in self.containers
+            if _is_expired(container.arrival_time)
+        ]
+        for uuid in expired_ids:
+            container = self.containers_by_id.get(uuid)
+            if container is not None:
+                self.delete_historical_notification(uuid, container)
+
+    def _schedule_midnight_purge(self) -> None:
+        now = datetime.now()
+        next_midnight = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
+        seconds = max(1, int((next_midnight - now).total_seconds()) + 5)
+        self._midnight_timer_id = GLib.timeout_add_seconds(
+            seconds, self._on_midnight_purge, priority=GLib.PRIORITY_LOW
+        )
+
+    def _on_midnight_purge(self) -> bool:
+        self._midnight_timer_id = None
+        self._purge_expired()
+        self._schedule_midnight_purge()
+        return GLib.SOURCE_REMOVE
+
     def _schedule_save(self) -> None:
         if self._save_timer_id is not None:
             GLib.source_remove(self._save_timer_id)
@@ -592,6 +629,10 @@ class NotificationHistory(Box):
 
         for handler in self._server_handlers:
             self._server.disconnect(handler)
+
+        if self._midnight_timer_id is not None:
+            GLib.source_remove(self._midnight_timer_id)
+            self._midnight_timer_id = None
 
         if self._save_timer_id is not None:
             GLib.source_remove(self._save_timer_id)

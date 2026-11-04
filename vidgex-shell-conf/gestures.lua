@@ -72,7 +72,7 @@ hl.gesture({
 hl.gesture({
     fingers = 4,
     direction = "pinchout",
-    action = function() hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Dock.Desktop.infinite_desktop import toggle_overview; toggle_overview()'") end
+    action = function() hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Dock.Desktop.infiniteDesktop import toggle_overview; toggle_overview()'") end
 })
 hl.gesture({
     fingers = 4,

@@ -117,9 +117,7 @@
 }
 
 /* ── Иконка и обёртки ──────────────── */
-#dock-icon {
-    transition: all 150ms ease-out;
-}
+
 
 #dock-icon-wrapper {
     transition: all 150ms ease-out;

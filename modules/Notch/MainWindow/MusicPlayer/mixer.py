@@ -1,4 +1,5 @@
 from gi.repository import Gtk, GLib
+
 from fabric.widgets.box import Box
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label

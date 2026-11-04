@@ -1,5 +1,9 @@
 from bisect import bisect_right
+import threading
+import time
+import weakref
 
+import psutil
 import gi
 
 gi.require_version("NM", "1.0")
@@ -542,3 +546,99 @@ class NetworkClient(_Subscriber):
             if nameservers := ip4.get_nameservers():
                 details["dns"] = ", ".join(nameservers)
         return details
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Shared network speed provider (DL/UL throughput) — единый поток опроса
+# psutil.net_io_counters, разделяемый Dashboard metrics и QuickPanel WiFi
+# tab. Ref-counted через subscribe/unsubscribe: поток работает только пока
+# есть хотя бы один подписчик (см. п.8 — нулевая нагрузка в простое).
+# Глобальные имена намеренно с префиксом _speed_, чтобы не путать со схожими
+# по смыслу, но независимыми сущностями выше (класс Subscriptions,
+# self._subs у _Subscriber) — это разные механизмы в одном файле.
+# ──────────────────────────────────────────────────────────────────────
+
+def fmt_speed(bps: float) -> str:
+    bits = bps * 8.0
+    if bits >= 1_000_000_000:
+        return f"{bits / 1_000_000_000:.1f} Gbit/s"
+    if bits >= 1_000_000:
+        return f"{bits / 1_000_000:.1f} Mbit/s"
+    if bits >= 1_000:
+        return f"{bits / 1_000:.0f} Kbit/s"
+    return f"{bits:.0f} bit/s"
+
+
+def fmt_speed_short(bps: float) -> str:
+    """Compact: 12.4 MB/s  (bytes, not bits) — for WiFi status line."""
+    if bps >= 1_000_000:
+        return f"{bps / 1_000_000:.1f} MB/s"
+    if bps >= 1_000:
+        return f"{bps / 1_000:.0f} KB/s"
+    return f"{bps:.0f} B/s"
+
+
+_SPEED_WARMUP = 0.15
+_SPEED_INTERVAL = 2.0
+
+_speed_prov = None  # type: NetSpeedProvider | None
+_speed_subs: weakref.WeakSet = weakref.WeakSet()
+
+
+def subscribe(widget) -> "NetSpeedProvider":
+    global _speed_prov
+    _speed_subs.add(widget)
+    if _speed_prov is None:
+        _speed_prov = NetSpeedProvider()
+    return _speed_prov
+
+
+def unsubscribe(widget) -> None:
+    global _speed_prov
+    _speed_subs.discard(widget)
+    if not _speed_subs and _speed_prov is not None:
+        prov, _speed_prov = _speed_prov, None
+        prov.cleanup()
+
+
+class NetSpeedProvider:
+    __slots__ = ("dl", "ul", "_nr", "_ns", "_nt", "_stop")
+
+    def __init__(self):
+        self.dl = 0.0
+        self.ul = 0.0
+        self._nr = 0
+        self._ns = 0
+        self._nt = time.monotonic()
+        self._stop = threading.Event()
+        threading.Thread(target=self._worker, daemon=True).start()
+
+    def _worker(self):
+        # warmup
+        before = psutil.net_io_counters()
+        time.sleep(_SPEED_WARMUP)
+        after = psutil.net_io_counters()
+        self.dl = max(0.0, (after.bytes_recv - before.bytes_recv) / _SPEED_WARMUP)
+        self.ul = max(0.0, (after.bytes_sent - before.bytes_sent) / _SPEED_WARMUP)
+        self._nr, self._ns, self._nt = after.bytes_recv, after.bytes_sent, time.monotonic()
+        GLib.idle_add(self._notify)
+
+        while not self._stop.wait(_SPEED_INTERVAL):
+            now = time.monotonic()
+            dt = now - self._nt
+            if dt > 0:
+                net = psutil.net_io_counters()
+                self.dl = max(0.0, (net.bytes_recv - self._nr) / dt)
+                self.ul = max(0.0, (net.bytes_sent - self._ns) / dt)
+                self._nr, self._ns, self._nt = net.bytes_recv, net.bytes_sent, now
+            GLib.idle_add(self._notify)
+
+    def _notify(self) -> bool:
+        if self._stop.is_set():
+            return False
+        for w in list(_speed_subs):
+            w._on_net_speed(self.dl, self.ul)
+        return False
+
+    def cleanup(self):
+        self._stop.set()

@@ -1,15 +1,10 @@
 import json
-import math
-import os
 import random
 import subprocess
 import time as _time
 from gi.repository import Gst, GLib, Gtk
 
-try:
-    from modules.Notch.MainWindow.Dashboard.Controls.volume import Volume
-except Exception:
-    Volume = None
+from modules.Notch.MainWindow.Dashboard.Controls.volume import Volume
 
 _NUM_BARS = 80
 # Число полос FFT спектра. Должно совпадать с _SPECTRUM_BANDS в player.py.

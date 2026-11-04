@@ -1,31 +1,69 @@
+import random
 import weakref
 
 import gi
+
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-
 gi.require_version("GtkLayerShell", "0.1")
-from gi.repository import GtkLayerShell
+from gi.repository import GLib, GtkLayerShell
 
-from fabric.hyprland.widgets import (
-    HyprlandLanguage as Language,
-    get_hyprland_connection,
-)
-from fabric.widgets.box import Box
-from fabric.widgets.label import Label
-from fabric.widgets.button import Button
-from fabric.widgets.datetime import DateTime
+from fabric.hyprland.widgets import HyprlandLanguage, get_hyprland_connection
 from fabric.widgets.centerbox import CenterBox
+from fabric.widgets.datetime import DateTime
 from fabric.widgets.eventbox import EventBox
+from fabric.widgets.label import Label
+from fabric.widgets.box import Box
 
-from modules.Bar.powerMenu import PowerMenu
-from modules.Bar.toolBox import ToolBox
-from modules.Bar.workspaces import TopWorkspaces, SideBarWindow
-from modules.Bar.battery import Battery
+from modules.Bar.quickPanel import QuickPanel
+from modules.Bar.workspaces import SideBarWindow, TopWorkspaces
+
 from services.corners import MyCorner
-
 from services.wayland import WaylandWindow as Window
-import services.icons as icons
+
+
+_GLITCH_CLASSES = ("glitch-aberration", "glitch-color-swap")
+_GLITCH_FRAMES = 6
+_GLITCH_FRAME_MS = 35
+_CLOCK_WIDTH_PX = 46
+_LANG_WIDTH_PX = 32
+
+
+class _GlitchFX:
+    __slots__ = ("_widget", "_rem", "_timer_id")
+
+    def __init__(self, widget):
+        self._widget = widget
+        self._rem = 0
+        self._timer_id = 0
+
+    def trigger(self) -> None:
+        self._rem = _GLITCH_FRAMES
+        if not self._timer_id:
+            self._timer_id = GLib.timeout_add(_GLITCH_FRAME_MS, self._tick)
+
+    def _clear_classes(self) -> None:
+        ctx = self._widget.get_style_context()
+        for cls in _GLITCH_CLASSES:
+            ctx.remove_class(cls)
+        ctx.remove_class("glitching")
+
+    def _tick(self) -> bool:
+        self._clear_classes()
+        if self._rem == 0:
+            self._timer_id = 0
+            return False
+        self._rem -= 1
+        ctx = self._widget.get_style_context()
+        ctx.add_class("glitching")
+        for cls in random.sample(_GLITCH_CLASSES, random.randint(1, 2)):
+            ctx.add_class(cls)
+        return True
+
+    def stop(self) -> None:
+        if self._timer_id:
+            GLib.source_remove(self._timer_id)
+            self._timer_id = 0
+        self._clear_classes()
 
 
 class Bar(Window):
@@ -33,7 +71,7 @@ class Bar(Window):
         super().__init__(exclusivity=36, monitor_id=monitor_id)
         self.mid = monitor_id
 
-        if GtkLayerShell and GtkLayerShell.is_layer_window(self):
+        if GtkLayerShell.is_layer_window(self):
             GtkLayerShell.set_exclusive_zone(self, 36)
 
         notch = kwargs.get("notch")
@@ -43,18 +81,26 @@ class Bar(Window):
         self.margin = "0px -8px 0px -8px"
 
         self.conn = get_hyprland_connection()
-        self.lang = Language()
+        self.lang = HyprlandLanguage()
         self._last_lang = ""
+        self._last_time = ""
+        self._lang_sig_id = 0
 
         self.sidebar = SideBarWindow(conn=self.conn, monitor_id=self.mid)
         self.sidebar.show_all()
 
-        self.power_menu = PowerMenu(monitor=self.mid)
-        self.toolbox_menu = ToolBox(monitor=self.mid)
+        self.quick_panel = QuickPanel(monitor=self.mid)
 
         self._build()
+
+        self.dt.connect("notify::label", self._dchg)
         self._lang_sig_id = self.lang.connect("notify::label", self._lchg)
         self._lchg()
+
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, *_):
+        self.cleanup()
 
     @property
     def notch(self):
@@ -68,43 +114,22 @@ class Bar(Window):
         self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")
 
         self.dt = DateTime(name="date-time", formatters=["%H:%M"], v_align="center")
-
-        self.bat = Battery()
-        if hasattr(self.bat, "set_valign"):
-            self.bat.set_valign(Gtk.Align.CENTER)
-
-        self.bt = Button(
-            name="button-bar",
-            v_align="center",
-            tooltip_markup="<b>Tools</b>",
-            on_clicked=self._tools,
-            child=Label(name="button-bar-label", markup=icons.photo),
-        )
-        self.toolbox_menu.set_trigger_button(self.bt)
-
-        self.bp = Button(
-            name="button-bar",
-            v_align="center",
-            tooltip_markup="<b>Power menu</b>",
-            on_clicked=self._pwr,
-            child=Label(name="button-bar-label", markup=icons.shutdown),
-        )
-        self.power_menu.set_trigger_button(self.bp)
+        self.dt.set_size_request(_CLOCK_WIDTH_PX, -1)
+        self._clock_glitch = _GlitchFX(self.dt)
 
         self.ll = Label(name="lang-label", xalign=0.5, v_align="center")
+        self.ll.set_size_request(_LANG_WIDTH_PX, -1)
+        self._lang_glitch = _GlitchFX(self.ll)
 
         self.lang_eb = EventBox(
             v_align="center",
             child=Box(
-                name="language-indicator",
+                name="HyprlandLanguage-indicator",
                 v_align="center",
                 spacing=0,
                 children=[self.ll],
             ),
         )
-
-        self.lang_eb.connect("enter-notify-event", self._lang_enter)
-        self.lang_eb.connect("leave-notify-event", self._lang_leave)
 
         start_container = Box(
             name="start-container",
@@ -134,8 +159,14 @@ class Bar(Window):
             name="power-battery-container",
             spacing=4,
             v_align="fill",
-            children=[self.dt, self.lang_eb, self.bat, self.bt, self.bp],
+            children=[
+                self.dt, self.lang_eb,
+                self.quick_panel.net_btn, self.quick_panel.battery_btn,
+                self.quick_panel.util_btn, self.quick_panel.session_btn,
+            ],
         )
+
+        self.quick_panel.bind_width_to(power_battery_container)
 
         bar_group_right_top = Box(
             name="bar-group-right-top",
@@ -180,49 +211,42 @@ class Bar(Window):
 
         self.add(self.nb)
 
-    def _lang_enter(self, w, event):
-        return False
-
-    def _lang_leave(self, w, event):
-        return False
-
     def _lchg(self, *_):
         raw = self.lang.get_label()
         short = raw[:2].upper()
-        if short != self._last_lang:
-            self._last_lang = short
-            self.ll.set_label(short)
+        if short == self._last_lang:
+            return
+        changed = bool(self._last_lang)
+        self._last_lang = short
+        self.ll.set_label(short)
+        if changed:
+            self._lang_glitch.trigger()
 
-    def _pwr(self, *_):
-        pm = self.power_menu
-        if pm.is_open():
-            pm.close()
-        else:
-            pm.open()
-
-    def _tools(self, *_):
-        tm = self.toolbox_menu
-        if tm.is_open():
-            tm.close()
-        else:
-            tm.open()
+    def _dchg(self, *_):
+        text = self.dt.get_label()
+        if text == self._last_time:
+            return
+        changed = bool(self._last_time)
+        self._last_time = text
+        if changed:
+            self._clock_glitch.trigger()
 
     def cleanup(self):
-        self.lang.disconnect(self._lang_sig_id)
-        self._lang_sig_id = 0
+        if self._lang_sig_id:
+            self.lang.disconnect(self._lang_sig_id)
+            self._lang_sig_id = 0
 
-        self.sidebar.destroy()
-        self.sidebar = None
+        self._clock_glitch.stop()
+        self._lang_glitch.stop()
 
-        self.power_menu.cleanup()
-        self.power_menu.destroy()
-        self.power_menu = None
+        if self.sidebar is not None:
+            self.sidebar.destroy()
+            self.sidebar = None
 
-        self.toolbox_menu.cleanup()
-        self.toolbox_menu.destroy()
-        self.toolbox_menu = None
-
-        self.bat.cleanup()
+        if self.quick_panel is not None:
+            self.quick_panel.cleanup()
+            self.quick_panel.destroy()
+            self.quick_panel = None
 
         self._notch_ref = None
         self.conn = None

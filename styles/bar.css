@@ -1,4 +1,7 @@
-@import url("./styles/Bar/tools.css");
+/* styles/Bar/bar.css */
+
+@import url("./styles/Bar/quickpanel.css");
+@import url("./styles/Bar/workspaces.css");
 
 
 /* ── Power Menu Dropdown ─────────────────────────────── */
@@ -12,51 +15,85 @@
     padding: 4px; 
 }
 
-/* ── icon buttons ── */
-.power-icon-btn {
-    border-radius: 12px;
+/* ══════════════════════════════════════════════════════════════════
+   КНОПКИ ВЫЗОВА QUICKPANEL (Wi-Fi / Battery / Tools / Session).
+
+   Единый "ghost-chip" язык: полупрозрачная подложка alpha(var(--primary),0.10)
+   в простое; на hover и на .trigger-active (вкладка реально открыта) —
+   сплошная заливка var(--primary) + var(--shadow) на тексте/иконке,
+   БЕЗ box-shadow и БЕЗ alpha-прозрачности — по явному требованию:
+   никакого неонового свечения на этих кнопках, hover и активная вкладка
+   выглядят одинаково. .trigger-active навешивается/снимается в
+   QuickPanel._activate_tab/_deactivate_tab (modules/Bar/QuickPanel/
+   __init__.py) — не зависит от положения курсора мыши.
+
+   min-height: 36px — выравнивает кнопки по высоте с остальными
+   элементами этого же ряда (#date-time, #HyprlandLanguage-indicator),
+   у которых тот же min-height задан в своих блоках ниже/в
+   quickpanel.css.
+
+   :active НЕ стилизуется здесь намеренно — это состояние гарантированно
+   переопределяет провайдер темы с приоритетом не ниже нашего обычного
+   (см. _install_active_state_fix в wifiTab.py), поэтому оно решается
+   ОТДЕЛЬНЫМ CSS-провайдером с GTK_STYLE_PROVIDER_PRIORITY_USER прямо
+   из кода — тот фикс остаётся единственным местом правды для :active,
+   дублировать его здесь нельзя (CSS с обычным приоритетом будет
+   проигран темой ровно так же, как было раньше). */
+#button-bar {
+    background-color: alpha(var(--primary), 0.10);
+    background-image: none;
     border: none;
     outline: none;
     box-shadow: none;
-    background-image: none;
     text-shadow: none;
-    
-    margin: 0px;
-    padding: 0px; 
-    
-    background-color: var(--shadow);
-    color: var(--primary);
-    
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 10px;
+    min-height: 36px;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.power-icon-btn label {
-    font-size: 20px;
-    color: var(--primary);
-    transition: color 0.25s ease;
-}
-
-.power-icon-btn:hover {
-    background-color: var(--primary);
-    color: var(--shadow);
-}
-.power-icon-btn:hover label {
-    color: var(--shadow);
-}
-
-/* Hover — подсветка как у кнопок в меню */
+/* Наведение — сплошная заливка var(--primary), текст/иконка — var(--shadow).
+   Никакого box-shadow, никакой alpha-прозрачности. */
 #button-bar:hover {
     background-color: var(--primary);
-    color: var(--shadow);
 }
-#button-bar:hover #button-bar-label {
-    background-color: var(--primary);
+#button-bar:hover #button-bar-label,
+#button-bar:hover #metrics-icon,
+#button-bar:hover #metrics-level {
     color: var(--shadow);
 }
 
-#button-bar.power-active #button-bar-label {
+/* Персистентный индикатор "вкладка открыта" — та же палитра, что и hover,
+   живёт пока вкладка реально показана в QuickPanel, не зависит от курсора. */
+#button-bar.trigger-active {
     background-color: var(--primary);
+}
+#button-bar.trigger-active #button-bar-label,
+#button-bar.trigger-active #metrics-icon,
+#button-bar.trigger-active #metrics-level {
     color: var(--shadow);
+}
+
+/* Иконки кнопок вызова — Wi-Fi/Tools/Session (#button-bar-label) и
+   Battery (#metrics-icon) — ОДНО правило на оба: у них нет и не было
+   собственного font-size нигде в проекте, поэтому общее явное
+   значение здесь — единственный источник правды (а не "второй",
+   в отличие от #metrics-level, у которого свой отдельный текстовый
+   стиль ниже) и одновременно фикс визуального выравнивания размера
+   глифа между всеми четырьмя кнопками. */
+#power-battery-container #button-bar-label,
+#power-battery-container #metrics-icon {
+    font-size: 15px;
+    color: var(--primary);
+}
+
+#power-battery-container #metrics-level {
+    font-weight: bold;
+    font-size: 14px;
+    color: var(--primary);
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    margin-left: 3px;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -77,17 +114,24 @@
   min-height: 36px;
 }
 
-#power-battery-container #language-indicator {
+#power-battery-container #HyprlandLanguage-indicator {
   background-color: transparent;
   padding: 0 4px;
   border-radius: 12px 0 0 12px;
   min-height: 36px;
 }
 
-#power-battery-container #language-indicator #lang-label {
+/* Терминальная типографика (monospace + лёгкий letter-spacing) —
+   тот же шрифт, что уже используется во всех текстовых значениях
+   QuickPanel (quickpanel.css). Раньше часы и язык были единственными
+   текстовыми индикаторами бара на шрифте GTK-темы по умолчанию —
+   выбивались из общей "хакерской" типографики остального интерфейса. */
+#power-battery-container #HyprlandLanguage-indicator #lang-label {
   font-weight: bold;
   font-size: 14px;
   color: var(--primary);
+  font-family: "JetBrainsMono Nerd Font Mono", monospace;
+  letter-spacing: 0.5px;
   padding: 0;
   min-width: 38px;
 }
@@ -102,6 +146,8 @@
   font-weight: bold;
   color: var(--primary);
   font-size: 14px;
+  font-family: "JetBrainsMono Nerd Font Mono", monospace;
+  letter-spacing: 0.5px;
 }
 
 #power-battery-container #battery {
@@ -111,197 +157,57 @@
   min-height: 36px;
 }
 
-#workspaces-container-top {
-  background-color: var(--shadow);
-  border-radius: 0px 0px 12px 0px;
-}
-
-#workspaces-container-left {
-  background-color: var(--shadow);
-  border-radius: 0px 0px 12px 0px;
-  margin-top: -16px; 
-  padding-top: 16px;
-}
-
-/* ── Контейнеры вокруг MyCorner обязаны быть прозрачными ── */
+/* ── Контейнеры вокруг MyCorner верхней панели (Bar) обязаны быть прозрачными ── */
 #bar-left-corner,
 #bar-right-corner,
 #bar-right-bottom-corner,
-#sidebar-bottom-corner,
-#sidebar-top-corner,
-#sidebar-top-corner-static,
 #bar-left-corner #corner-container,
 #bar-right-corner #corner-container,
-#bar-right-bottom-corner #corner-container,
-#sidebar-bottom-corner #corner-container,
-#sidebar-top-corner #corner-container,
-#sidebar-top-corner-static #corner-container {
+#bar-right-bottom-corner #corner-container {
   background-color: transparent;
 }
 
-/* ── Сама фигура MyCorner красится в цвет островов ── */
+/* ── Сама фигура MyCorner верхней панели красится в цвет островов ── */
 #bar-left-corner #corner,
 #bar-right-corner #corner,
-#bar-right-bottom-corner #corner,
-#sidebar-bottom-corner #corner,
-#sidebar-top-corner #corner,
-#sidebar-top-corner-static #corner {
+#bar-right-bottom-corner #corner {
   background-color: var(--shadow);
 }
 
-/* ── Уголок, живущий ВНУТРИ Revealer.
-   Никаких сдвигов — он и так стоит вплотную к правому краю панели,
-   потому что в GTK-контейнере является её горизонтальным соседом. */
-#sidebar-top-corner {
-  margin: 0px;
-  padding: 0px;
+
+/* ══════════════════════════════════════════════════════════════════
+   ГЛИТЧ-ВСПЫШКА (часы/язык/процент заряда) — только реально
+   используемый пул модификаторов (_GLITCH_CLASSES в Bar.py и
+   batteryTab.py = aberration + color-swap). random.sample с
+   randint(1,2) из пула размером 2 МОЖЕТ выбрать оба класса сразу —
+   поэтому их комбинация ниже обязательна, а не избыточна.
+   ════════════════════════════════════════════════════════════════ */
+#date-time.glitching label,
+#lang-label.glitching,
+#metrics-level.glitching {
+  opacity: 0.85;
 }
 
-/* ── Статичный уголок, показываемый только когда панель скрыта.
-   Компенсирует смещение окна на -8px, чтобы прижаться к левому краю экрана. */
-#sidebar-top-corner-static {
-  margin: 0px 0px 0px 8px;
-  padding: 0px;
+#date-time.glitch-aberration label,
+#lang-label.glitch-aberration,
+#metrics-level.glitch-aberration {
+  text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
+               -1.5px 0 alpha(#00e5ff, 0.85),
+                0      0 4px transparent;
 }
 
-/* Точки рядов */
-#workspaces-left {
-  padding: 0px 14px 14px 14px;
+#date-time.glitch-color-swap label,
+#lang-label.glitch-color-swap,
+#metrics-level.glitch-color-swap {
+  color: #ff0040;
+  text-shadow: 0 0 4px alpha(#ff0040, 0.5);
 }
 
-#workspaces-num-top {
-  padding: 8px; 
-  margin: 0;
-}
-
-#workspaces-top {
-  padding: 14px 14px 14px 0px; 
-  margin: 0;
-}
-
-#workspaces-top > button,
-#workspaces-left > button,
-#workspaces-num-top > button,
-#workspaces-action-top > button,
-#workspaces-action-left > button {
-  border: none;
-  outline: none;
-  box-shadow: none;
-  background-image: none;
-  text-shadow: none;
-  margin: 0;
-  padding: 0;
-}
-
-#workspaces-top > button > label,
-#workspaces-left > button > label,
-#workspaces-num-top > button > label,
-#workspaces-action-top > button > label,
-#workspaces-action-left > button > label {
-  margin: 0;
-  padding: 0;
-}
-
-#workspaces-top > button,
-#workspaces-left > button {
-  min-width: 8px;
-  min-height: 8px;
-  border-radius: 12px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-#workspaces-top > button > label,
-#workspaces-left > button > label {
-  font-size: 0px;
-}
-
-#workspaces-top > button.empty,
-#workspaces-left > button.empty {
-  background-color: var(--surface-bright);
-}
-
-#workspaces-top > button.active {
-  min-width: 48px;
-  background-color: var(--primary);
-}
-
-#workspaces-left > button.row-dot.active {
-  min-height: 48px;
-  background-color: var(--primary);
-}
-
-#workspaces-top > button.empty:hover {
-  min-width: 20px; 
-  background-color: var(--foreground);
-}
-
-#workspaces-left > button.row-dot.empty:hover {
-  min-height: 20px;
-  background-color: var(--foreground);
-}
-
-#workspaces-num-top > button {
-  min-width: 20px;
-  min-height: 20px;
-  border-radius: 12px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-#workspaces-num-top > button > label {
-  font-weight: bold;
-  font-size: 10pt;
-}
-
-#workspaces-num-top > button.empty {
-  background-color: transparent;
-}
-
-#workspaces-num-top > button.empty > label {
-  color: var(--surface-bright);
-}
-
-#workspaces-num-top > button.active {
-  background-color: var(--primary);
-}
-
-#workspaces-num-top > button.active > label {
-  color: var(--shadow);
-}
-
-/* Выезжающая кнопка '+' в верхней панели */
-#workspaces-action-top {
-  padding: 8px 6px 8px 0px; 
-  margin: 0;
-}
-
-/* Выезжающая кнопка '-' в левой панели */
-#workspaces-action-left {
-  padding: 0px 0px 6px 0px;
-  margin: 0;
-}
-
-#workspaces-action-top > button,
-#workspaces-action-left > button {
-  min-width: 20px;
-  min-height: 20px;
-  border-radius: 12px;
-  background-color: var(--surface-bright);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-#workspaces-action-top > button > label,
-#workspaces-action-left > button > label {
-  font-weight: bold;
-  font-size: 11pt;
-  color: var(--foreground);
-}
-
-#workspaces-action-top > button:hover,
-#workspaces-action-left > button:hover {
-  background-color: var(--primary);
-}
-
-#workspaces-action-top > button:hover > label,
-#workspaces-action-left > button:hover > label {
-  color: var(--shadow);
+#date-time.glitch-aberration.glitch-color-swap label,
+#lang-label.glitch-aberration.glitch-color-swap,
+#metrics-level.glitch-aberration.glitch-color-swap {
+  color: #ff0040;
+  text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
+               -1.5px 0 alpha(#00e5ff, 0.85),
+                0      0 4px alpha(#ff0040, 0.4);
 }

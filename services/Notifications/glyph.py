@@ -2,9 +2,10 @@ import os
 import random
 
 import gi
+gi.require_version("Cvc", "1.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, Gst, Gtk
+from gi.repository import Cvc, GLib, Gst, Gtk
 
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
@@ -14,6 +15,23 @@ from fabric.widgets.revealer import Revealer
 Gst.init(None)
 
 _TICKS = 35
+_DUCK_RATIO = 0.20
+_FADE_INTERVAL_MS = 25
+
+_STEPS = 13
+
+_STATE_IDLE = 0
+_STATE_DUCKING = 1
+_STATE_PLAYING = 2
+_STATE_UNDUCKING = 3
+
+_APP_ID = "fabric.glitch.sound"
+_STREAM_NAME = "fabric-glitch-sound"
+_STREAM_PROPS, _ = Gst.Structure.from_string(
+    f"props,application.id=(string){_APP_ID},"
+    f"application.name=(string){_STREAM_NAME},"
+    f"media.name=(string){_STREAM_NAME}"
+)
 _SOUND_URI = GLib.filename_to_uri(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "Glyph", "glitch.wav"), None
 )
@@ -42,31 +60,247 @@ _GLITCH_MARKUPS = (
 
 
 class GlitchSound:
-    __slots__ = ("_playbin", "_bus", "_sig_ids")
+    __slots__ = (
+        "_playbin",
+        "_bus",
+        "_sig_ids",
+        "_control",
+        "_control_sigs",
+        "_stream_sigs",
+        "_saved_volumes",
+        "_fade_start",
+        "_state",
+        "_fade_step",
+        "_fade_tid",
+    )
 
     def __init__(self) -> None:
+        self._control = Cvc.MixerControl(name=_STREAM_NAME)
+        self._control.open()
+        self._control_sigs: list[int] = []
+        self._stream_sigs: dict[int, tuple[Cvc.MixerStream, int]] = {}
+        self._saved_volumes: dict[int, int] = {}
+        self._fade_start: dict[int, int] = {}
+        self._state = _STATE_IDLE
+        self._fade_step = 0
+        self._fade_tid: int | None = None
+
         self._playbin = Gst.ElementFactory.make("playbin", None)
         self._playbin.set_property("flags", 0x02)  # GST_PLAY_FLAG_AUDIO
         self._playbin.set_property("uri", _SOUND_URI)
         self._bus = self._playbin.get_bus()
         self._bus.add_signal_watch()
-        self._sig_ids = (
-            self._bus.connect("message::eos", self._stop),
-            self._bus.connect("message::error", self._stop),
+        self._sig_ids: list[tuple[object, int]] = [
+            (self._playbin, self._playbin.connect("element-setup", self._on_element_setup)),
+            (self._bus, self._bus.connect("message::eos", self._stop)),
+            (self._bus, self._bus.connect("message::error", self._stop)),
+        ]
+
+    @staticmethod
+    def _on_element_setup(_playbin: Gst.Element, element: Gst.Element) -> None:
+        if element.find_property("stream-properties") is not None:
+            element.set_property("stream-properties", _STREAM_PROPS)
+        if element.find_property("client-name") is not None:
+            element.set_property("client-name", _STREAM_NAME)
+
+    @staticmethod
+    def _is_own_stream(stream: Cvc.MixerStream) -> bool:
+        return (
+            stream.get_application_id() == _APP_ID
+            or stream.get_name() == _STREAM_NAME
+            or stream.get_description() == _STREAM_NAME
         )
 
-    def play(self) -> None:
-        self._playbin.set_state(Gst.State.NULL)
-        self._playbin.set_state(Gst.State.PLAYING)
+    def _target_volume(self) -> int:
+        return int(self._control.get_vol_max_norm() * _DUCK_RATIO)
 
-    def _stop(self, _bus, _msg) -> None:
+    def _cancel_fade_timer(self) -> None:
+        if self._fade_tid is not None:
+            GLib.source_remove(self._fade_tid)
+            self._fade_tid = None
+
+    def _ensure_subscriptions(self) -> None:
+        if not self._control_sigs:
+            self._control_sigs.append(
+                self._control.connect("stream-added", self._on_stream_added)
+            )
+            self._control_sigs.append(
+                self._control.connect("stream-removed", self._on_stream_removed)
+            )
+
+    def _register_stream(self, stream: Cvc.MixerStream, immediate: bool) -> None:
+        if not isinstance(stream, Cvc.MixerSinkInput) or self._is_own_stream(stream):
+            return
+
+        stream_id = stream.get_id()
+        if stream_id not in self._stream_sigs:
+            sig_id = stream.connect("notify::volume", self._on_stream_volume)
+            self._stream_sigs[stream_id] = (stream, sig_id)
+
+        target_vol = self._target_volume()
+        current_vol = stream.get_volume()
+        if current_vol > target_vol:
+            if stream_id not in self._saved_volumes:
+                self._saved_volumes[stream_id] = current_vol
+            if immediate:
+                stream.set_volume(target_vol)
+                stream.push_volume()
+            else:
+                self._fade_start[stream_id] = current_vol
+
+    def _on_stream_volume(self, stream: Cvc.MixerStream, _pspec) -> None:
+        if self._state != _STATE_PLAYING:
+            return
+        target_vol = self._target_volume()
+        current_vol = stream.get_volume()
+        if current_vol > target_vol:
+            stream_id = stream.get_id()
+            if stream_id not in self._saved_volumes:
+                self._saved_volumes[stream_id] = current_vol
+            stream.set_volume(target_vol)
+            stream.push_volume()
+
+    def _on_stream_added(self, _control: Cvc.MixerControl, stream_id: int) -> None:
+        if self._state in (_STATE_IDLE, _STATE_UNDUCKING):
+            return
+        stream = self._control.lookup_stream_id(stream_id)
+        if stream is not None:
+            self._register_stream(stream, immediate=(self._state == _STATE_PLAYING))
+
+    def _on_stream_removed(self, _control: Cvc.MixerControl, stream_id: int) -> None:
+        entry = self._stream_sigs.pop(stream_id, None)
+        if entry is not None:
+            stream, sig_id = entry
+            stream.disconnect(sig_id)
+        self._saved_volumes.pop(stream_id, None)
+        self._fade_start.pop(stream_id, None)
+
+    def _on_fade_tick(self) -> bool:
+        self._fade_step += 1
+        target_vol = self._target_volume()
+
+        if self._state == _STATE_DUCKING:
+            progress = min(1.0, self._fade_step / _STEPS)
+            for stream_id, start_vol in list(self._fade_start.items()):
+                stream = self._control.lookup_stream_id(stream_id)
+                if stream is None:
+                    self._on_stream_removed(self._control, stream_id)
+                    continue
+                vol = int(start_vol + (target_vol - start_vol) * progress)
+                stream.set_volume(vol)
+                stream.push_volume()
+
+            if self._fade_step >= _STEPS:
+                self._fade_tid = None
+                self._start_playback()
+                return False
+            return True
+
+        if self._state == _STATE_UNDUCKING:
+            progress = min(1.0, self._fade_step / _STEPS)
+            for stream_id, saved_vol in list(self._saved_volumes.items()):
+                stream = self._control.lookup_stream_id(stream_id)
+                if stream is None:
+                    self._on_stream_removed(self._control, stream_id)
+                    continue
+                start_vol = self._fade_start.get(stream_id, target_vol)
+                vol = int(start_vol + (saved_vol - start_vol) * progress)
+                stream.set_volume(vol)
+                stream.push_volume()
+
+            if self._fade_step >= _STEPS:
+                self._fade_tid = None
+                self._reset_to_idle()
+                return False
+            return True
+
+        self._fade_tid = None
+        return False
+
+    def _start_playback(self) -> None:
+        self._cancel_fade_timer()
+        self._state = _STATE_PLAYING
         self._playbin.set_state(Gst.State.NULL)
+        if self._playbin.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            self._start_unduck()
+
+    def _start_unduck(self) -> None:
+        self._cancel_fade_timer()
+        self._fade_start.clear()
+
+        for stream_id in list(self._saved_volumes):
+            stream = self._control.lookup_stream_id(stream_id)
+            if stream is None:
+                self._on_stream_removed(self._control, stream_id)
+            else:
+                self._fade_start[stream_id] = stream.get_volume()
+
+        if not self._saved_volumes:
+            self._reset_to_idle()
+            return
+
+        self._state = _STATE_UNDUCKING
+        self._fade_step = 0
+        self._fade_tid = GLib.timeout_add(_FADE_INTERVAL_MS, self._on_fade_tick)
+
+    def _reset_to_idle(self) -> None:
+        self._cancel_fade_timer()
+        self._state = _STATE_IDLE
+        self._fade_start.clear()
+        self._saved_volumes.clear()
+
+        while self._control_sigs:
+            self._control.disconnect(self._control_sigs.pop())
+
+        while self._stream_sigs:
+            _, (stream, sig_id) = self._stream_sigs.popitem()
+            stream.disconnect(sig_id)
+
+    def play(self) -> None:
+        self._ensure_subscriptions()
+
+        if self._state == _STATE_PLAYING:
+            for stream in self._control.get_sink_inputs():
+                self._register_stream(stream, immediate=True)
+            self._start_playback()
+            return
+
+        self._cancel_fade_timer()
+        self._fade_start.clear()
+        for stream in self._control.get_sink_inputs():
+            self._register_stream(stream, immediate=False)
+
+        if not self._fade_start:
+            self._start_playback()
+            return
+
+        self._state = _STATE_DUCKING
+        self._fade_step = 0
+        self._fade_tid = GLib.timeout_add(_FADE_INTERVAL_MS, self._on_fade_tick)
+
+    def _stop(self, _bus: Gst.Bus, _msg: Gst.Message) -> None:
+        self._playbin.set_state(Gst.State.NULL)
+        self._start_unduck()
 
     def close(self) -> None:
-        for sig_id in self._sig_ids:
-            self._bus.disconnect(sig_id)
-        self._bus.remove_signal_watch()
+        self._cancel_fade_timer()
+        while self._sig_ids:
+            obj, sig_id = self._sig_ids.pop()
+            obj.disconnect(sig_id)
+        if self._bus is not None:
+            self._bus.remove_signal_watch()
+            self._bus = None
         self._playbin.set_state(Gst.State.NULL)
+
+        while self._saved_volumes:
+            stream_id, saved_vol = self._saved_volumes.popitem()
+            stream = self._control.lookup_stream_id(stream_id)
+            if stream is not None:
+                stream.set_volume(saved_vol)
+                stream.push_volume()
+
+        self._reset_to_idle()
+        self._control.close()
 
 
 class SideGlyph(Gtk.Overlay):

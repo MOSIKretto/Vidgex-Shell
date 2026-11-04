@@ -15,9 +15,10 @@ class MyCorner(Box):
 class Corners(WaylandWindow):
     def __init__(self):
         super().__init__(
-            layer="bottom",
+            layer="overlay",
             anchor="top bottom left right",
             exclusivity="normal",
+            pass_through=True,
         )
 
         self.add(Box(
