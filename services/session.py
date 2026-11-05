@@ -912,6 +912,9 @@ class SessionManager:
 
     def _restore_geometry(self) -> bool:
         pairs = self._restore_pairs
+        # Раскладка холста лежит в ws_{N}_canvas.json по старым адресам окон —
+        # переносим её на адреса восстановленных окон до снятия флага _restoring
+        self._remap_canvas_layouts(pairs)
         float_cmds: list[str] = []
         geo_cmds: list[str] = []
 
@@ -961,6 +964,26 @@ class SessionManager:
             self._restoring = False
             _dbg("Восстановление завершено.")
         return False
+
+    @staticmethod
+    def _remap_canvas_layouts(pairs: list[tuple[dict, dict]]):
+        addr_map: dict[int, dict[str, str]] = defaultdict(dict)
+        for saved_win, cur_win in pairs:
+            old = saved_win.get("address", "")
+            new = cur_win.get("address", "")
+            if old and new:
+                addr_map[int(saved_win.get("workspace", 1))][old] = new
+
+        for ws_id, amap in addr_map.items():
+            path = SESSION_DIR / f"ws_{ws_id}_canvas.json"
+            try:
+                old_layout = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            new_layout = {amap[a]: g for a, g in old_layout.items() if a in amap}
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(new_layout), encoding="utf-8")
+            tmp.replace(path)
 
     # ------------------------------------------------------------------
     # Внутренние операции

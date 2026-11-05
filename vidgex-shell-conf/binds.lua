@@ -76,9 +76,6 @@ hl.bind("ALT + T", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_n
 
 hl.bind("Print",   hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'toolbox.toggle_camera()'"))
 
--- Обзор
-hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Dock.Desktop.infiniteDesktop import toggle_overview; toggle_overview()'")) 
-
 -- Переключение между рабочими столами
 hl.bind("CTRL + ALT + right", hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextR\")'"))
 hl.bind("CTRL + ALT + left",  hl.dsp.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Bar.workspaces import matrix_nav; matrix_nav(\"workspace\", \"nextL\")'"))

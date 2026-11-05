@@ -71,11 +71,6 @@ hl.gesture({
 -- Панель
 hl.gesture({
     fingers = 4,
-    direction = "pinchout",
-    action = function() hl.exec_cmd("fabric-cli exec vidgex-shell 'from modules.Dock.Desktop.infiniteDesktop import toggle_overview; toggle_overview()'") end
-})
-hl.gesture({
-    fingers = 4,
     direction = "down",
     action = function() hl.exec_cmd("fabric-cli exec vidgex-shell 'notch.toggle_notch(\"dashboard\")'") end
 })

@@ -213,19 +213,13 @@
   min-width: 20px;
   min-height: 20px;
   border-radius: 12px;
+  background-color: transparent;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 #workspaces-num-top > button > label {
   font-size: 20px;
-}
-
-#workspaces-num-top > button.empty {
-  background-color: transparent;
-}
-
-#workspaces-num-top > button.empty > label {
-  color: var(--surface-bright);
+  color: var(--primary);
 }
 
 #workspaces-num-top > button.active {
