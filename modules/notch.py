@@ -6,7 +6,6 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
 
 from fabric.hyprland.widgets import get_hyprland_connection
-from fabric.utils import get_desktop_applications
 from fabric.widgets.box import Box
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.image import Image
@@ -18,6 +17,7 @@ from modules.Notch.mainWindow import MainWindow
 from modules.Notch.notificationsPopup import NotificationsPopup
 from modules.Notch.controlsOsd import ControlOSD
 
+from services.getIcons import resolve_app_pixbuf
 from services.corners import MyCorner
 from services.wayland import WaylandWindow as Window
 
@@ -27,27 +27,6 @@ APPLET_MAP = {
     "bluetooth":      "bluetooth",
     "dashboard":      "notification_history",
 }
-
-_app_map: dict = {}
-_theme = Gtk.IconTheme.get_default()
-
-for _app in get_desktop_applications():
-    for _k in filter(None, (_app.name, _app.display_name)):
-        _app_map[_k.lower()] = _app
-        _app_map[_k.lower().strip().rsplit(".", 1)[-1]] = _app
-
-
-def _icon(cls: str, size: int = 20):
-    key = cls.lower()
-    app = _app_map.get(key) or _app_map.get(key.strip().rsplit(".", 1)[-1])
-    if app:
-        return app.get_icon_pixbuf(size=size)
-    for name in dict.fromkeys((cls, key)):
-        try:
-            return _theme.load_icon(name, size, Gtk.IconLookupFlags.FORCE_SIZE)
-        except GLib.Error:
-            continue
-    return None
 
 
 class Notch(Window):
@@ -263,7 +242,8 @@ class Notch(Window):
         try:
             ws = json.loads(self._conn.send_command("j/activeworkspace").reply.decode())["id"]
             win = json.loads(self._conn.send_command("j/activewindow").reply.decode())
-            result = (ws, win.get("class", ""))
+            cls = win.get("class", "") or win.get("initialClass", "")
+            result = (ws, cls)
         except (OSError, ValueError):
             pass
         finally:
@@ -286,7 +266,7 @@ class Notch(Window):
         ws, wc = result
         self.ws_lbl.set_label(f"Workspace {ws}")
         if wc.strip():
-            px = _icon(wc)
+            px = resolve_app_pixbuf(wc, 20)
             if px:
                 self.win_ic.set_from_pixbuf(px)
             else:

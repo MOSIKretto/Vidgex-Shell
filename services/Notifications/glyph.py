@@ -68,6 +68,7 @@ class GlitchSound:
         "_control_sigs",
         "_stream_sigs",
         "_saved_volumes",
+        "_pending_restores",
         "_fade_start",
         "_state",
         "_fade_step",
@@ -80,6 +81,10 @@ class GlitchSound:
         self._control_sigs: list[int] = []
         self._stream_sigs: dict[int, tuple[Cvc.MixerStream, int]] = {}
         self._saved_volumes: dict[int, int] = {}
+        # Потоки, исчезнувшие задушенными: app_id -> громкость до уведомлений.
+        # Нужны, т.к. аудиосервер запоминает задушенные 20% (stream-restore),
+        # и новый поток приложения иначе стартует с них — в т.ч. после рестарта.
+        self._pending_restores: dict[str, int] = {}
         self._fade_start: dict[int, int] = {}
         self._state = _STATE_IDLE
         self._fade_step = 0
@@ -95,6 +100,9 @@ class GlitchSound:
             (self._bus, self._bus.connect("message::eos", self._stop)),
             (self._bus, self._bus.connect("message::error", self._stop)),
         ]
+        # Подписываемся сразу, а не только на время уведомления: иначе потоки,
+        # пересозданные в IDLE после duck, никто не восстановит.
+        self._ensure_subscriptions()
 
     @staticmethod
     def _on_element_setup(_playbin: Gst.Element, element: Gst.Element) -> None:
@@ -160,20 +168,49 @@ class GlitchSound:
             stream.set_volume(target_vol)
             stream.push_volume()
 
+    @staticmethod
+    def _stream_app_key(stream: Cvc.MixerStream) -> str | None:
+        return stream.get_application_id() or stream.get_name() or None
+
+    def _restore_pending_volume(self, stream: Cvc.MixerStream) -> None:
+        """Вернуть исходную громкость потоку, унаследовавшему задушенное значение."""
+        if self._is_own_stream(stream):
+            return
+        key = self._stream_app_key(stream)
+        if not key:
+            return
+        saved_vol = self._pending_restores.pop(key, None)
+        if saved_vol is None:
+            return
+        if stream.get_volume() < saved_vol:
+            stream.set_volume(saved_vol)
+            stream.push_volume()
+
     def _on_stream_added(self, _control: Cvc.MixerControl, stream_id: int) -> None:
+        stream = self._control.lookup_stream_id(stream_id)
+        if stream is None:
+            return
+        # Новый поток мог унаследовать задушенную громкость через stream-restore —
+        # восстанавливаем до duck-логики, иначе она сочтёт 20% исходными.
+        self._restore_pending_volume(stream)
         if self._state in (_STATE_IDLE, _STATE_UNDUCKING):
             return
-        stream = self._control.lookup_stream_id(stream_id)
-        if stream is not None:
-            self._register_stream(stream, immediate=(self._state == _STATE_PLAYING))
+        self._register_stream(stream, immediate=(self._state == _STATE_PLAYING))
 
     def _on_stream_removed(self, _control: Cvc.MixerControl, stream_id: int) -> None:
         entry = self._stream_sigs.pop(stream_id, None)
+        stream = entry[0] if entry is not None else None
         if entry is not None:
-            stream, sig_id = entry
+            _, sig_id = entry
             stream.disconnect(sig_id)
-        self._saved_volumes.pop(stream_id, None)
+        saved_vol = self._saved_volumes.pop(stream_id, None)
         self._fade_start.pop(stream_id, None)
+        if saved_vol is not None and stream is not None and not self._is_own_stream(stream):
+            key = self._stream_app_key(stream)
+            if key:
+                # Поток исчез задушенным: сервер мог запомнить заниженную
+                # громкость — восстановим её, когда приложение создаст новый поток.
+                self._pending_restores[key] = saved_vol
 
     def _on_fade_tick(self) -> bool:
         self._fade_step += 1
@@ -249,8 +286,11 @@ class GlitchSound:
         self._fade_start.clear()
         self._saved_volumes.clear()
 
-        while self._control_sigs:
-            self._control.disconnect(self._control_sigs.pop())
+        # Подписки на появление/исчезновение потоков НЕ снимаем специально:
+        # так _on_stream_added ловит потоки, пересозданные после duck,
+        # и возвращает им исходную громкость через _pending_restores.
+        # _pending_restores при этом не чистим — восстановление может
+        # понадобиться позже, когда приложение создаст новый поток.
 
         while self._stream_sigs:
             _, (stream, sig_id) = self._stream_sigs.popitem()
@@ -299,7 +339,12 @@ class GlitchSound:
                 stream.set_volume(saved_vol)
                 stream.push_volume()
 
+        self._pending_restores.clear()
         self._reset_to_idle()
+
+        while self._control_sigs:
+            self._control.disconnect(self._control_sigs.pop())
+
         self._control.close()
 
 

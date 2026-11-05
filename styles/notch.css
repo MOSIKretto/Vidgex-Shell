@@ -35,9 +35,13 @@
 
 /* Убираем вертикальный margin (оставляем только по бокам 10px), 
    чтобы выемка держала ровную высоту 36px */
-#active-window-box { 
-  margin: 0 10px; 
+#active-window-box {
+  margin: 0 10px;
   min-height: 36px;
+}
+
+#workspace-label {
+  color: var(--primary);
 }
 
 #app-launcher,
