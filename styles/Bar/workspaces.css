@@ -1,22 +1,45 @@
-#workspaces-container-top {
+/* ══════════════════════════════════════════════════════════════════
+   ОСИ ВОРКСПЕЙСОВ (верхняя и левая): ОДИН НАБОР ПРАВИЛ.
+   Оба контейнера, ряды точек и кнопки −/+ имеют общие имена
+   (#workspaces-axis / #workspaces-dots / #workspaces-action) и класс
+   оси .ws-axis-h (верх) или .ws-axis-v (лево). Всё общее описано один
+   раз; ниже только транспонированные числа (ширина↔высота, X↔Y).
+   Длительности выезда Revealer заданы в bars.py (AXIS_REVEAL_MS),
+   здесь — только переходы цветов и размеров точек/кнопок.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Контейнер оси ── */
+/* Без transition: радиус меняет только верхняя ось (set_flush), и переход
+   анимировал бы одну панель из двух. */
+#workspaces-axis {
   background-color: var(--shadow);
   border-radius: 0px 0px 12px 0px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Ровный стык: от верхней панели осталась только кнопка настроек, левая панель видна под ней */
-#workspaces-container-top.joint-flush {
+/* Ровный стык: от верхней оси осталась только кнопка настроек, левая видна под ней */
+#workspaces-axis.joint-flush {
   border-radius: 0px;
 }
 
-#workspaces-container-left {
-  background-color: var(--shadow);
-  border-radius: 0px 0px 12px 0px;
+/* Единственное осевое отличие контейнеров: левая ось заходит под верхний бар */
+#workspaces-axis.ws-axis-v {
   margin-top: -16px;
   padding-top: 16px;
 }
 
-/* ── УголкиMyCorner боковой панели (SideBarWindow) ── */
+/* Неподвижная подложка под левым краем верхней оси (живёт в Bar, axis.py).
+   Невидима, пока ось свёрнута; при раскрытой оси красится в цвет острова
+   и закрывает щель, если окно оси сдвинулось относительно острова. */
+#axis-cap {
+  background-color: transparent;
+  border-radius: 0px;
+}
+
+#axis-cap.shown {
+  background-color: var(--shadow);
+}
+
+/* ── Уголки MyCorner боковой панели (SideBarWindow) ── */
 #sidebar-bottom-corner,
 #sidebar-top-corner,
 #sidebar-top-corner-static,
@@ -42,177 +65,231 @@
   padding: 0px;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   ВОРКСПЕЙСЫ: ВЕРХНЯЯ И ЛЕВАЯ ПАНЕЛИ (СТРОГАЯ ОСЕВАЯ СИММЕТРИЯ)
-   ════════════════════════════════════════════════════════════════ */
+/* ── 2. Отступы блоков (общее) ── */
+#workspaces-dots,
+#workspaces-action,
+#workspaces-num-top {
+  margin: 0;
+}
 
-/* Кнопка настроек (20x20) в квадрате 36x36 на пересечении верхней и левой панелей */
+/* Кнопка настроек (20x20) в квадрате 36x36 на пересечении осей (только верх).
+   Остров живёт в статичном окне Bar, вне оси, поэтому цвет острова задан
+   здесь, а не наследуется от #workspaces-axis. По умолчанию углы прямые.
+   GTK берёт transition из НОВОГО состояния, поэтому кривые разные:
+   - выпрямление (R -> 0, базовое правило): та же кривая, что у overshot, но
+     без выброса. С выбросом радиус ушёл бы ниже нуля, а отрицательный
+     радиус GTK3 рисует некорректно;
+   - скругление (0 -> R, .island-round): overshot из layersIn, выброс вверх
+     безопасен, радиус на миг чуть больше R. */
 #workspaces-num-top {
   padding: 8px;
-  margin: 0;
+  background-color: var(--shadow);
+  border-radius: 0px;
+  transition: border-radius 0.6s cubic-bezier(0.13, 0.99, 0.29, 1);
 }
 
-/* Точки столбцов (верхняя панель, высота 36px = 14 + 8 + 14) */
-#workspaces-top {
-  padding: 14px 10px 14px 2px;
-  margin: 0;
+/* Ось свёрнута и сайдбар не стыкуется снизу: правый нижний угол, который
+   обычно рисует сама ось, берёт на себя остров (класс ставит axis.py).
+   Радиус тот же, что у #workspaces-axis. */
+#workspaces-num-top.island-round {
+  border-radius: 0px 0px 12px 0px;
+  transition: border-radius 0.6s cubic-bezier(0.13, 0.99, 0.29, 1.15);
 }
 
-/* Точки строк (левая панель, ширина 36px = 14 + 8 + 14) */
-#workspaces-left {
-  padding: 2px 14px 10px 14px;
-  margin: 0;
+/* Отступы блоков — геометрия оси. Высота/ширина 36px = 8 + (6+8+6 | 2+16+2) + 8 */
+#workspaces-dots.ws-axis-h {
+  padding: 8px 10px 8px 2px;
 }
 
-/* Выезжающие кнопки '-' и '+' в верхней панели (высота 36px = 8 + 20 + 8) */
-#workspaces-action-top-minus {
+#workspaces-dots.ws-axis-v {
+  padding: 2px 8px 10px 8px;
+}
+
+#workspaces-action.ws-axis-h {
   padding: 8px 8px 8px 0px;
-  margin: 0;
 }
 
-#workspaces-action-top-plus {
-  padding: 8px 8px 8px 0px;
-  margin: 0;
-}
-
-/* Выезжающие кнопки '-' и '+' в левой панели (ширина 36px = 8 + 20 + 8) */
-#workspaces-action-left-minus {
+#workspaces-action.ws-axis-v {
   padding: 0px 8px 8px 8px;
-  margin: 0;
 }
 
-#workspaces-action-left-plus {
-  padding: 0px 8px 8px 8px;
-  margin: 0;
-}
-
-#workspaces-top > button,
-#workspaces-left > button,
-#workspaces-num-top > button,
-#workspaces-action-top-minus > button,
-#workspaces-action-top-plus > button,
-#workspaces-action-left-minus > button,
-#workspaces-action-left-plus > button {
+/* ── 3. Сброс темы для всех кнопок осей ── */
+#workspaces-dots button,
+#workspaces-action > button,
+#workspaces-num-top > button {
   border: none;
   outline: none;
   box-shadow: none;
   background-image: none;
   text-shadow: none;
+  padding: 0;
+}
+
+#workspaces-action > button,
+#workspaces-num-top > button {
+  margin: 0;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 12px;
+}
+
+#workspaces-action > button > label,
+#workspaces-num-top > button > label {
   margin: 0;
   padding: 0;
 }
 
-#workspaces-top > button > label,
-#workspaces-left > button > label,
-#workspaces-num-top > button > label,
-#workspaces-action-top-minus > button > label,
-#workspaces-action-top-plus > button > label,
-#workspaces-action-left-minus > button > label,
-#workspaces-action-left-plus > button > label {
-  margin: 0;
-  padding: 0;
-}
-
-#workspaces-top > button,
-#workspaces-left > button {
+/* ── 4. Точки ── */
+#workspaces-dots .ws-dot {
   min-width: 8px;
   min-height: 8px;
   border-radius: 12px;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#workspaces-top > button > label,
-#workspaces-left > button > label {
-  font-size: 0px;
+#workspaces-dots.ws-axis-h .ws-dot {
+  margin: 6px 0px;
 }
 
-#workspaces-top > button.empty,
-#workspaces-left > button.empty {
+#workspaces-dots.ws-axis-v .ws-dot {
+  margin: 0px 6px;
+}
+
+#workspaces-dots .ws-dot.empty {
   background-color: var(--surface-bright);
 }
 
-/* Неоновое свечение активной точки/пилюли — статичное (не мигающее,
-   не меняющееся во времени) состояние, зависящее только от того,
-   активен ли воркспейс прямо сейчас. Классический cyberpunk-акцент
-   "подсвеченный активный сегмент", не противоречащий требованию
-   полной статичности индикаторов. */
-#workspaces-top > button.active {
+#workspaces-dots .ws-dot.active {
+  background-color: var(--primary);
+}
+
+#workspaces-dots .ws-dot.empty:hover,
+#workspaces-dots .ws-dot.empty.slot-hovered {
+  background-color: var(--foreground);
+}
+
+/* Вытягивание точки вдоль своей оси: активная 48, hover 20 */
+#workspaces-dots.ws-axis-h .ws-dot.active {
   min-width: 48px;
-  background-color: var(--primary);
 }
 
-#workspaces-left > button.row-dot.active {
+#workspaces-dots.ws-axis-v .ws-dot.active {
   min-height: 48px;
-  background-color: var(--primary);
 }
 
-#workspaces-top > button.empty:hover {
+#workspaces-dots.ws-axis-h .ws-dot.empty:hover,
+#workspaces-dots.ws-axis-h .ws-dot.empty.slot-hovered {
   min-width: 20px;
-  background-color: var(--foreground);
 }
 
-#workspaces-left > button.row-dot.empty:hover {
+#workspaces-dots.ws-axis-v .ws-dot.empty:hover,
+#workspaces-dots.ws-axis-v .ws-dot.empty.slot-hovered {
   min-height: 20px;
-  background-color: var(--foreground);
 }
 
-/* ── Глитч-эффекты при добавлении и удалении рабочих столов (без изменения геометрии) ── */
-#workspaces-top > button.glitch-aberration,
-#workspaces-top > button.glitch-shift-right,
-#workspaces-top > button.glitch-shift-left,
-#workspaces-top > button.glitch-flicker,
-#workspaces-top > button.glitch-heavy,
-#workspaces-top > button.glitch-color-swap,
-#workspaces-left > button.row-dot.glitch-aberration,
-#workspaces-left > button.row-dot.glitch-shift-right,
-#workspaces-left > button.row-dot.glitch-shift-left,
-#workspaces-left > button.row-dot.glitch-flicker,
-#workspaces-left > button.row-dot.glitch-heavy,
-#workspaces-left > button.row-dot.glitch-color-swap {
+/* ── 5. Иконки открытых окон (создаются в appIcons.py, класс .ws-app-icons) ── */
+.ws-app-icons {
+  padding: 0;
+}
+
+.ws-app-icons .ws-app-icon {
+  min-width: 16px;
+  min-height: 16px;
+}
+
+.ws-axis-h .ws-app-icons {
+  margin-left: 6px;
+}
+
+.ws-axis-v .ws-app-icons {
+  margin-top: 6px;
+}
+
+.ws-axis-h .ws-app-icon {
+  margin: 2px 0px;
+}
+
+.ws-axis-v .ws-app-icon {
+  margin: 0px 2px;
+}
+
+/* ── 6. Глитч точек. Цвета общие; тени уходят ПОПЕРЁК пилюли (ось своя) ── */
+#workspaces-dots .ws-dot.glitch-aberration,
+#workspaces-dots .ws-dot.glitch-shift-right,
+#workspaces-dots .ws-dot.glitch-shift-left,
+#workspaces-dots .ws-dot.glitch-flicker,
+#workspaces-dots .ws-dot.glitch-heavy,
+#workspaces-dots .ws-dot.glitch-color-swap {
   transition: min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               min-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#workspaces-top > button.glitch-aberration,
-#workspaces-left > button.row-dot.glitch-aberration {
+/* Порядок блоков = приоритет при совпадении классов (поздний выигрывает) */
+#workspaces-dots .ws-dot.glitch-aberration {
   background-color: #ffffff;
-  box-shadow: 3px 0 0 #ff0055, -3px 0 0 #00e5ff;
 }
 
-#workspaces-top > button.glitch-shift-right,
-#workspaces-left > button.row-dot.glitch-shift-right {
+#workspaces-dots .ws-dot.glitch-shift-right {
   background-color: #ff0055;
-  box-shadow: 4px 0 0 rgba(255, 0, 85, 0.75);
 }
 
-#workspaces-top > button.glitch-shift-left,
-#workspaces-left > button.row-dot.glitch-shift-left {
+#workspaces-dots .ws-dot.glitch-shift-left {
   background-color: #00e5ff;
-  box-shadow: -4px 0 0 rgba(0, 229, 255, 0.75);
 }
 
-#workspaces-top > button.glitch-flicker,
-#workspaces-left > button.row-dot.glitch-flicker {
+#workspaces-dots .ws-dot.glitch-flicker {
   opacity: 0.2;
   background-color: var(--primary);
 }
 
-#workspaces-top > button.glitch-heavy,
-#workspaces-left > button.row-dot.glitch-heavy {
+#workspaces-dots .ws-dot.glitch-heavy {
   background-color: #ffffff;
+}
+
+#workspaces-dots .ws-dot.glitch-color-swap {
+  background-color: #ff0055;
+}
+
+/* Тени: все правила одинаковой специфичности, порядок как у фонов */
+#workspaces-dots.ws-axis-v .ws-dot.glitch-aberration {
+  box-shadow: 3px 0 0 #ff0055, -3px 0 0 #00e5ff;
+}
+
+#workspaces-dots.ws-axis-h .ws-dot.glitch-aberration {
+  box-shadow: 0 3px 0 #ff0055, 0 -3px 0 #00e5ff;
+}
+
+#workspaces-dots.ws-axis-v .ws-dot.glitch-shift-right {
+  box-shadow: 4px 0 0 rgba(255, 0, 85, 0.75);
+}
+
+#workspaces-dots.ws-axis-h .ws-dot.glitch-shift-right {
+  box-shadow: 0 4px 0 rgba(255, 0, 85, 0.75);
+}
+
+#workspaces-dots.ws-axis-v .ws-dot.glitch-shift-left {
+  box-shadow: -4px 0 0 rgba(0, 229, 255, 0.75);
+}
+
+#workspaces-dots.ws-axis-h .ws-dot.glitch-shift-left {
+  box-shadow: 0 -4px 0 rgba(0, 229, 255, 0.75);
+}
+
+#workspaces-dots.ws-axis-v .ws-dot.glitch-heavy {
   box-shadow: 4px 0 0 #ff0055, -4px 0 0 #00e5ff, 0 3px 0 #76ff03;
 }
 
-#workspaces-top > button.glitch-color-swap,
-#workspaces-left > button.row-dot.glitch-color-swap {
-  background-color: #ff0055;
+#workspaces-dots.ws-axis-h .ws-dot.glitch-heavy {
+  box-shadow: 0 4px 0 #ff0055, 0 -4px 0 #00e5ff, 3px 0 0 #76ff03;
+}
+
+#workspaces-dots.ws-axis-v .ws-dot.glitch-color-swap,
+#workspaces-dots.ws-axis-h .ws-dot.glitch-color-swap {
   box-shadow: 0 0 10px #ff0055;
 }
 
+/* ── 7. Кнопка настроек (только верх) ── */
 #workspaces-num-top > button {
-  min-width: 20px;
-  min-height: 20px;
-  border-radius: 12px;
   background-color: transparent;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -230,35 +307,21 @@
   color: var(--shadow);
 }
 
-#workspaces-action-top-minus > button,
-#workspaces-action-top-plus > button,
-#workspaces-action-left-minus > button,
-#workspaces-action-left-plus > button {
-  min-width: 20px;
-  min-height: 20px;
-  border-radius: 12px;
+/* ── 8. Кнопки −/+ (общие для обеих осей) ── */
+#workspaces-action > button {
   background-color: var(--surface-bright);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#workspaces-action-top-minus > button > label,
-#workspaces-action-top-plus > button > label,
-#workspaces-action-left-minus > button > label,
-#workspaces-action-left-plus > button > label {
+#workspaces-action > button > label {
   font-size: 13px;
   color: var(--foreground);
 }
 
-#workspaces-action-top-minus > button:hover,
-#workspaces-action-top-plus > button:hover,
-#workspaces-action-left-minus > button:hover,
-#workspaces-action-left-plus > button:hover {
+#workspaces-action > button:hover {
   background-color: var(--primary);
 }
 
-#workspaces-action-top-minus > button:hover > label,
-#workspaces-action-top-plus > button:hover > label,
-#workspaces-action-left-minus > button:hover > label,
-#workspaces-action-left-plus > button:hover > label {
+#workspaces-action > button:hover > label {
   color: var(--shadow);
 }

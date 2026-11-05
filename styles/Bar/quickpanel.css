@@ -6,7 +6,24 @@
     border-radius: 20px 0 0 20px;
 }
 #quick-panel-card.quick-panel-stitched { border-radius: 0 0 0 20px; }
-#power-battery-container.quick-panel-stitched { border-radius: 0; }
+
+/* Группа кнопок вызова панели (Bar, _bar_group). Когда панель закрыта,
+   её левый нижний угол скруглён (радиус задан в bar.css). При открытии
+   класс quick-panel-stitched выпрямляет угол, при закрытии снимается и
+   угол снова скругляется.
+   GTK берёт transition из НОВОГО состояния, поэтому кривые разные:
+   - скругление (0 -> R, базовое правило): overshot из layersIn, выброс
+     вверх безопасен, радиус на миг чуть больше R;
+   - выпрямление (R -> 0, stitched): та же кривая, но без выброса. С
+     выбросом радиус ушёл бы ниже нуля, а отрицательный радиус GTK3
+     рисует некорректно. */
+#power-battery-container {
+    transition: border-radius 0.6s cubic-bezier(0.13, 0.99, 0.29, 1.15);
+}
+#power-battery-container.quick-panel-stitched {
+    border-radius: 0;
+    transition: border-radius 0.6s cubic-bezier(0.13, 0.99, 0.29, 1);
+}
 
 #quick-panel-stack {
     background: transparent;
@@ -40,7 +57,7 @@
 .toolbox-icon-btn label {
     font-size: 24px;
     color: var(--primary);
-    transition: color 0.25s ease;
+    transition: color 0.25s ease, font-size 0.22s ease;
 }
 
 .power-icon-btn:hover,
@@ -58,6 +75,90 @@
 }
 .toolbox-icon-btn.active label {
     color: var(--shadow);
+}
+
+/* Сброс любых глобальных стилей (скруглений/фонов/рамок) на внутренних контейнерах кнопки */
+.toolbox-icon-btn box,
+.toolbox-icon-btn revealer,
+.toolbox-icon-btn #record-btn-content,
+.toolbox-icon-btn #record-timer-revealer,
+.toolbox-icon-btn #record-timer-box {
+    background: none;
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+}
+
+.toolbox-icon-btn.active #record-icon-label {
+    font-size: 20px;
+}
+
+.toolbox-icon-btn #record-timer-box {
+    min-width: 18px;
+    margin-left: 3px;
+}
+
+.toolbox-icon-btn #record-timer-mm,
+.toolbox-icon-btn #record-timer-ss {
+    background: none;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    color: var(--shadow);
+    margin-top: -2px;
+    margin-bottom: -2px;
+    transition: color 0.15s ease, opacity 0.15s ease, margin 0.08s ease;
+}
+
+.toolbox-icon-btn #record-timer-mm.glitching,
+.toolbox-icon-btn #record-timer-ss.glitching {
+    opacity: 0.85;
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-shift-right,
+.toolbox-icon-btn #record-timer-ss.glitch-shift-right {
+    margin-left: 1px;
+    color: #ff0055;
+    text-shadow: 2px 0 0 rgba(255, 0, 85, 0.75);
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-shift-left,
+.toolbox-icon-btn #record-timer-ss.glitch-shift-left {
+    margin-left: -1px;
+    color: #00e5ff;
+    text-shadow: -2px 0 0 rgba(0, 229, 255, 0.75);
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-flicker,
+.toolbox-icon-btn #record-timer-ss.glitch-flicker {
+    opacity: 0.25;
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-aberration,
+.toolbox-icon-btn #record-timer-ss.glitch-aberration {
+    color: #ffffff;
+    text-shadow: 2px 0 0 rgba(255, 0, 85, 0.85), -2px 0 0 rgba(0, 229, 255, 0.85);
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-heavy,
+.toolbox-icon-btn #record-timer-ss.glitch-heavy {
+    opacity: 0.5;
+    color: #ffffff;
+}
+
+.toolbox-icon-btn #record-timer-mm.glitch-color-swap,
+.toolbox-icon-btn #record-timer-ss.glitch-color-swap {
+    color: #ff0055;
 }
 
 #power-battery-container #HyprlandLanguage-indicator {

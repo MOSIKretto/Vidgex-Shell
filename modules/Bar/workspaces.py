@@ -6,9 +6,15 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib
 
+from modules.Bar.Workspaces.axis import AxisWindow
 from modules.Bar.Workspaces.bars import (
-    LeftWorkspaces, LifecycleMixin, TopWorkspaces,
-    matrix_nav, set_matrix_dims, set_matrix_order,
+    REVEAL_MS,
+    LeftWorkspaces,
+    LifecycleMixin,
+    TopWorkspaces,
+    matrix_nav,
+    set_matrix_dims,
+    set_matrix_order,
 )
 from services.corners import MyCorner
 from services.wayland import WaylandWindow as Window
@@ -16,12 +22,17 @@ from services.wayland import WaylandWindow as Window
 
 __all__ = [
     "TopWorkspaces",
+    "AxisWindow",
     "LeftWorkspaces",
     "SideBarWindow",
     "matrix_nav",
     "set_matrix_dims",
     "set_matrix_order",
 ]
+
+# Верхний уголок боковой панели: собственная длительность, не менялась.
+_CORNER_ANIM_MS = 200
+
 
 def _corner_box(name: str) -> Box:
     return Box(name=name, h_align="start", v_align="start", children=[MyCorner("top-left")])
@@ -145,6 +156,7 @@ class SideBarWindow(LifecycleMixin, Window):
         self.revealer = Revealer(
             name="sidebar-revealer",
             transition_type="slide-right",
+            transition_duration=REVEAL_MS,
             child_revealed=not self._is_hidden,
             child=self.panel_col,
         )
@@ -152,7 +164,7 @@ class SideBarWindow(LifecycleMixin, Window):
         self.top_corner = _corner_box("sidebar-top-corner")
         self.revealer_top_corner = Revealer(
             transition_type="slide-down",
-            transition_duration=200,
+            transition_duration=_CORNER_ANIM_MS,
             child_revealed=(self.ws.has_multiple_cols or self._force_revealed or self._is_hidden),
             child=self.top_corner,
         )

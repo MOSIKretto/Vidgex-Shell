@@ -11,18 +11,32 @@ from fabric.widgets.label import Label
 from fabric.widgets.revealer import Revealer
 from gi.repository import Gdk, GLib, GObject
 
-from modules.Bar.Workspaces.matrix import (
-    bind_global_conn, clamp_coords, client_ws_id,
-    get_active_ws, joint_flush, matrix_nav,
-    perform_ws_transition, release_global_conn_if_unused, request_occlusion_check,
-    set_matrix_dims, set_matrix_order, sync_joint,
-    sync_occlusion_watch, toggle_order_actions,
-    sidebars, state, axis_widgets,
+from modules.Bar.Workspaces.Bars.appIcons import AppIconsMixin
+from modules.Bar.Workspaces.Bars.matrix import (
+    axis_widgets,
+    bind_global_conn,
+    clamp_coords,
+    client_ws_id,
+    get_active_ws,
+    joint_flush,
+    matrix_nav,
+    perform_ws_transition,
+    release_global_conn_if_unused,
+    request_occlusion_check,
+    set_matrix_dims,
+    set_matrix_order,
+    sidebars,
+    state,
+    sync_joint,
+    sync_occlusion_watch,
+    toggle_order_actions,
 )
 import services.icons as icons
 
 
 __all__ = [
+    "REVEAL_MS",
+    "AXIS_REVEAL_MS",
     "LifecycleMixin",
     "TopWorkspaces",
     "LeftWorkspaces",
@@ -30,6 +44,11 @@ __all__ = [
     "set_matrix_dims",
     "set_matrix_order",
 ]
+
+# Внешняя панель (SideBarWindow, sidebar-revealer): дефолт fabric.Revealer — 400 мс.
+REVEAL_MS = 400
+# Revealer внутри оси (кнопки −/+ и ряд точек): как в эталоне, 200 мс на обеих осях.
+AXIS_REVEAL_MS = 200
 
 _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
 _LST = 0.0
@@ -45,15 +64,35 @@ _GLITCH_CLASSES = (
 )
 
 
+class _AxisSpec:
+    """Всё, чем ось отличается от другой: остальное у них общее."""
+
+    __slots__ = ("vertical", "orientation", "transition", "css_class", "cross_align", "scroll_axis")
+
+    def __init__(self, vertical, orientation, transition, css_class, cross_align, scroll_axis):
+        self.vertical = vertical
+        self.orientation = orientation
+        self.transition = transition
+        self.css_class = css_class
+        self.cross_align = cross_align
+        self.scroll_axis = scroll_axis
+
+
+_AXIS_H = _AxisSpec(False, "h", "slide-right", "ws-axis-h", {"v_align": "center"}, "x")
+_AXIS_V = _AxisSpec(True, "v", "slide-down", "ws-axis-v", {"h_align": "center"}, "y")
+
+
 def _toggle_class(widget, cls: str, enabled: bool):
     if enabled:
         widget.add_style_class(cls)
     else:
         widget.remove_style_class(cls)
 
+
 def _set_dot_active(btn: Button, active: bool):
     btn.remove_style_class("empty" if active else "active")
     btn.add_style_class("active" if active else "empty")
+
 
 def _icon_btn(markup: str, on_click) -> Button:
     btn = Button(
@@ -64,6 +103,7 @@ def _icon_btn(markup: str, on_click) -> Button:
     )
     btn.connect("clicked", on_click)
     return btn
+
 
 def _check_scroll_cooldown(e, axis: str) -> int:
     global _LST
@@ -122,14 +162,18 @@ class LifecycleMixin:
 
 
 class _AxisWorkspaces(LifecycleMixin, Box):
-    _is_vertical = False
+    # Наследник обязан задать _spec (_AXIS_H или _AXIS_V).
+    _spec: _AxisSpec = None
 
-    def __init__(self, conn, container_name: str, orientation: str, **kwargs):
-        super().__init__(name=container_name, orientation=orientation, **kwargs)
+    def __init__(self, conn, **kwargs):
+        super().__init__(name="workspaces-axis", orientation=self._spec.orientation, **kwargs)
         self._init_lifecycle()
+        self.add_style_class(self._spec.css_class)
         self.conn = conn
         self._flush = False
 
+        self.dots_box = None
+        self.revealer_dots = None
         self.dots: list[Button] = []
         self._active_idx = -1
         self._glitch_tid = 0
@@ -139,43 +183,58 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         self._connect(self, "unmap", self._on_unmap)
         axis_widgets.append(self)
         bind_global_conn(conn)
+        self._build_axis_controls()
+
+    @property
+    def _is_vertical(self) -> bool:
+        return self._spec.vertical
 
     def _axis_count(self) -> int:
         return state.rows if self._is_vertical else state.cols
 
-    def _make_action_revealer(self, tag: str, kind: str, icon: str, transition: str, cb, **align_kw) -> Revealer:
+    def _axis_box(self, **kwargs) -> Box:
+        box = Box(orientation=self._spec.orientation, **self._spec.cross_align, **kwargs)
+        box.add_style_class(self._spec.css_class)
+        return box
+
+    def _make_revealer(self, child, revealed: bool) -> Revealer:
         return Revealer(
-            transition_type=transition,
-            transition_duration=200,
-            child_revealed=state.order_actions_visible,
-            child=Box(name=f"workspaces-action-{tag}-{kind}", children=[_icon_btn(icon, cb)], **align_kw),
+            transition_type=self._spec.transition,
+            transition_duration=AXIS_REVEAL_MS,
+            child_revealed=revealed,
+            child=child,
         )
 
-    def _build_axis_controls(self, axis_tag: str, transition: str, on_minus, on_plus, leading_widget=None):
-        align_kw = {"h_align": "center"} if self._is_vertical else {}
-        orient = "v" if self._is_vertical else "h"
+    def _make_action_box(self, icon: str, cb) -> Box:
+        return self._axis_box(name="workspaces-action", children=[_icon_btn(icon, cb)])
 
-        self.revealer_minus = self._make_action_revealer(
-            axis_tag, "minus", icons.minus, transition, on_minus, **align_kw
-        )
-        self.dots_box = Box(name=f"workspaces-{axis_tag}", orientation=orient, spacing=8, **align_kw)
+    def _make_leading_widget(self):
+        # По умолчанию у оси нет ведущего виджета; верхняя ось переопределяет.
+        return None
+
+    def _dots_revealed(self) -> bool:
+        # Ряд точек раскрыт, если есть что выбирать или включён режим правки;
+        # наследники расширяют условие (иконки приложений единственного стола).
+        return self._axis_count() > 1 or len(self.dots) > 1 or state.order_actions_visible
+
+    def _sync_dots_reveal(self):
+        self.revealer_dots.set_reveal_child(self._dots_revealed())
+
+    def _build_axis_controls(self):
+        actions = state.order_actions_visible
+
+        self.revealer_minus = self._make_revealer(self._make_action_box(icons.minus, self._on_minus), actions)
+        self.dots_box = self._axis_box(name="workspaces-dots", spacing=8)
         self._sync_dots(animate=False)
-
-        self.revealer_dots = Revealer(
-            transition_type=transition,
-            transition_duration=200,
-            child_revealed=(self._axis_count() > 1 or state.order_actions_visible),
-            child=self.dots_box,
-        )
-        self.revealer_plus = self._make_action_revealer(
-            axis_tag, "plus", icons.plus, transition, on_plus, **align_kw
-        )
+        self.revealer_dots = self._make_revealer(self.dots_box, self._dots_revealed())
+        self.revealer_plus = self._make_revealer(self._make_action_box(icons.plus, self._on_plus), actions)
 
         children = [self.revealer_minus, self.revealer_dots, self.revealer_plus]
-        if leading_widget is not None:
-            children.insert(0, leading_widget)
+        leading = self._make_leading_widget()
+        if leading is not None:
+            children.insert(0, leading)
 
-        self.inner_box = Box(orientation=orient, spacing=0, children=children, **align_kw)
+        self.inner_box = self._axis_box(children=children)
         self.event_box = EventBox(child=self.inner_box)
         self.event_box.add_events(_SM)
         self._connect(self.event_box, "scroll-event", self._on_scroll)
@@ -183,10 +242,33 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         self.add(self.event_box)
         self._update_ui()
 
+    def _resize(self, delta: int):
+        rows, cols = state.rows, state.cols
+        if self._is_vertical:
+            rows += delta
+        else:
+            cols += delta
+        set_matrix_dims(rows, cols, self.conn)
+
+    def _on_minus(self, _):
+        self._resize(-1)
+
+    def _on_plus(self, _):
+        self._resize(1)
+
+    def _repaint_glitch_area(self, btn: Button):
+        # box-shadow глитч-классов рисуется за пределами 8x8 аллокации кнопки;
+        # инвалидируем весь контейнер, чтобы GTK гарантированно перерисовал фон вокруг точки.
+        btn.queue_draw()
+        if self.dots_box is not None:
+            self.dots_box.queue_draw()
+        self.queue_draw()
+
     def _clear_glitch_classes(self, btn: Button):
         ctx = btn.get_style_context()
         for cls in _GLITCH_CLASSES:
             ctx.remove_class(cls)
+        self._repaint_glitch_area(btn)
 
     def _apply_random_glitch_classes(self, btn: Button):
         ctx = btn.get_style_context()
@@ -195,16 +277,34 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         count = 1 if random.random() > 0.4 else 2
         for cls in random.sample(_GLITCH_CLASSES, count):
             ctx.add_class(cls)
+        self._repaint_glitch_area(btn)
+
+    def _mount_dot_widget(self, btn: Button):
+        self.dots.append(btn)
+        self.dots_box.add(btn)
+        btn.show()
+
+    def _unmount_dot_widget(self, btn: Button):
+        self.dots_box.remove(btn)
+        btn.destroy()
+
+    def _on_dot_glitch_state_changed(self, btn: Button, removing: bool):
+        # Точка расширения для наследников/декораторов (например, скрытие слотов при глитче удаления);
+        # по умолчанию бездействие — осознанное.
+        pass
 
     def _remove_dot_widget(self, btn: Button):
+        self._clear_glitch_classes(btn)
         self._glitch_rem.pop(btn, None)
         self._glitch_removing.discard(btn)
         if not self._glitch_rem:
             self._glitch_tid = self._cancel_source(self._glitch_tid)
         if btn in self.dots:
             self.dots.remove(btn)
-        self.dots_box.remove(btn)
-        btn.destroy()
+        self._unmount_dot_widget(btn)
+        if self.dots_box is not None:
+            self.dots_box.queue_draw()
+        self.queue_draw()
 
     def _finish_all_glitches(self):
         had_removing = bool(self._glitch_removing)
@@ -214,7 +314,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         self._glitch_rem.clear()
         for btn in self.dots:
             self._clear_glitch_classes(btn)
-        if had_removing and not self._destroyed and hasattr(self, "revealer_dots"):
+        if had_removing and not self._destroyed and self.revealer_dots is not None:
             self.sync_visibility()
 
     def _on_unmap(self, *_):
@@ -226,6 +326,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         else:
             self._glitch_removing.discard(btn)
 
+        self._on_dot_glitch_state_changed(btn, removing)
         self._apply_random_glitch_classes(btn)
         self._glitch_rem[btn] = 6
         if not self._glitch_tid:
@@ -260,8 +361,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
 
     def _create_dot(self) -> Button:
         btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
-        if self._is_vertical:
-            btn.add_style_class("row-dot")
+        btn.add_style_class("ws-dot")
         btn.add_style_class("empty")
         btn.connect("clicked", self._on_dot_button_clicked)
         btn.add_events(_SM)
@@ -281,10 +381,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
             while len(self.dots) > target:
                 self._remove_dot_widget(self.dots[-1])
             for _ in range(len(self.dots), target):
-                btn = self._create_dot()
-                self.dots.append(btn)
-                self.dots_box.add(btn)
-                btn.show()
+                self._mount_dot_widget(self._create_dot())
             return
 
         for idx in range(target):
@@ -293,9 +390,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
                     self._start_dot_glitch(self.dots[idx], removing=False)
             else:
                 btn = self._create_dot()
-                self.dots.append(btn)
-                self.dots_box.add(btn)
-                btn.show()
+                self._mount_dot_widget(btn)
                 self._start_dot_glitch(btn, removing=False)
 
         for idx in range(target, len(self.dots)):
@@ -323,9 +418,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         if self._destroyed:
             return
         self.revealer_minus.set_reveal_child(state.order_actions_visible)
-        self.revealer_dots.set_reveal_child(
-            self._axis_count() > 1 or len(self.dots) > 1 or state.order_actions_visible
-        )
+        self._sync_dots_reveal()
         self.revealer_plus.set_reveal_child(state.order_actions_visible)
 
     def _step_to_index(self, cur_ws: int, target_idx: int):
@@ -341,7 +434,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
             perform_ws_transition(target_ws, vertical, "workspace", self.conn)
 
     def _on_scroll(self, _, event):
-        direction = _check_scroll_cooldown(event, axis="y" if self._is_vertical else "x")
+        direction = _check_scroll_cooldown(event, self._spec.scroll_axis)
         if direction != 0:
             ws = get_active_ws(self.conn)
             cur_row, cur_col = clamp_coords(ws)
@@ -362,7 +455,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
             self._step_to_index(get_active_ws(self.conn), target_idx)
 
     def _update_ui(self, *_, ws: int | None = None):
-        if self._destroyed or not hasattr(self, "dots_box"):
+        if self._destroyed or self.dots_box is None:
             return
         if ws is None:
             ws = get_active_ws(self.conn)
@@ -387,23 +480,20 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         release_global_conn_if_unused()
 
 
-class TopWorkspaces(_AxisWorkspaces):
-    _is_vertical = False
+# AppIconsMixin стоит левее _AxisWorkspaces в MRO: его переопределения
+# (_create_dot, _mount_dot_widget, _update_ui и т.д.) оборачивают базовые методы через super().
+class TopWorkspaces(AppIconsMixin, _AxisWorkspaces):
+    _spec = _AXIS_H
 
     def __init__(self, conn, **kwargs):
-        super().__init__(conn, "workspaces-container-top", "h", **kwargs)
+        super().__init__(conn, **kwargs)
+        self.set_flush(joint_flush())
+
+    def _make_leading_widget(self):
         self.btn_settings = _icon_btn(icons.hash, toggle_order_actions)
         _toggle_class(self.btn_settings, "active", state.order_actions_visible)
         self.num_box = Box(name="workspaces-num-top", children=[self.btn_settings])
-
-        self._build_axis_controls(
-            axis_tag="top",
-            transition="slide-right",
-            on_minus=lambda _: set_matrix_dims(state.rows, state.cols - 1, self.conn),
-            on_plus=lambda _: set_matrix_dims(state.rows, state.cols + 1, self.conn),
-            leading_widget=self.num_box,
-        )
-        self.set_flush(joint_flush())
+        return self.num_box
 
     def sync_visibility(self):
         if self._destroyed:
@@ -412,18 +502,12 @@ class TopWorkspaces(_AxisWorkspaces):
         super().sync_visibility()
 
 
-class LeftWorkspaces(_AxisWorkspaces):
-    _is_vertical = True
+class LeftWorkspaces(AppIconsMixin, _AxisWorkspaces):
+    _spec = _AXIS_V
 
     def __init__(self, conn, **kwargs):
-        super().__init__(conn, "workspaces-container-left", "v", **kwargs)
+        super().__init__(conn, **kwargs)
         self._sidebar = None
-        self._build_axis_controls(
-            axis_tag="left",
-            transition="slide-down",
-            on_minus=lambda _: set_matrix_dims(state.rows - 1, state.cols, self.conn),
-            on_plus=lambda _: set_matrix_dims(state.rows + 1, state.cols, self.conn),
-        )
 
     @property
     def has_multiple_rows(self) -> bool:

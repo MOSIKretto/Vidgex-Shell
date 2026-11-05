@@ -15,7 +15,7 @@ from fabric.widgets.label import Label
 from fabric.widgets.box import Box
 
 from modules.Bar.quickPanel import QuickPanel
-from modules.Bar.workspaces import SideBarWindow, TopWorkspaces
+from modules.Bar.workspaces import SideBarWindow, AxisWindow
 
 from services.corners import MyCorner
 from services.wayland import WaylandWindow as Window
@@ -111,7 +111,8 @@ class Bar(Window):
         self._notch_ref = weakref.ref(value) if value else None
 
     def _build(self):
-        self.ws = TopWorkspaces(conn=self.conn, v_align="center", h_align="start")
+        self.top_window = AxisWindow(conn=self.conn, monitor_id=self.mid)
+        self.ws = self.top_window.ws
 
         self.dt = DateTime(name="date-time", formatters=["%H:%M"], v_align="center")
         self.dt.set_size_request(_CLOCK_WIDTH_PX, -1)
@@ -131,27 +132,15 @@ class Bar(Window):
             ),
         )
 
-        start_container = Box(
-            name="start-container",
-            spacing=4,
-            v_align="start",
-            children=[self.ws],
-        )
-
-        left_group = Box(
+        island_group = Box(
             name="bar-group-left",
             orientation="h",
             spacing=0,
             v_align="start",
             children=[
-                start_container,
-                Box(
-                    name="bar-left-corner",
-                    orientation="v",
-                    v_align="start",
-                    h_align="start",
-                    children=[MyCorner("top-left")],
-                ),
+                self.top_window.island,
+                self.top_window.cap,
+                self.top_window.corner_static,
             ],
         )
 
@@ -205,7 +194,7 @@ class Bar(Window):
         self.nb = CenterBox(
             name="bar-inner",
             v_align="start",
-            start_children=left_group,
+            start_children=island_group,
             end_children=right_group,
         )
 
@@ -238,6 +227,10 @@ class Bar(Window):
 
         self._clock_glitch.stop()
         self._lang_glitch.stop()
+
+        if self.top_window is not None:
+            self.top_window.destroy()
+            self.top_window = None
 
         if self.sidebar is not None:
             self.sidebar.destroy()

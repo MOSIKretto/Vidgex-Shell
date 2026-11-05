@@ -1,14 +1,42 @@
-# modules/Bar/QuickPanel/toolsTab.py
-import os, subprocess, threading, time
+import os
+import random
+import re
+import subprocess
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
-from gi.repository import GLib
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk
+
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
 import services.icons as icons
+
+_MAX_RECORD_MINUTES = 90
+_MAX_RECORD_SECONDS = _MAX_RECORD_MINUTES * 60
+_PID_RE = re.compile(r"^(\d+)$", re.MULTILINE)
+
+_GLITCH_CLASSES = (
+    "glitch-shift-right",
+    "glitch-shift-left",
+    "glitch-flicker",
+    "glitch-aberration",
+    "glitch-heavy",
+    "glitch-color-swap",
+)
+
+
+def _cancel_source(source_id: int | None) -> None:
+    if source_id is not None:
+        GLib.source_remove(source_id)
+    return None
+
 
 def _get_pictures_dir() -> Path:
     pic_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES)
@@ -30,11 +58,27 @@ def _send_notification(summary: str, body: str = "", icon=None, actions=None) ->
     return res.stdout.strip()
 def _copy_to_clipboard(file_path: Path):
     with open(file_path,"rb") as f: subprocess.run(["wl-copy"], stdin=f)
+def _get_recording_state() -> tuple[int, float] | None:
+    res = subprocess.run(
+        ["pgrep", "-f", "gpu-screen-recorder"],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        return None
+    my_pid = os.getpid()
+    for match in _PID_RE.finditer(res.stdout):
+        pid = int(match.group(1))
+        if pid == my_pid:
+            continue
+        try:
+            # Процесс может завершиться между pgrep и чтением /proc/<pid>
+            return pid, os.stat(f"/proc/{pid}").st_mtime
+        except OSError:
+            continue
+    return None
 def _is_recording() -> bool:
-    # Единственная точка проверки "идёт ли запись" — раньше один и тот
-    # же subprocess.run(["pgrep", ...]) был продублирован здесь и в
-    # ToolsTab._refresh_dyn().
-    return subprocess.run(["pgrep", "-f", "gpu-screen-recorder"], capture_output=True).returncode == 0
+    return _get_recording_state() is not None
 def _run_ocr():
     time.sleep(0.5)
     p1 = subprocess.Popen(["hyprshot","-m","region","-z","-r","-s"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -86,6 +130,99 @@ def _run_screenshot(mode: str, mockup: bool=False):
     if action=="view": subprocess.run(["xdg-open",str(full_path)])
     elif action=="open": subprocess.run(["xdg-open",str(full_path.parent)])
 
+
+class RecordTimerWidget(Box):
+    def __init__(self):
+        super().__init__(
+            name="record-timer-box",
+            orientation="v",
+            v_align="center",
+            h_align="center",
+        )
+        self.mm_label = Label(name="record-timer-mm", label="00", xalign=0.5)
+        self.ss_label = Label(name="record-timer-ss", label="00", xalign=0.5)
+        self.add(self.mm_label)
+        self.add(self.ss_label)
+
+        self._last_sec: int | None = None
+        self._last_mm: int | None = None
+        self._gl_rem = 0
+        self._gl_tid: int | None = None
+        self._destroyed = False
+
+        self.connect("unmap", self._on_unmap)
+        self.connect("destroy", lambda *_: self.cleanup())
+
+    def update_time(self, elapsed_seconds: int) -> None:
+        clamped = max(0, min(_MAX_RECORD_SECONDS, elapsed_seconds))
+        if clamped == self._last_sec:
+            return
+        self._last_sec = clamped
+
+        mm = min(_MAX_RECORD_MINUTES, clamped // 60)
+        ss = clamped % 60 if mm < _MAX_RECORD_MINUTES else 0
+
+        if self._last_mm is not None and mm != self._last_mm:
+            self._trigger_glitch()
+        self._last_mm = mm
+
+        self.mm_label.set_label(f"{mm:02d}")
+        self.ss_label.set_label(f"{ss:02d}")
+
+    def reset(self) -> None:
+        self._stop_glitch()
+        self._last_sec = None
+        self._last_mm = None
+        self.mm_label.set_label("00")
+        self.ss_label.set_label("00")
+
+    def _trigger_glitch(self) -> None:
+        if self._destroyed or not self.get_mapped():
+            return
+        self._gl_rem = 6
+        if self._gl_tid is None:
+            self._gl_tid = GLib.timeout_add(35, self._glitch_tick)
+
+    def _clear_glitch(self) -> None:
+        for lbl in (self.mm_label, self.ss_label):
+            ctx = lbl.get_style_context()
+            for cls in _GLITCH_CLASSES:
+                ctx.remove_class(cls)
+            ctx.remove_class("glitching")
+
+    def _stop_glitch(self) -> None:
+        self._gl_tid = _cancel_source(self._gl_tid)
+        self._gl_rem = 0
+        self._clear_glitch()
+
+    def _glitch_tick(self) -> bool:
+        if self._destroyed:
+            self._gl_tid = None
+            return False
+
+        self._clear_glitch()
+        if self._gl_rem == 0:
+            self._gl_tid = None
+            return False
+
+        self._gl_rem -= 1
+        for lbl in (self.mm_label, self.ss_label):
+            ctx = lbl.get_style_context()
+            ctx.add_class("glitching")
+            for cls in random.sample(_GLITCH_CLASSES, random.randint(1, 2)):
+                ctx.add_class(cls)
+        return True
+
+    def _on_unmap(self, *_args) -> None:
+        self._stop_glitch()
+
+    def cleanup(self) -> None:
+        if self._destroyed:
+            return
+        self._destroyed = True
+        self._stop_glitch()
+
+
 class ToolsTab(Box):
     _MENU_ITEMS = (
         (icons.ssregion,     ("screenshot","s"), "<b>Area screenshot</b>"),
@@ -96,58 +233,183 @@ class ToolsTab(Box):
     )
     CSS_BTN = "toolbox-icon-btn"
     CSS_ACTIVE = "active"
+
     def __init__(self, close_panel, **kwargs):
         super().__init__(name="tools-tab", orientation="v", spacing=0, v_expand=True, **kwargs)
         self._close_panel = close_panel
         self._dyn: dict[str, object] = {}
-        # Разовые таймеры "обновить иконку записи" после клика по
-        # Screen Recording — отслеживаются здесь и гарантированно
-        # снимаются при разрушении виджета (см. _on_destroy), чтобы
-        # колбэк не прилетел на уже уничтоженные Label/Button (п.4).
         self._pending_timers: set[int] = set()
-        self.connect("destroy", self._on_destroy)
+        self._rec_timer_id: int | None = None
+        self._rec_pid: int | None = None
+        self._rec_start: float = 0.0
+        self._limit_stopping = False
+        self._destroyed = False
+
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
+        self.connect("destroy", lambda *_: self.cleanup())
+
         row = Box(orientation="h", spacing=6, h_align="center", v_align="center")
         for icon_markup, action_tuple, tooltip in self._MENU_ITEMS:
-            lbl = Label(markup=icon_markup or "")
-            btn = Button(child=lbl, tooltip_markup=tooltip, can_focus=False)
+            is_record = action_tuple[0] == "record"
+            lbl = Label(
+                name="record-icon-label" if is_record else None,
+                markup=icon_markup or "",
+            )
+            if is_record:
+                timer_widget = RecordTimerWidget()
+                revealer = Gtk.Revealer(
+                    name="record-timer-revealer",
+                    transition_type=Gtk.RevealerTransitionType.SLIDE_RIGHT,
+                    transition_duration=220,
+                    reveal_child=False,
+                )
+                revealer.add(timer_widget)
+                revealer.show_all()
+                btn_child = Box(
+                    name="record-btn-content",
+                    orientation="h",
+                    spacing=0,
+                    h_align="center",
+                    v_align="center",
+                    children=(lbl, revealer),
+                )
+                self._dyn["record"] = lbl
+                self._dyn["record_revealer"] = revealer
+                self._dyn["record_timer"] = timer_widget
+            else:
+                btn_child = lbl
+
+            btn = Button(child=btn_child, tooltip_markup=tooltip, can_focus=False)
             btn.get_style_context().add_class(self.CSS_BTN)
-            is_record = action_tuple[0]=="record"
             btn.connect("clicked", self._on_action_clicked, action_tuple, is_record)
             if is_record:
-                self._dyn["record"]=lbl; self._dyn["record_btn"]=btn
+                self._dyn["record_btn"] = btn
             row.add(btn)
+
         self.add(Box(orientation="v", v_expand=True))
         self.add(row)
         self.add(Box(orientation="v", v_expand=True))
+
     def activate(self) -> None:
         self._refresh_dyn()
-    def deactivate(self) -> None: pass
-    def _on_destroy(self, *_args) -> None:
+
+    def deactivate(self) -> None:
+        # Вкладка скрыта из поля зрения — останавливаем секундный опрос
+        self._stop_rec_timer()
+
+    def _on_map(self, *_args) -> None:
+        self._refresh_dyn()
+
+    def _on_unmap(self, *_args) -> None:
+        self._stop_rec_timer()
+
+    def cleanup(self) -> None:
+        if self._destroyed:
+            return
+        self._destroyed = True
+        self._stop_rec_timer()
         for tid in self._pending_timers:
             GLib.source_remove(tid)
         self._pending_timers.clear()
+        timer_widget = self._dyn.get("record_timer")
+        if timer_widget is not None:
+            timer_widget.cleanup()
+
     def _schedule_refresh(self, delay_ms: int) -> None:
-        holder: list = []
-        def _fire():
+        if self._destroyed:
+            return
+        holder: list[int] = []
+
+        def _fire() -> bool:
             self._pending_timers.discard(holder[0])
-            self._refresh_dyn()
+            if not self._destroyed:
+                self._refresh_dyn()
             return False
+
         holder.append(GLib.timeout_add(delay_ms, _fire))
         self._pending_timers.add(holder[0])
+
+    def _start_rec_timer(self) -> None:
+        if self._destroyed or self._rec_timer_id is not None or not self.get_mapped():
+            return
+        self._rec_timer_id = GLib.timeout_add_seconds(
+            1, self._on_rec_tick, priority=GLib.PRIORITY_DEFAULT_IDLE
+        )
+
+    def _stop_rec_timer(self) -> None:
+        self._rec_timer_id = _cancel_source(self._rec_timer_id)
+
+    def _on_rec_tick(self) -> bool:
+        if self._destroyed or self._rec_pid is None:
+            self._rec_timer_id = None
+            return False
+
+        if not os.path.exists(f"/proc/{self._rec_pid}"):
+            self._rec_timer_id = None
+            self._refresh_dyn()
+            return False
+
+        elapsed = int(time.time() - self._rec_start)
+        timer_widget = self._dyn.get("record_timer")
+        if timer_widget is not None:
+            timer_widget.update_time(elapsed)
+
+        if elapsed >= _MAX_RECORD_SECONDS and not self._limit_stopping:
+            self._limit_stopping = True
+            self._dispatch_action("record")
+            for delay_ms in (100, 600, 1200):
+                self._schedule_refresh(delay_ms)
+
+        return True
+
     def _refresh_dyn(self, *_args) -> bool:
-        is_rec = _is_recording()
-        lbl=self._dyn.get("record")
-        if lbl: lbl.set_markup((icons.stop if is_rec else icons.screenrecord) or "")
-        btn=self._dyn.get("record_btn")
-        if btn:
-            ctx=btn.get_style_context()
-            if is_rec: ctx.add_class(self.CSS_ACTIVE)
-            else: ctx.remove_class(self.CSS_ACTIVE)
+        if self._destroyed:
+            return False
+
+        state = _get_recording_state()
+        is_rec = state is not None
+
+        lbl = self._dyn.get("record")
+        if lbl is not None:
+            lbl.set_markup((icons.stop if is_rec else icons.screenrecord) or "")
+
+        btn = self._dyn.get("record_btn")
+        if btn is not None:
+            ctx = btn.get_style_context()
+            if is_rec:
+                ctx.add_class(self.CSS_ACTIVE)
+            else:
+                ctx.remove_class(self.CSS_ACTIVE)
+
+        revealer = self._dyn.get("record_revealer")
+        timer_widget = self._dyn.get("record_timer")
+
+        if is_rec:
+            self._rec_pid, self._rec_start = state
+            elapsed = int(time.time() - self._rec_start)
+            if timer_widget is not None:
+                timer_widget.update_time(elapsed)
+            if revealer is not None:
+                revealer.set_reveal_child(True)
+            self._start_rec_timer()
+        else:
+            self._rec_pid = None
+            self._rec_start = 0.0
+            self._limit_stopping = False
+            self._stop_rec_timer()
+            if revealer is not None:
+                revealer.set_reveal_child(False)
+            if timer_widget is not None:
+                timer_widget.reset()
+
         return False
+
     def _dispatch_action(self, action_type_name: str, *args) -> None:
         if action_type_name=="ocr": threading.Thread(target=_run_ocr, daemon=True).start()
         elif action_type_name=="record": threading.Thread(target=_run_recording, daemon=True).start()
         elif action_type_name=="screenshot": threading.Thread(target=_run_screenshot, args=(args[0],), daemon=True).start()
+
     def _on_action_clicked(self, _button, action_tuple, is_record: bool) -> None:
         action_name,*args = action_tuple
         self._dispatch_action(action_name,*args)
