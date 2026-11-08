@@ -45,6 +45,7 @@ class Dashboard(Box):
 
         self.applet_stack = Stack(
             transition_type="slide-left-right",
+            transition_duration=480,
             children=(
                 self.notification_history,
                 self.network_connections,

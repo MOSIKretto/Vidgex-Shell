@@ -1,4 +1,3 @@
-# modules/Bar/QuickPanel/powerTab.py
 from gi.repository import Gio, GLib
 
 from fabric.widgets.box import Box
@@ -71,18 +70,35 @@ class PowerTab(Box):
         (icons.suspend,  "Suspend",  lambda: _logind_call("Suspend")),
     )
     CSS_BTN = "power-icon-btn"
+
     def __init__(self, close_panel, **kwargs):
-        super().__init__(name="power-tab", orientation="v", spacing=0, v_expand=True, **kwargs)
+        super().__init__(
+            name="power-tab", orientation="v", spacing=0,
+            h_align="fill", v_align="fill",
+            h_expand=True, v_expand=True,
+            **kwargs,
+        )
         self._close_panel = close_panel
-        row = Box(orientation="h", spacing=6, h_align="center", v_align="center")
+        row = Box(
+            orientation="h", spacing=6,
+            h_align="center", v_align="center",
+            h_expand=True, v_expand=True,
+        )
         for icon_markup, tooltip, action in self._ACTIONS:
-            btn = Button(child=Label(markup=icon_markup), tooltip_markup=f"<b>{tooltip}</b>", can_focus=False)
+            btn = Button(
+                child=Label(markup=icon_markup),
+                tooltip_markup=f"<b>{tooltip}</b>",
+                can_focus=False,
+                v_align="center",
+            )
             btn.get_style_context().add_class(self.CSS_BTN)
             btn.connect("clicked", self._on_clicked, action)
             row.add(btn)
-        self.add(Box(orientation="v", v_expand=True))
+
+        # Единственный ребёнок вкладки: ряд кнопок центрируется и по X,
+        # и по Y средствами GTK.
         self.add(row)
-        self.add(Box(orientation="v", v_expand=True))
+
     def activate(self) -> None: pass
     def deactivate(self) -> None: pass
     def _on_clicked(self, _button, action) -> None:

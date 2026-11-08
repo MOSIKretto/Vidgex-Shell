@@ -235,7 +235,12 @@ class ToolsTab(Box):
     CSS_ACTIVE = "active"
 
     def __init__(self, close_panel, **kwargs):
-        super().__init__(name="tools-tab", orientation="v", spacing=0, v_expand=True, **kwargs)
+        super().__init__(
+            name="tools-tab", orientation="v", spacing=0,
+            h_align="fill", v_align="fill",
+            h_expand=True, v_expand=True,
+            **kwargs,
+        )
         self._close_panel = close_panel
         self._dyn: dict[str, object] = {}
         self._pending_timers: set[int] = set()
@@ -249,7 +254,11 @@ class ToolsTab(Box):
         self.connect("unmap", self._on_unmap)
         self.connect("destroy", lambda *_: self.cleanup())
 
-        row = Box(orientation="h", spacing=6, h_align="center", v_align="center")
+        row = Box(
+            orientation="h", spacing=6,
+            h_align="center", v_align="center",
+            h_expand=True, v_expand=True,
+        )
         for icon_markup, action_tuple, tooltip in self._MENU_ITEMS:
             is_record = action_tuple[0] == "record"
             lbl = Label(
@@ -280,16 +289,19 @@ class ToolsTab(Box):
             else:
                 btn_child = lbl
 
-            btn = Button(child=btn_child, tooltip_markup=tooltip, can_focus=False)
+            btn = Button(
+                child=btn_child, tooltip_markup=tooltip, can_focus=False,
+                v_align="center",
+            )
             btn.get_style_context().add_class(self.CSS_BTN)
             btn.connect("clicked", self._on_action_clicked, action_tuple, is_record)
             if is_record:
                 self._dyn["record_btn"] = btn
             row.add(btn)
 
-        self.add(Box(orientation="v", v_expand=True))
+        # Единственный ребёнок вкладки: ряд кнопок центрируется и по X,
+        # и по Y средствами GTK.
         self.add(row)
-        self.add(Box(orientation="v", v_expand=True))
 
     def activate(self) -> None:
         self._refresh_dyn()

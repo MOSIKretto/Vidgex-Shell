@@ -107,10 +107,9 @@ def _section(title: str, child):
 
 def _scroll(child):
     window = ScrolledWindow(
-        name="bluetooth-devices", min_content_size=(-1, -1), child=child,
+        min_content_size=(-1, -1), child=child,
         h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
     )
-    window.set_overlay_scrolling(False)
     return window
 
 def _header_button(name: str, icon: str, tooltip: str, handler):
@@ -122,6 +121,7 @@ def _header_button(name: str, icon: str, tooltip: str, handler):
 
 class WifiSlot(Gtk.Box):
     _active_pw_slot = None
+    _scroll_anim_slot = None
 
     def __init__(self, nc, parent_net):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
@@ -133,8 +133,11 @@ class WifiSlot(Gtk.Box):
         self.is_secured = True
         self._anim_id = self._restore_id = None
         self._target_height = 0
+        self._collapsed_height = None
+        self._anim_expanding = False
         self._cached_vadj = None
         self._cached_scroll_h = 0
+        self._last_content_top = 0
 
         self.click_area = Gtk.EventBox()
         self.click_area.connect("button-press-event", self._on_click)
@@ -203,7 +206,7 @@ class WifiSlot(Gtk.Box):
         if self._destroyed:
             return
         self._destroyed = True
-        self._anim_id = _cancel(self._anim_id)
+        self._stop_scroll_anim()
         self._restore_id = _cancel(self._restore_id)
         if WifiSlot._active_pw_slot is self:
             WifiSlot._active_pw_slot = None
@@ -269,7 +272,9 @@ class WifiSlot(Gtk.Box):
     def _tog_pw(self):
         active = WifiSlot._active_pw_slot
         if active is not None and active is not self:
-            active._close_pw()
+            # Старую строку закрываем без собственной прокрутки:
+            # общую плавную прокрутку поведёт новая открываемая строка.
+            active._close_pw(animate_scroll=False)
 
         if self.pw_rev.get_reveal_child():
             self._close_pw()
@@ -277,7 +282,9 @@ class WifiSlot(Gtk.Box):
 
         WifiSlot._active_pw_slot = self
         _, child_h = self.pw_rev.get_child().get_preferred_height()
-        self._target_height = self.get_allocated_height() + child_h
+
+        self._collapsed_height = self.get_allocated_height()
+        self._target_height = self._collapsed_height + child_h
 
         self.pw_rev.set_reveal_child(True)
         self.pw_entry.set_text("")
@@ -286,46 +293,101 @@ class WifiSlot(Gtk.Box):
         self.btn_pw_ok.set_sensitive(False)
         self._start_scroll_anim()
 
-    def _start_scroll_anim(self):
+    def _finish_scroll_anim(self):
+        self._anim_id = None
+        if WifiSlot._scroll_anim_slot is self:
+            WifiSlot._scroll_anim_slot = None
+
+    def _stop_scroll_anim(self):
         self._anim_id = _cancel(self._anim_id)
+        if WifiSlot._scroll_anim_slot is self:
+            WifiSlot._scroll_anim_slot = None
+
+    def _content_top(self, scroll, vadj):
+        return vadj.get_value() + self.translate_coordinates(scroll, 0, 0)[1]
+
+    def _start_scroll_anim(self):
+        other = WifiSlot._scroll_anim_slot
+        if other is not None and other is not self:
+            other._stop_scroll_anim()
+
+        self._stop_scroll_anim()
+
         scroll = self.get_ancestor(Gtk.ScrolledWindow)
         if not scroll:
             return
+
+        self._anim_expanding = self.pw_rev.get_reveal_child()
         self._cached_vadj = scroll.get_vadjustment()
         self._cached_scroll_h = scroll.get_allocated_height()
+        self._last_content_top = self._content_top(scroll, self._cached_vadj)
+
+        WifiSlot._scroll_anim_slot = self
         self._anim_id = GLib.timeout_add(16, self._scroll_tick, scroll)
 
     def _scroll_tick(self, scroll):
-        coords = None if self._destroyed else self.translate_coordinates(scroll, 0, 0)
-        if not coords:
-            self._anim_id = None
+        if self._destroyed or self.translate_coordinates(scroll, 0, 0) is None:
+            self._finish_scroll_anim()
             return False
 
         vadj = self._cached_vadj
-        current = vadj.get_value()
+        content_top = self._content_top(scroll, vadj)
+        shift = content_top - self._last_content_top
+        self._last_content_top = content_top
+
         revealed = self.pw_rev.get_child_revealed()
         target_h = self.get_allocated_height() if revealed else self._target_height
-        target = current + coords[1] - self._cached_scroll_h / 2.0 + target_h / 2.0
+
+        centered = content_top - self._cached_scroll_h / 2.0 + target_h / 2.0
         lower = vadj.get_lower()
         upper = max(lower, vadj.get_upper() - vadj.get_page_size())
-        target = max(lower, min(target, upper))
 
-        if revealed and abs(target - current) < 1.0:
-            vadj.set_value(target)
-            self._anim_id = None
-            GLib.idle_add(self.pw_entry.grab_focus)
-            return False
+        current = vadj.get_value()
+        if centered < upper:
+            current += shift
+
+        target = max(lower, min(centered, upper))
+
+        if self._anim_expanding:
+            if revealed and abs(target - current) < 1.0:
+                vadj.set_value(target)
+                self._finish_scroll_anim()
+                GLib.idle_add(self.pw_entry.grab_focus)
+                return False
+        else:
+            # Закрытие: ждём, пока revealer реально закончит сжиматься,
+            # и только тогда останавливаем прокрутку.
+            if abs(target - current) < 1.0 and self.get_allocated_height() <= self._target_height + 1:
+                vadj.set_value(target)
+                self._finish_scroll_anim()
+                return False
 
         vadj.set_value(current + (target - current) * 0.15)
         return True
 
-    def _close_pw(self):
-        self._anim_id = _cancel(self._anim_id)
+    def _close_pw(self, animate_scroll=True):
+        self._stop_scroll_anim()
+
+        child = self.pw_rev.get_child()
+        child_h = child.get_preferred_height()[1] if child is not None else 0
+
+        self._target_height = (
+            self._collapsed_height
+            if self._collapsed_height is not None
+            else max(0, self.get_allocated_height() - child_h)
+        )
+
         self.pw_rev.set_reveal_child(False)
-        if WifiSlot._active_pw_slot is self:
+
+        was_active = WifiSlot._active_pw_slot is self
+        if was_active:
             WifiSlot._active_pw_slot = None
-            if not self._destroyed and self.parent_net:
-                self.parent_net.request_refresh()
+
+        if animate_scroll and not self._destroyed:
+            self._start_scroll_anim()
+
+        if was_active and not self._destroyed and self.parent_net:
+            self.parent_net.request_refresh()
 
     def _ok(self, _ssid):
         if not self._destroyed and self.parent_net:
@@ -793,8 +855,6 @@ class NetworkConnections(Box):
         self.nc.get_network_password(ssid, lambda password: self._on_share_password(ssid, btn, password))
 
     def _on_share_password(self, ssid, btn, password):
-        # Пока секрет запрашивался по D-Bus, пользователь мог открыть
-        # настройки другой сети — не показываем устаревший QR/пароль.
         if self._destroyed or ssid != self.current_settings_ssid:
             return
         _save_qr(_build_wifi_qr(ssid, password), _QR_SHARE_PATH)
@@ -825,7 +885,7 @@ class NetworkConnections(Box):
             btn.set_sensitive(enabled)
         if not enabled:
             if WifiSlot._active_pw_slot is not None:
-                WifiSlot._active_pw_slot._close_pw()
+                WifiSlot._active_pw_slot._close_pw(animate_scroll=False)
             if self.lists_stack.get_visible_child_name() != "main":
                 self._show_page("main")
                 self.current_settings_ssid = None
@@ -922,6 +982,7 @@ class NetworkConnections(Box):
         self._rid = _cancel(self._rid)
         self._scan_id = _cancel(self._scan_id)
         WifiSlot._active_pw_slot = None
+        WifiSlot._scroll_anim_slot = None
         self._subs.clear()
         self._wifi = None
         for pool in self._slots.values():

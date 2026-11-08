@@ -150,8 +150,7 @@ class Bar(Window):
             v_align="fill",
             children=[
                 self.dt, self.lang_eb,
-                self.quick_panel.net_btn, self.quick_panel.battery_btn,
-                self.quick_panel.util_btn, self.quick_panel.session_btn,
+                self.quick_panel.trigger_strip,
             ],
         )
 

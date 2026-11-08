@@ -22,11 +22,19 @@
   font-weight: bold;
 }
 
+#month-label {
+  color: var(--foreground);
+}
+
 #day-label,
 #day-empty {
   min-width: 32px;
   min-height: 32px;
   font-size: 9pt;
+}
+
+#day-label {
+  color: var(--primary);
 }
 
 #day-empty {

@@ -123,14 +123,12 @@ def _build(path, scheme_id, dark, contrast):
     c["error_dim"] = _hex(scheme.error_palette.tone(60 if dark else 30))
     c["green"] = _hex(_make_green(hct.hue, scheme_id, dark))
     c["foreground"] = c["on_surface"]
-    c["cursor"] = c["on_surface"]
     return c
 
 
 _TPL = (
     ("foreground",     "foreground"),
     ("background",     "background"),
-    ("cursor",         "cursor"),
     ("primary",        "primary"),
     ("on-primary",     "on_primary"),
     ("secondary",      "secondary"),

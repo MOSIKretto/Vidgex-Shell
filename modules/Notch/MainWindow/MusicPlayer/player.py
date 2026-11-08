@@ -6,6 +6,7 @@ import threading
 import json
 import math
 import random
+import cairo
 
 import gi
 gi.require_version('Gst', '1.0')
@@ -30,6 +31,9 @@ _COVER_SIZE = 174
 _PROG_SIZE = 200
 _BTN_SIZE = 28
 _PLAY_SIZE = 36
+
+_BLUR_PASSES = 2
+_BLUR_AURA_TINT = (0.05, 0.05, 0.08, 0.62)
 
 _NO_TIME = "--:-- / --:--"
 _DEFAULT_TITLE = "Nothing Playing"
@@ -236,12 +240,6 @@ class LocalPlayer(Service):
             bus.connect("message::error", self._on_bus_error)
 
     def _build_audio_sink_bin(self):
-        """
-        audioconvert!audioresample![spectrum]!autoaudiosink.
-        Если критичный элемент/линковка не удались — None (playbin возьмёт
-        дефолтный sink, звук всё равно будет играть). Если недоступен только
-        'spectrum' — просто пропускаем его.
-        """
         try:
             convert = Gst.ElementFactory.make("audioconvert", "local_aconv")
             resample = Gst.ElementFactory.make("audioresample", "local_aresample")
@@ -400,7 +398,8 @@ class PlayerBox(Box):
         '_a_dur', '_a_pow', '_a_chain', '_a_done',
         '_v_layout', '_v_font', '_v_block', '_v_lh', '_v_cached_h',
         '_gl_active', '_gl_rem', '_gl_total', '_gl_tid', '_gl_rand_tid', '_active_glitches',
-        'visualizer', 'bg_overlay'
+        'visualizer', 'bg_overlay',
+        '_blur_pyr', '_blur_size', '_blur_valid', '_mask_surf', '_mask_ctx', '_mask_key'
     )
 
     def __init__(self, mpris_player=None, local_player=None, media_player=None):
@@ -443,6 +442,13 @@ class PlayerBox(Box):
         self._a_pow = 1.0
         self._a_chain = []
         self._a_done = 'live'
+
+        self._blur_pyr = None
+        self._blur_size = (0, 0)
+        self._blur_valid = False
+        self._mask_surf = None
+        self._mask_ctx = None
+        self._mask_key = None
 
         self.cover = CircleImage(name="player-cover", size=_COVER_SIZE, h_align="center", v_align="center")
 
@@ -519,6 +525,7 @@ class PlayerBox(Box):
         self.player_box = Box(name="player-box", orientation="h", spacing=0,
                                h_expand=True, v_expand=True, h_align="fill", v_align="fill",
                                homogeneous=True, children=(self.overlay_container, self.info_box))
+        self.player_box.connect("draw", self._on_player_box_draw)
 
         self.visualizer = GlitchVisualizer(player=mp, local_player=local_player, bands=40)
         self.bg_overlay = Overlay(h_expand=True, v_expand=True, h_align="fill", v_align="fill",
@@ -532,6 +539,152 @@ class PlayerBox(Box):
             self._prog_start()
         else:
             self._setup_empty()
+
+    # ─── Aura backdrop blur ─────────────────────────────────────────────────
+    def _ensure_blur_pyr(self, rw, rh):
+        if self._blur_size == (rw, rh) and self._blur_pyr is not None:
+            return self._blur_pyr
+        pyr = []
+        for div in (1, 2, 4, 8):
+            sw, sh = max(1, rw // div), max(1, rh // div)
+            surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, sw, sh)
+            pyr.append((surf, cairo.Context(surf), sw, sh))
+        self._mask_surf = cairo.ImageSurface(cairo.FORMAT_A8, rw, rh)
+        self._mask_ctx = cairo.Context(self._mask_surf)
+        self._mask_key = None
+        self._blur_pyr = pyr
+        self._blur_size = (rw, rh)
+        self._blur_valid = False
+        return pyr
+
+    @staticmethod
+    def _blit_scaled(dst_ctx, src_surf, sx, sy):
+        dst_ctx.save()
+        dst_ctx.scale(sx, sy)
+        dst_ctx.set_source_surface(src_surf, 0, 0)
+        pat = dst_ctx.get_source()
+        pat.set_filter(cairo.Filter.BILINEAR)
+        pat.set_extend(cairo.Extend.PAD)
+        dst_ctx.set_operator(cairo.Operator.SOURCE)
+        dst_ctx.paint()
+        dst_ctx.restore()
+
+    def _measure_item(self, item, pb):
+        if not item.get_visible() or item.get_opacity() < 0.05:
+            return None
+        alloc = item.get_allocation()
+        if alloc.width <= 1 or alloc.height <= 1:
+            return None
+        cx = (alloc.x - pb.x) + alloc.width * 0.5
+        cy = (alloc.y - pb.y) + alloc.height * 0.5
+        if isinstance(item, Gtk.Label):
+            txt = item.get_text()
+            if not txt or txt.isspace():
+                return None
+            layout = item.get_layout()
+            if layout:
+                _, log = layout.get_pixel_extents()
+                w = min(alloc.width, max(16, log.width))
+                h = min(alloc.height, max(12, log.height))
+            else:
+                w, h = alloc.width, alloc.height
+            return round(cx), round(cy), round(w), round(h)
+        return round(cx), round(cy), round(alloc.width), round(alloc.height)
+
+    def _update_aura_mask(self, rx, ry, blobs):
+        key = (rx, ry, tuple(blobs))
+        if self._mask_key == key:
+            return
+        self._mask_key = key
+
+        mc = self._mask_ctx
+        mc.save()
+        mc.set_operator(cairo.Operator.CLEAR)
+        mc.paint()
+        mc.set_operator(cairo.Operator.OVER)
+
+        for cx, cy, w, h in blobs:
+            lx, ly = cx - rx, cy - ry
+            rx_rad = max(24.0, w * 0.68 + 18.0)
+            ry_rad = max(14.0, h * 0.95 + 10.0)
+            mc.save()
+            mc.translate(lx, ly)
+            mc.scale(rx_rad, ry_rad)
+            grad = cairo.RadialGradient(0.0, 0.0, 0.15, 0.0, 0.0, 1.0)
+            grad.add_color_stop_rgba(0.0, 0.0, 0.0, 0.0, 0.95)
+            grad.add_color_stop_rgba(0.55, 0.0, 0.0, 0.0, 0.65)
+            grad.add_color_stop_rgba(1.0, 0.0, 0.0, 0.0, 0.0)
+            mc.set_source(grad)
+            mc.paint()
+            mc.restore()
+        mc.restore()
+
+    def _on_player_box_draw(self, widget, cr):
+        pb = widget.get_allocation()
+        ib = self.info_box.get_allocation()
+        if pb.width <= 1 or pb.height <= 1 or ib.width <= 1 or ib.height <= 1:
+            return False
+
+        blobs = []
+        for it in (self.title, self.album, self.artist, self.btn_box, self.time, self.mode_box):
+            m_it = self._measure_item(it, pb)
+            if m_it:
+                blobs.append(m_it)
+        if not blobs:
+            return False
+
+        rx = max(0, (ib.x - pb.x) - 16)
+        ry = 0
+        rw = pb.width - rx
+        rh = pb.height
+        if rw <= 8 or rh <= 8:
+            return False
+
+        pyr = self._ensure_blur_pyr(rw, rh)
+        s_full, c_full, wf, hf = pyr[0]
+        s1, c1, w1, h1 = pyr[1]
+        s2, c2, w2, h2 = pyr[2]
+        s3, c3, w3, h3 = pyr[3]
+
+        cx1, cy1, cx2, cy2 = cr.clip_extents()
+        full_clip = (cx1 <= rx + 2 and cy1 <= 2 and cx2 >= pb.width - 2 and cy2 >= pb.height - 2)
+
+        if full_clip or not self._blur_valid:
+            m = cr.get_matrix()
+            c1.save()
+            c1.scale(w1 / rw, h1 / rh)
+            c1.set_source_surface(cr.get_target(), -(m.x0 + rx), -(m.y0 + ry))
+            pat = c1.get_source()
+            pat.set_filter(cairo.Filter.BILINEAR)
+            pat.set_extend(cairo.Extend.PAD)
+            c1.set_operator(cairo.Operator.SOURCE)
+            c1.paint()
+            c1.restore()
+
+            self._blit_scaled(c2, s1, w2 / w1, h2 / h1)
+            self._blit_scaled(c3, s2, w3 / w2, h3 / h2)
+            for _ in range(_BLUR_PASSES):
+                self._blit_scaled(c2, s3, w2 / w3, h2 / h3)
+                self._blit_scaled(c3, s2, w3 / w2, h3 / h2)
+            self._blit_scaled(c2, s3, w2 / w3, h2 / h3)
+            self._blit_scaled(c1, s2, w1 / w2, h1 / h2)
+            self._blit_scaled(c_full, s1, wf / w1, hf / h1)
+
+            c_full.save()
+            c_full.set_operator(cairo.Operator.OVER)
+            c_full.set_source_rgba(*_BLUR_AURA_TINT)
+            c_full.paint()
+            c_full.restore()
+            self._blur_valid = True
+
+        self._update_aura_mask(rx, ry, blobs)
+
+        cr.save()
+        cr.set_source_surface(s_full, rx, ry)
+        cr.mask_surface(self._mask_surf, rx, ry)
+        cr.restore()
+
+        return False
 
     def _on_play_pause_clicked(self):
         if self.mpris_player: self.mpris_player.play_pause()
@@ -663,9 +816,6 @@ class PlayerBox(Box):
             self._v_layout, self._v_font = layout, font
             self._v_cached_h = -1
 
-        # Подбор размера шрифта — тяжёлая операция (до 36 измерений Pango).
-        # Раньше выполнялась на КАЖДЫЙ кадр, теперь — только если реально
-        # изменилась высота виджета (обычно не меняется всю жизнь виджета).
         h_i = int(h)
         if h_i != self._v_cached_h:
             self._v_cached_h = h_i
@@ -1124,6 +1274,7 @@ class PlayerBox(Box):
         _set_label(self.title, mp.title)
         _set_label(self.album, mp.album)
         _set_label(self.artist, mp.artist)
+        self.player_box.queue_draw()
 
         self._ucover(getattr(mp, 'url', '') or getattr(mp, 'title', ''), getattr(mp, 'arturl', ''))
 
@@ -1196,6 +1347,11 @@ class PlayerBox(Box):
         self._v_stop_scroll()
         self._prog_stop()
         self._cancel_anim()
+        self._blur_pyr = None
+        self._mask_surf = None
+        self._mask_ctx = None
+        self._mask_key = None
+        self._blur_valid = False
         if self.visualizer:
             self.visualizer.cleanup()
             self.visualizer = None
@@ -1226,7 +1382,6 @@ class MediaPlayer(Box):
         self.switcher.set_valign(Gtk.Align.END)
         self.switcher.set_hexpand(True)
         self.switcher.set_margin_bottom(16)
-        self.switcher.set_margin_start(15)
 
         self.mpris_manager = mgr = MprisPlayerManager()
 

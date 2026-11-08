@@ -16,6 +16,20 @@ _NAV_DELTAS = {
     "nextD": (1, 0),
     "nextU": (-1, 0),
 }
+# События, меняющие fullscreen-состояние стола: нужны всегда, пока жива хотя бы одна боковая панель
+_FULLSCREEN_EVENTS = (
+    "event::fullscreen",
+    "event::openwindow",
+    "event::closewindow",
+    "event::movewindow",
+)
+# События, влияющие только на геометрическое перекрытие панели окнами
+_GEOMETRY_EVENTS = (
+    "event::resizewindow",
+    "event::activewindow",
+    "event::changefloatingmode",
+    "event::pin",
+)
 
 
 class _MatrixState:
@@ -72,6 +86,7 @@ _conn = None
 _ws_hid = 0
 _mon_hid = 0
 _ready_hid = 0
+_fullscreen_hids: list[int] = []
 _occlusion_hids: list[int] = []
 _occlusion_tid = 0
 _vert_step_tid = 0
@@ -187,27 +202,28 @@ def _on_workspace_event(*_):
         sb._trigger_ws_switch(ws=ws)
 
 
+def _sync_event_group(hids: list[int], events: tuple[str, ...], enabled: bool):
+    # Подписывает группу событий на проверку перекрытия/fullscreen или снимает её целиком
+    if enabled and not hids:
+        for ev in events:
+            hids.append(_conn.connect(ev, request_occlusion_check))
+    elif not enabled:
+        if _conn is not None:
+            while hids:
+                _conn.disconnect(hids.pop())
+        else:
+            hids.clear()
+
+
 def sync_occlusion_watch():
     global _occlusion_tid
-    need = _conn is not None and any(sb._needs_occlusion_watch() for sb in sidebars)
-    if need and not _occlusion_hids:
-        for ev in (
-            "event::openwindow",
-            "event::closewindow",
-            "event::movewindow",
-            "event::resizewindow",
-            "event::activewindow",
-            "event::changefloatingmode",
-            "event::fullscreen",
-            "event::pin",
-        ):
-            _occlusion_hids.append(_conn.connect(ev, request_occlusion_check))
-    elif not need:
-        if _conn is not None:
-            while _occlusion_hids:
-                _conn.disconnect(_occlusion_hids.pop())
-        else:
-            _occlusion_hids.clear()
+    # Fullscreen отслеживается, пока жива любая панель (в том числе скрытая самим fullscreen);
+    # геометрия — только когда результат реально влияет на видимость панели.
+    watch_fs = _conn is not None and any(sb._needs_fullscreen_watch() for sb in sidebars)
+    watch_geo = watch_fs and any(sb._needs_occlusion_watch() for sb in sidebars)
+    _sync_event_group(_fullscreen_hids, _FULLSCREEN_EVENTS, watch_fs)
+    _sync_event_group(_occlusion_hids, _GEOMETRY_EVENTS, watch_geo)
+    if not watch_fs:
         _occlusion_tid = cancel_source(_occlusion_tid)
 
 
@@ -215,7 +231,7 @@ def request_occlusion_check(*_):
     global _occlusion_tid
     if _occlusion_tid:
         return
-    if _conn is None or not any(sb._needs_occlusion_watch() for sb in sidebars):
+    if _conn is None or not any(sb._needs_fullscreen_watch() for sb in sidebars):
         sync_occlusion_watch()
         return
     _occlusion_tid = GLib.timeout_add(50, _run_occlusion, priority=GLib.PRIORITY_DEFAULT_IDLE)
@@ -224,7 +240,7 @@ def request_occlusion_check(*_):
 def _run_occlusion() -> bool:
     global _occlusion_tid
     _occlusion_tid = 0
-    active_sbs = [sb for sb in sidebars if sb._needs_occlusion_watch()]
+    active_sbs = [sb for sb in sidebars if sb._needs_fullscreen_watch()]
     if not active_sbs or _conn is None or not _conn.ready:
         sync_occlusion_watch()
         return False
@@ -250,6 +266,8 @@ def _disconnect_conn():
         if _ready_hid:
             _conn.disconnect(_ready_hid)
             _ready_hid = 0
+        while _fullscreen_hids:
+            _conn.disconnect(_fullscreen_hids.pop())
         while _occlusion_hids:
             _conn.disconnect(_occlusion_hids.pop())
     _rules_initialized = False

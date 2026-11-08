@@ -27,7 +27,6 @@
 
 #quick-panel-stack {
     background: transparent;
-    padding: 12px;
 }
 
 #quick-panel-bottom-corner { background: transparent; }
@@ -45,7 +44,6 @@
     text-shadow: none;
 
     margin: 0px;
-    padding: 0px;
 
     background-color: alpha(var(--primary), 0.10);
     color: var(--primary);
@@ -90,7 +88,6 @@
     border-radius: 0;
     box-shadow: none;
     outline: none;
-    padding: 0;
     margin: 0;
     min-height: 0;
 }
@@ -174,8 +171,6 @@
     transition: opacity 110ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-#power-tab, #tools-tab { padding: 4px; }
-
 #dim-label {
     color: var(--primary);
     opacity: 0.78;
@@ -190,10 +185,6 @@
     font-weight: 600;
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
 }
-
-#battery-tab { padding: 4px; }
-
-#battery-tab-row { margin-top: -4px; margin-left: 0px; }
 
 #battery-bt-column { margin-left: 14px; }
 
@@ -245,7 +236,6 @@
 
 #battery-slider-panel {
     margin-left: 14px;
-    padding-right: 0px;
 }
 
 #battery-threshold-time {
@@ -302,8 +292,6 @@
     background-color: #ff0055;
 }
 
-#wifi-tab { padding: 4px; }
-
 #wifi-tab-row { margin-bottom: 0; }
 
 #wifi-tab-icon { font-size: 24px; color: var(--primary); }
@@ -335,7 +323,7 @@
 #wifi-tab-speed { margin-top: 0; }
 
 #power-battery-container #HyprlandLanguage-indicator {
-    padding: 0 4px; border-radius: 10px; min-height: 36px;
+    border-radius: 10px; min-height: 36px;
 }
 
 #quick-panel-scroll { background: transparent; }
@@ -346,7 +334,4 @@
 }
 #toolbox-menu-wrapper {
     background-color: transparent;
-}
-#toolbox-menu-icons {
-    padding: 4px;
 }

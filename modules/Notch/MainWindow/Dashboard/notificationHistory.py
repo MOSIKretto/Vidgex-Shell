@@ -113,7 +113,6 @@ class NotificationHistory(Box):
         self.no_notifications_box.set_no_show_all(True)
 
         self.scroll = ScrolledWindow(
-            name="bluetooth-devices",
             min_content_size=(-1, -1),
             child=Box(spacing=4, orientation="vertical",
                       children=[self.notifications_list, self.no_notifications_box]),

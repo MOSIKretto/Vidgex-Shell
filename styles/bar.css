@@ -12,33 +12,33 @@
     background-color: transparent;
 }
 #power-menu-icons {
-    padding: 4px; 
+    padding: 4px;
 }
 
 /* ══════════════════════════════════════════════════════════════════
    КНОПКИ ВЫЗОВА QUICKPANEL (Wi-Fi / Battery / Tools / Session).
 
    Единый "ghost-chip" язык: полупрозрачная подложка alpha(var(--primary),0.10)
-   в простое; на hover и на .trigger-active (вкладка реально открыта) —
-   сплошная заливка var(--primary) + var(--shadow) на тексте/иконке,
-   БЕЗ box-shadow и БЕЗ alpha-прозрачности — по явному требованию:
-   никакого неонового свечения на этих кнопках, hover и активная вкладка
-   выглядят одинаково. .trigger-active навешивается/снимается в
-   QuickPanel._activate_tab/_deactivate_tab (modules/Bar/QuickPanel/
-   __init__.py) — не зависит от положения курсора мыши.
+   в простое; на hover неактивной кнопки — сплошная заливка var(--primary)
+   + var(--shadow) на тексте/иконке, БЕЗ box-shadow и БЕЗ неонового свечения.
+
+   Активную вкладку (.trigger-active) заливает не сама кнопка, а
+   скользящая плашка, которую рисует TriggerRow (QuickPanel.py) ПОД
+   кнопками и плавно переезжает между ними. Поэтому у активной кнопки
+   фон прозрачный, а меняется только цвет иконки/текста.
+   .trigger-active навешивается/снимается в QuickPanel._activate_tab/
+   _deactivate_tab — не зависит от положения курсора.
+
+   Прозрачность активной кнопки задана как alpha(var(--primary), 0), а не
+   transparent: GTK3 интерполирует transparent как rgba(0,0,0,0), и в
+   середине перехода фон кратко темнеет.
 
    min-height: 36px — выравнивает кнопки по высоте с остальными
-   элементами этого же ряда (#date-time, #HyprlandLanguage-indicator),
-   у которых тот же min-height задан в своих блоках ниже/в
-   quickpanel.css.
+   элементами этого же ряда (#date-time, #HyprlandLanguage-indicator).
 
-   :active НЕ стилизуется здесь намеренно — это состояние гарантированно
-   переопределяет провайдер темы с приоритетом не ниже нашего обычного
-   (см. _install_active_state_fix в wifiTab.py), поэтому оно решается
-   ОТДЕЛЬНЫМ CSS-провайдером с GTK_STYLE_PROVIDER_PRIORITY_USER прямо
-   из кода — тот фикс остаётся единственным местом правды для :active,
-   дублировать его здесь нельзя (CSS с обычным приоритетом будет
-   проигран темой ровно так же, как было раньше). */
+   :active НЕ стилизуется здесь намеренно — оно решается ОТДЕЛЬНЫМ
+   CSS-провайдером с GTK_STYLE_PROVIDER_PRIORITY_USER из кода
+   (см. _install_active_state_fix в wifiTab.py). */
 #button-bar {
     background-color: alpha(var(--primary), 0.10);
     background-image: none;
@@ -50,12 +50,20 @@
     padding: 0 8px;
     border-radius: 10px;
     min-height: 36px;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 250ms ease-out;
 }
 
-/* Наведение — сплошная заливка var(--primary), текст/иконка — var(--shadow).
-   Никакого box-shadow, никакой alpha-прозрачности. */
-#button-bar:hover {
+/* Цвет иконок/текста меняется в темпе плашки (350мс у плашки, 300мс у цвета).
+   #metrics-level исключён на время глитча: иначе плавный переход размоет
+   35-мс вспышки (см. блок ГЛИТЧ-ВСПЫШКА ниже). */
+#button-bar-label,
+#metrics-icon,
+#power-battery-container #metrics-level:not(.glitching) {
+    transition: color 300ms ease-out;
+}
+
+/* Наведение на НЕактивную кнопку — сплошная заливка */
+#button-bar:not(.trigger-active):hover {
     background-color: var(--primary);
 }
 #button-bar:hover #button-bar-label,
@@ -64,10 +72,11 @@
     color: var(--shadow);
 }
 
-/* Персистентный индикатор "вкладка открыта" — та же палитра, что и hover,
-   живёт пока вкладка реально показана в QuickPanel, не зависит от курсора. */
-#button-bar.trigger-active {
-    background-color: var(--primary);
+/* Активная вкладка: фон рисует плашка под кнопкой, здесь он прозрачный,
+   меняется только цвет иконки/текста. */
+#button-bar.trigger-active,
+#button-bar.trigger-active:hover {
+    background-color: alpha(var(--primary), 0);
 }
 #button-bar.trigger-active #button-bar-label,
 #button-bar.trigger-active #metrics-icon,
@@ -75,13 +84,24 @@
     color: var(--shadow);
 }
 
+/* ── Ряд кнопок и скользящая плашка под ними ──
+   Сам ряд прозрачный. Плашку TriggerRow рисует в обработчике "draw",
+   временно добавляя ряду класс .trigger-plate (см. TriggerRow._paint_plate),
+   поэтому цвет и скругление плашки задаются здесь. */
+#quick-trigger-row {
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+}
+
+#quick-trigger-row.trigger-plate {
+    background-color: var(--primary);
+}
+
 /* Иконки кнопок вызова — Wi-Fi/Tools/Session (#button-bar-label) и
-   Battery (#metrics-icon) — ОДНО правило на оба: у них нет и не было
-   собственного font-size нигде в проекте, поэтому общее явное
-   значение здесь — единственный источник правды (а не "второй",
-   в отличие от #metrics-level, у которого свой отдельный текстовый
-   стиль ниже) и одновременно фикс визуального выравнивания размера
-   глифа между всеми четырьмя кнопками. */
+   Battery (#metrics-icon) — ОДНО правило на оба: единственный источник
+   правды для размера глифа и выравнивания между всеми четырьмя кнопками. */
 #power-battery-container #button-bar-label,
 #power-battery-container #metrics-icon {
     font-size: 15px;
@@ -96,6 +116,18 @@
     margin-left: 3px;
 }
 
+/* Цвет внутри активной/наведённой кнопки должен перебить правила выше
+   (у них специфичность #power-battery-container #id выше, чем у
+   #button-bar.trigger-active #id). */
+#power-battery-container #button-bar.trigger-active #button-bar-label,
+#power-battery-container #button-bar.trigger-active #metrics-icon,
+#power-battery-container #button-bar.trigger-active #metrics-level,
+#power-battery-container #button-bar:hover #button-bar-label,
+#power-battery-container #button-bar:hover #metrics-icon,
+#power-battery-container #button-bar:hover #metrics-level {
+    color: var(--shadow);
+}
+
 /* ══════════════════════════════════════════════════════════════════
    ОСТРОВА БАРА, "ПРИРОЩЁННЫЕ" К ЭКРАНУ
    ════════════════════════════════════════════════════════════════ */
@@ -108,53 +140,50 @@
 }
 
 #power-battery-container {
-  background-color: var(--shadow);
-  padding: 0;
-  border-radius: 0px 0px 0px 12px;
-  min-height: 36px;
+    background-color: var(--shadow);
+    padding: 0;
+    border-radius: 0px 0px 0px 12px;
+    min-height: 36px;
 }
 
 #power-battery-container #HyprlandLanguage-indicator {
-  background-color: transparent;
-  padding: 0 4px;
-  border-radius: 12px 0 0 12px;
-  min-height: 36px;
+    background-color: transparent;
+    padding: 0 4px;
+    border-radius: 12px 0 0 12px;
+    min-height: 36px;
 }
 
 /* Терминальная типографика (monospace + лёгкий letter-spacing) —
-   тот же шрифт, что уже используется во всех текстовых значениях
-   QuickPanel (quickpanel.css). Раньше часы и язык были единственными
-   текстовыми индикаторами бара на шрифте GTK-темы по умолчанию —
-   выбивались из общей "хакерской" типографики остального интерфейса. */
+   тот же шрифт, что и во всех текстовых значениях QuickPanel. */
 #power-battery-container #HyprlandLanguage-indicator #lang-label {
-  font-weight: bold;
-  font-size: 14px;
-  color: var(--primary);
-  font-family: "JetBrainsMono Nerd Font Mono", monospace;
-  letter-spacing: 0.5px;
-  padding: 0;
-  min-width: 38px;
+    font-weight: bold;
+    font-size: 14px;
+    color: var(--primary);
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    letter-spacing: 0.5px;
+    padding: 0;
+    min-width: 38px;
 }
 
 #power-battery-container #date-time {
-  background-color: transparent;
-  padding: 0 8px;
-  min-height: 36px;
+    background-color: transparent;
+    padding: 0 8px;
+    min-height: 36px;
 }
 
 #power-battery-container #date-time label {
-  font-weight: bold;
-  color: var(--primary);
-  font-size: 14px;
-  font-family: "JetBrainsMono Nerd Font Mono", monospace;
-  letter-spacing: 0.5px;
+    font-weight: bold;
+    color: var(--primary);
+    font-size: 14px;
+    font-family: "JetBrainsMono Nerd Font Mono", monospace;
+    letter-spacing: 0.5px;
 }
 
 #power-battery-container #battery {
-  background-color: transparent;
-  padding: 0;
-  border-radius: 12px;
-  min-height: 36px;
+    background-color: transparent;
+    padding: 0;
+    border-radius: 12px;
+    min-height: 36px;
 }
 
 /* ── Контейнеры вокруг MyCorner верхней панели (Bar) обязаны быть прозрачными ── */
@@ -164,14 +193,14 @@
 #bar-left-corner #corner-container,
 #bar-right-corner #corner-container,
 #bar-right-bottom-corner #corner-container {
-  background-color: transparent;
+    background-color: transparent;
 }
 
 /* ── Сама фигура MyCorner верхней панели красится в цвет островов ── */
 #bar-left-corner #corner,
 #bar-right-corner #corner,
 #bar-right-bottom-corner #corner {
-  background-color: var(--shadow);
+    background-color: var(--shadow);
 }
 
 
@@ -185,29 +214,29 @@
 #date-time.glitching label,
 #lang-label.glitching,
 #metrics-level.glitching {
-  opacity: 0.85;
+    opacity: 0.85;
 }
 
 #date-time.glitch-aberration label,
 #lang-label.glitch-aberration,
 #metrics-level.glitch-aberration {
-  text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
-               -1.5px 0 alpha(#00e5ff, 0.85),
-                0      0 4px transparent;
+    text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
+                 -1.5px 0 alpha(#00e5ff, 0.85),
+                  0      0 4px transparent;
 }
 
 #date-time.glitch-color-swap label,
 #lang-label.glitch-color-swap,
 #metrics-level.glitch-color-swap {
-  color: #ff0040;
-  text-shadow: 0 0 4px alpha(#ff0040, 0.5);
+    color: #ff0040;
+    text-shadow: 0 0 4px alpha(#ff0040, 0.5);
 }
 
 #date-time.glitch-aberration.glitch-color-swap label,
 #lang-label.glitch-aberration.glitch-color-swap,
 #metrics-level.glitch-aberration.glitch-color-swap {
-  color: #ff0040;
-  text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
-               -1.5px 0 alpha(#00e5ff, 0.85),
-                0      0 4px alpha(#ff0040, 0.4);
+    color: #ff0040;
+    text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
+                 -1.5px 0 alpha(#00e5ff, 0.85),
+                  0      0 4px alpha(#ff0040, 0.4);
 }

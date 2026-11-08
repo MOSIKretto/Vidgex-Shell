@@ -30,10 +30,6 @@ __all__ = [
     "set_matrix_order",
 ]
 
-# Верхний уголок боковой панели: собственная длительность, не менялась.
-_CORNER_ANIM_MS = 200
-
-
 def _corner_box(name: str) -> Box:
     return Box(name=name, h_align="start", v_align="start", children=[MyCorner("top-left")])
 
@@ -43,7 +39,6 @@ class SideBarWindow(LifecycleMixin, Window):
         super().__init__(exclusivity="none", layer="overlay", monitor_id=monitor_id)
         self._init_lifecycle()
         self.anchor = "left top"
-        # Отступ -8px, чтобы левая панель плотно прилегала к краю экрана
         self.margin = "0px 0px 0px -8px"
 
         self.conn = conn
@@ -53,6 +48,7 @@ class SideBarWindow(LifecycleMixin, Window):
 
         self._ws_switch_timer_id = 0
         self._mouse_over = False
+        self._fullscreen = False
         self._force_revealed = self.ws.actions_visible
         self._is_hidden = not self.ws.has_multiple_rows and not self._force_revealed
         self._bar_width = 36
@@ -71,6 +67,9 @@ class SideBarWindow(LifecycleMixin, Window):
 
     def _cancel_timers(self):
         self._ws_switch_timer_id = self._cancel_source(self._ws_switch_timer_id)
+
+    def _needs_fullscreen_watch(self) -> bool:
+        return not self._destroyed and (self.get_mapped() or self._fullscreen)
 
     def _needs_occlusion_watch(self) -> bool:
         return (
@@ -109,6 +108,12 @@ class SideBarWindow(LifecycleMixin, Window):
         self.revealer.set_reveal_child(not hidden)
         self._sync_top_corner()
         self.ws.sync_joint()
+
+    def _set_fullscreen(self, fullscreen: bool):
+        if self._fullscreen == fullscreen:
+            return
+        self._fullscreen = fullscreen
+        self.set_visible(not fullscreen)
 
     def _sync_activator_visibility(self):
         self.activator.set_visible(self.ws.has_multiple_rows or self._force_revealed)
@@ -164,7 +169,7 @@ class SideBarWindow(LifecycleMixin, Window):
         self.top_corner = _corner_box("sidebar-top-corner")
         self.revealer_top_corner = Revealer(
             transition_type="slide-down",
-            transition_duration=_CORNER_ANIM_MS,
+            transition_duration=200,
             child_revealed=(self.ws.has_multiple_cols or self._force_revealed or self._is_hidden),
             child=self.top_corner,
         )
@@ -209,6 +214,7 @@ class SideBarWindow(LifecycleMixin, Window):
             return
         if not self.ws.has_multiple_rows and not self._force_revealed:
             self._last_row = 0
+            self.ws.request_occlusion_check()
             return
 
         cur_row = self.ws.get_active_row(ws)
@@ -218,14 +224,14 @@ class SideBarWindow(LifecycleMixin, Window):
         if not row_changed:
             self._schedule_occlusion()
             return
-        if not self.get_mapped():
+        if not self._needs_fullscreen_watch():
             return
 
         self._ws_switch_active = True
         self.ws.sync_occlusion_watch()
-        self._set_hidden(False)
         self._cancel_timers()
         self._ws_switch_timer_id = GLib.timeout_add(1500, self._on_ws_switch_timeout)
+        self.ws.request_occlusion_check()
 
     def _on_ws_switch_timeout(self):
         self._ws_switch_timer_id = 0
@@ -238,7 +244,8 @@ class SideBarWindow(LifecycleMixin, Window):
         if self._destroyed:
             return
         self.ws.sync_occlusion_watch()
-        if not self._resolve_static_visibility() and self.get_mapped():
+        self._resolve_static_visibility()
+        if self._needs_fullscreen_watch():
             self.ws.request_occlusion_check()
 
     def _extract_monitor_info(self, monitors: list) -> tuple[int, int, int] | None:
@@ -252,14 +259,7 @@ class SideBarWindow(LifecycleMixin, Window):
                 return int(m.get("x", 0)), int(m.get("y", 0)), int(ws_id)
         return None
 
-    def _apply_occlusion_data(self, monitors: list, clients: list):
-        if self._destroyed or self._resolve_static_visibility():
-            return
-        mon_info = self._extract_monitor_info(monitors)
-        if mon_info is None:
-            return
-
-        mon_x, mon_y, active_ws_id = mon_info
+    def _scan_clients(self, clients: list, mon_x: int, mon_y: int, active_ws_id: int) -> tuple[bool, bool]:
         px1, px2 = mon_x, mon_x + self._bar_width
         py1, py2 = mon_y + 36, mon_y + 36 + self._bar_height
 
@@ -277,14 +277,27 @@ class SideBarWindow(LifecycleMixin, Window):
             if w_mon_id != self.monitor_id and str(w_mon_id) != self._monitor_id_str:
                 continue
             if w.get("fullscreen"):
-                overlap = True
-                break
+                return True, overlap
+            if overlap:
+                continue
             pos, size = w.get("at"), w.get("size")
             if not pos or not size or len(pos) < 2 or len(size) < 2:
                 continue
-            if pos[0] < px2 and pos[0] + size[0] > px1 and pos[1] < py2 and pos[1] + size[1] > py1:
-                overlap = True
-                break
+            overlap = pos[0] < px2 and pos[0] + size[0] > px1 and pos[1] < py2 and pos[1] + size[1] > py1
+
+        return False, overlap
+
+    def _apply_occlusion_data(self, monitors: list, clients: list):
+        if self._destroyed:
+            return
+        mon_info = self._extract_monitor_info(monitors)
+        if mon_info is None:
+            return
+
+        fullscreen, overlap = self._scan_clients(clients, *mon_info)
+        self._set_fullscreen(fullscreen)
+        if fullscreen or self._resolve_static_visibility():
+            return
 
         self._set_hidden(overlap)
 

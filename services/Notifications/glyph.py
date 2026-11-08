@@ -15,9 +15,9 @@ from fabric.widgets.revealer import Revealer
 Gst.init(None)
 
 _TICKS = 35
+_TICK_INTERVAL_MS = 40
 _DUCK_RATIO = 0.20
 _FADE_INTERVAL_MS = 25
-
 _STEPS = 13
 
 _STATE_IDLE = 0
@@ -27,13 +27,16 @@ _STATE_UNDUCKING = 3
 
 _APP_ID = "fabric.glitch.sound"
 _STREAM_NAME = "fabric-glitch-sound"
+
 _STREAM_PROPS, _ = Gst.Structure.from_string(
     f"props,application.id=(string){_APP_ID},"
     f"application.name=(string){_STREAM_NAME},"
     f"media.name=(string){_STREAM_NAME}"
 )
+
 _SOUND_URI = GLib.filename_to_uri(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "Glyph", "glitch.wav"), None
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "Glyph", "glitch.wav"),
+    None,
 )
 
 _GLITCH_CLASSES = (
@@ -73,25 +76,27 @@ class GlitchSound:
         "_state",
         "_fade_step",
         "_fade_tid",
+        "_closed",
     )
 
     def __init__(self) -> None:
+        self._closed = False
+
         self._control = Cvc.MixerControl(name=_STREAM_NAME)
-        self._control.open()
-        self._control_sigs: list[int] = []
+        self._control_sigs: list[tuple[Cvc.MixerControl, int]] = []
         self._stream_sigs: dict[int, tuple[Cvc.MixerStream, int]] = {}
         self._saved_volumes: dict[int, int] = {}
-        # Потоки, исчезнувшие задушенными: app_id -> громкость до уведомлений.
-        # Нужны, т.к. аудиосервер запоминает задушенные 20% (stream-restore),
-        # и новый поток приложения иначе стартует с них — в т.ч. после рестарта.
         self._pending_restores: dict[str, int] = {}
         self._fade_start: dict[int, int] = {}
         self._state = _STATE_IDLE
         self._fade_step = 0
         self._fade_tid: int | None = None
 
+        self._control_sigs.append((self._control, self._control.connect("stream-added", self._on_stream_added)))
+        self._control_sigs.append((self._control, self._control.connect("stream-removed", self._on_stream_removed)))
+
         self._playbin = Gst.ElementFactory.make("playbin", None)
-        self._playbin.set_property("flags", 0x02)  # GST_PLAY_FLAG_AUDIO
+        self._playbin.set_property("flags", 0x02)
         self._playbin.set_property("uri", _SOUND_URI)
         self._bus = self._playbin.get_bus()
         self._bus.add_signal_watch()
@@ -100,9 +105,8 @@ class GlitchSound:
             (self._bus, self._bus.connect("message::eos", self._stop)),
             (self._bus, self._bus.connect("message::error", self._stop)),
         ]
-        # Подписываемся сразу, а не только на время уведомления: иначе потоки,
-        # пересозданные в IDLE после duck, никто не восстановит.
-        self._ensure_subscriptions()
+
+        self._control.open()
 
     @staticmethod
     def _on_element_setup(_playbin: Gst.Element, element: Gst.Element) -> None:
@@ -119,6 +123,10 @@ class GlitchSound:
             or stream.get_description() == _STREAM_NAME
         )
 
+    @staticmethod
+    def _stream_app_key(stream: Cvc.MixerStream) -> str | None:
+        return stream.get_application_id() or stream.get_name() or None
+
     def _target_volume(self) -> int:
         return int(self._control.get_vol_max_norm() * _DUCK_RATIO)
 
@@ -126,15 +134,6 @@ class GlitchSound:
         if self._fade_tid is not None:
             GLib.source_remove(self._fade_tid)
             self._fade_tid = None
-
-    def _ensure_subscriptions(self) -> None:
-        if not self._control_sigs:
-            self._control_sigs.append(
-                self._control.connect("stream-added", self._on_stream_added)
-            )
-            self._control_sigs.append(
-                self._control.connect("stream-removed", self._on_stream_removed)
-            )
 
     def _register_stream(self, stream: Cvc.MixerStream, immediate: bool) -> None:
         if not isinstance(stream, Cvc.MixerSinkInput) or self._is_own_stream(stream):
@@ -147,42 +146,50 @@ class GlitchSound:
 
         target_vol = self._target_volume()
         current_vol = stream.get_volume()
-        if current_vol > target_vol:
-            if stream_id not in self._saved_volumes:
-                self._saved_volumes[stream_id] = current_vol
-            if immediate:
-                stream.set_volume(target_vol)
-                stream.push_volume()
-            else:
-                self._fade_start[stream_id] = current_vol
+        if current_vol <= target_vol:
+            return
+
+        if stream_id not in self._saved_volumes:
+            self._saved_volumes[stream_id] = current_vol
+        if immediate:
+            stream.set_volume(target_vol)
+            stream.push_volume()
+        else:
+            self._fade_start[stream_id] = current_vol
 
     def _on_stream_volume(self, stream: Cvc.MixerStream, _pspec) -> None:
+        if self._is_own_stream(stream):
+            return
         if self._state != _STATE_PLAYING:
             return
+
+        stream_id = stream.get_id()
         target_vol = self._target_volume()
         current_vol = stream.get_volume()
+
+        if current_vol == target_vol:
+            return
+
+        saved_vol = self._saved_volumes.get(stream_id)
+
         if current_vol > target_vol:
-            stream_id = stream.get_id()
-            if stream_id not in self._saved_volumes:
+            if saved_vol is None or current_vol < saved_vol:
                 self._saved_volumes[stream_id] = current_vol
             stream.set_volume(target_vol)
             stream.push_volume()
+            return
 
-    @staticmethod
-    def _stream_app_key(stream: Cvc.MixerStream) -> str | None:
-        return stream.get_application_id() or stream.get_name() or None
+        if saved_vol is not None and current_vol < saved_vol:
+            self._saved_volumes[stream_id] = current_vol
 
     def _restore_pending_volume(self, stream: Cvc.MixerStream) -> None:
-        """Вернуть исходную громкость потоку, унаследовавшему задушенное значение."""
         if self._is_own_stream(stream):
             return
         key = self._stream_app_key(stream)
         if not key:
             return
         saved_vol = self._pending_restores.pop(key, None)
-        if saved_vol is None:
-            return
-        if stream.get_volume() < saved_vol:
+        if saved_vol is not None and stream.get_volume() < saved_vol:
             stream.set_volume(saved_vol)
             stream.push_volume()
 
@@ -190,8 +197,6 @@ class GlitchSound:
         stream = self._control.lookup_stream_id(stream_id)
         if stream is None:
             return
-        # Новый поток мог унаследовать задушенную громкость через stream-restore —
-        # восстанавливаем до duck-логики, иначе она сочтёт 20% исходными.
         self._restore_pending_volume(stream)
         if self._state in (_STATE_IDLE, _STATE_UNDUCKING):
             return
@@ -199,17 +204,16 @@ class GlitchSound:
 
     def _on_stream_removed(self, _control: Cvc.MixerControl, stream_id: int) -> None:
         entry = self._stream_sigs.pop(stream_id, None)
-        stream = entry[0] if entry is not None else None
         if entry is not None:
-            _, sig_id = entry
+            stream, sig_id = entry
             stream.disconnect(sig_id)
+        else:
+            stream = None
         saved_vol = self._saved_volumes.pop(stream_id, None)
         self._fade_start.pop(stream_id, None)
         if saved_vol is not None and stream is not None and not self._is_own_stream(stream):
             key = self._stream_app_key(stream)
             if key:
-                # Поток исчез задушенным: сервер мог запомнить заниженную
-                # громкость — восстановим её, когда приложение создаст новый поток.
                 self._pending_restores[key] = saved_vol
 
     def _on_fade_tick(self) -> bool:
@@ -285,19 +289,13 @@ class GlitchSound:
         self._state = _STATE_IDLE
         self._fade_start.clear()
         self._saved_volumes.clear()
-
-        # Подписки на появление/исчезновение потоков НЕ снимаем специально:
-        # так _on_stream_added ловит потоки, пересозданные после duck,
-        # и возвращает им исходную громкость через _pending_restores.
-        # _pending_restores при этом не чистим — восстановление может
-        # понадобиться позже, когда приложение создаст новый поток.
-
         while self._stream_sigs:
             _, (stream, sig_id) = self._stream_sigs.popitem()
             stream.disconnect(sig_id)
 
     def play(self) -> None:
-        self._ensure_subscriptions()
+        if self._closed:
+            return
 
         if self._state == _STATE_PLAYING:
             for stream in self._control.get_sink_inputs():
@@ -319,10 +317,16 @@ class GlitchSound:
         self._fade_tid = GLib.timeout_add(_FADE_INTERVAL_MS, self._on_fade_tick)
 
     def _stop(self, _bus: Gst.Bus, _msg: Gst.Message) -> None:
+        if self._state != _STATE_PLAYING:
+            return
         self._playbin.set_state(Gst.State.NULL)
         self._start_unduck()
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+
         self._cancel_fade_timer()
         while self._sig_ids:
             obj, sig_id = self._sig_ids.pop()
@@ -343,7 +347,8 @@ class GlitchSound:
         self._reset_to_idle()
 
         while self._control_sigs:
-            self._control.disconnect(self._control_sigs.pop())
+            obj, sig_id = self._control_sigs.pop()
+            obj.disconnect(sig_id)
 
         self._control.close()
 
@@ -377,15 +382,19 @@ class SideGlyph(Gtk.Overlay):
         self.revealer.set_reveal_child(False)
         self.add_overlay(self.revealer)
 
-        self.show_all()
-
         self._lbl_ctx = self.lbl.get_style_context()
-        self._active_classes: set = set()
+        self._active_classes: set[str] = set()
         self._current_markup = _BASE_MARKUP
         self._gl_rem = 0
-        self._gl_tid = None
+        self._gl_tid: int | None = None
+        self._trigger_pending = False
         self._destroyed = False
+
         self.connect("destroy", self._on_destroy)
+        self.connect("map", self._on_map)
+        self.connect("unmap", self._on_unmap)
+
+        self.show_all()
 
     def _add_class(self, cls: str) -> None:
         self._lbl_ctx.add_class(cls)
@@ -399,19 +408,29 @@ class SideGlyph(Gtk.Overlay):
             self.lbl.set_markup(_BASE_MARKUP)
             self._current_markup = _BASE_MARKUP
 
+    def _cancel_timer(self) -> None:
+        if self._gl_tid is not None:
+            GLib.source_remove(self._gl_tid)
+            self._gl_tid = None
+
     def trigger(self) -> None:
         if self._destroyed:
             return
+        if not self.get_mapped():
+            self._trigger_pending = True
+            return
+        self._run_animation()
 
-        if self._gl_tid is not None:
-            GLib.source_remove(self._gl_tid)
+    def _run_animation(self) -> None:
+        self._cancel_timer()
         self._clear_visual()
         self.revealer.set_reveal_child(True)
         self._gl_rem = _TICKS
-        self._gl_tid = GLib.timeout_add(40, self._tick)
+        self._gl_tid = GLib.timeout_add(_TICK_INTERVAL_MS, self._tick)
 
     def _tick(self) -> bool:
         if self._destroyed:
+            self._gl_tid = None
             return False
 
         self._gl_rem -= 1
@@ -439,10 +458,24 @@ class SideGlyph(Gtk.Overlay):
 
         return True
 
+    def _on_map(self, _widget) -> None:
+        if self._trigger_pending:
+            self._trigger_pending = False
+            if not self._destroyed:
+                self._run_animation()
+
+    def _on_unmap(self, _widget) -> None:
+        self._trigger_pending = False
+        self._cancel_timer()
+        self._gl_rem = 0
+        self._clear_visual()
+        self.revealer.set_reveal_child(False)
+
     def _on_destroy(self, _widget) -> None:
         if self._destroyed:
             return
         self._destroyed = True
+        self._trigger_pending = False
         if self._gl_tid is not None:
             GLib.source_remove(self._gl_tid)
             self._gl_tid = None

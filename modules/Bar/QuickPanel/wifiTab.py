@@ -1,4 +1,3 @@
-# modules/Bar/QuickPanel/wifiTab.py
 from bisect import bisect_right
 
 from gi.repository import GLib
@@ -171,7 +170,12 @@ class WifiTrigger:
 
 class WifiTab(Box):
     def __init__(self, client, **kwargs):
-        super().__init__(name="wifi-tab", orientation="v", spacing=2, h_align="center", **kwargs)
+        super().__init__(
+            name="wifi-tab", orientation="v", spacing=0,
+            h_align="fill", v_align="fill",
+            h_expand=True, v_expand=True,
+            **kwargs,
+        )
         self._client = client
 
         self._icon = Label(name="wifi-tab-icon", markup=icons.wifi_off)
@@ -210,11 +214,14 @@ class WifiTab(Box):
             Box(orientation="h", spacing=4, children=[self._ul_icon, self._ul_lbl]),
         ])
 
-        self.add(row1)
-        self.add(row2)
-        # Распорка — см. докстринг класса. Должна быть добавлена ПОСЛЕДНЕЙ,
-        # иначе "съест" место сверху, а не снизу.
-        self.add(Box(v_expand=True))
+        # Единственный ребёнок вкладки: оба ряда в одном блоке, который
+        # центрируется и по X, и по Y средствами GTK.
+        self.add(Box(
+            orientation="v", spacing=2,
+            h_align="center", v_align="center",
+            h_expand=True, v_expand=True,
+            children=[row1, row2],
+        ))
 
         self._state = WifiIconState(client, on_icon=self._icon.set_markup, on_subtitle=self._on_subtitle)
 

@@ -46,10 +46,9 @@ def _section(title: str, child):
 
 def _scroll(child):
     window = ScrolledWindow(
-        name="bluetooth-devices", min_content_size=(-1, -1), child=child,
+        min_content_size=(-1, -1), child=child,
         h_expand=True, v_expand=True, propagate_width=False, propagate_height=False,
     )
-    window.set_overlay_scrolling(False)
     return window
 
 

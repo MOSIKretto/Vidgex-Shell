@@ -1,3 +1,6 @@
+import json
+
+from fabric.hyprland.service import Hyprland
 from fabric.widgets.box import Box
 from fabric.widgets.shapes import Corner
 
@@ -17,11 +20,11 @@ class Corners(WaylandWindow):
         super().__init__(
             layer="overlay",
             anchor="top bottom left right",
-            exclusivity="normal",
+            exclusivity="none",
             pass_through=True,
         )
 
-        self.add(Box(
+        self.corners_box = Box(
             name="all-corners",
             orientation="v",
             children=(
@@ -36,5 +39,28 @@ class Corners(WaylandWindow):
                     ),
                 ),
             ),
-        ))
+        )
+
+        self.add(self.corners_box)
         self.show_all()
+
+        self.hyprland = Hyprland()
+
+        events = [
+            "fullscreen",
+            "workspace",
+            "activewindow",
+            "closewindow",
+            "focusedmon",
+        ]
+        for event in events:
+            self.hyprland.connect(f"event::{event}", self.update_visibility)
+
+        self.update_visibility()
+
+    def update_visibility(self, *args):
+        response = self.hyprland.send_command("j/activeworkspace").reply.decode()
+        workspace_data = json.loads(response)
+        has_fullscreen = workspace_data.get("hasfullscreen", False)
+
+        self.corners_box.set_visible(not has_fullscreen)

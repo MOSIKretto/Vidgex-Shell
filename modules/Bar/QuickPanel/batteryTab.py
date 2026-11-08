@@ -21,7 +21,7 @@ _POWER_SUPPLY_DIR = "/sys/class/power_supply"
 _FALLBACK_POLL_SECONDS = 30
 _PCT_WIDTH_PX = 34
 _RETRY_DELAY_MS = 2000
-_THRESHOLD_PANEL_TRANSITION_MS = 360
+_THRESHOLD_PANEL_TRANSITION_MS = 480
 _SLIDER_COL_WIDTH_PX = 157
 _HEADER_HEIGHT_PX = 16
 
@@ -720,14 +720,29 @@ class PowerModePulse(Gtk.DrawingArea):
 
 
 class BatteryCircle(Box):
+    """Кружок с кольцом и подписью-процентом.
+
+    Раскладка (сверху вниз): верхний отступ, кольцо, нижний слот под
+    подпись. Отступ и слот ВСЕГДА одной высоты (Gtk.SizeGroup), высота
+    слота задаётся невидимой "призрачной" подписью с тем же шрифтом.
+    Поэтому:
+      - кольцо всегда ровно по центру виджета, независимо от подписи;
+      - подпись выезжает (Revealer) внутри своего слота и не обрезается;
+      - высота виджета не меняется при наведении.
+    Никаких констант-отступов: размер берётся из реального шрифта.
+    """
+
+    _LABEL_GAP_PX = 2   # зазор между кольцом и подписью
+
     def __init__(self, icon_markup: str):
-        super().__init__(name="battery-circle", orientation="v", spacing=2,
+        super().__init__(name="battery-circle", orientation="v", spacing=0,
                          h_align="center", v_align="start")
         self._ring = BatteryRing(icon_markup)
         self._ring.connect("enter-notify-event", self._on_enter)
         self._ring.connect("leave-notify-event", self._on_leave)
 
         self._pct_label = Label(name="battery-circle-pct", label="—")
+        self._pct_label.set_margin_top(self._LABEL_GAP_PX)
         self._reveal = Revealer(
             name="battery-circle-reveal",
             transition_type="slide-down",
@@ -735,12 +750,33 @@ class BatteryCircle(Box):
             child_revealed=False,
             child=self._pct_label,
         )
+        self._reveal.set_halign(Gtk.Align.CENTER)
+        self._reveal.set_valign(Gtk.Align.START)
+
+        # Невидимая подпись: задаёт высоту слота (и ширину под "100%").
+        ghost = Label(name="battery-circle-pct", label="100%")
+        ghost.set_margin_top(self._LABEL_GAP_PX)
+        ghost.set_opacity(0.0)
+
+        slot = Gtk.Overlay()
+        slot.add(ghost)
+        slot.add_overlay(self._reveal)
+        slot.set_overlay_pass_through(self._reveal, True)
+
+        top_pad = Box()
+
+        # Верхний отступ и нижний слот всегда одинаковой высоты.
+        self._size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.VERTICAL)
+        self._size_group.add_widget(top_pad)
+        self._size_group.add_widget(slot)
+
         self._wrap = Box(orientation="v", h_align="center")
         self._wrap.get_style_context().add_class("battery-circle-wrap")
         self._wrap.add(self._ring)
 
+        self.add(top_pad)
         self.add(self._wrap)
-        self.add(self._reveal)
+        self.add(slot)
         self._hoverable = True
         self._is_trigger = False
 
@@ -902,9 +938,12 @@ class BatteryTab(Box):
     _BT_SLOTS = 4
 
     def __init__(self, bluetooth_client=None, **kwargs):
-        super().__init__(name="battery-tab", orientation="v", spacing=0,
-                         h_align="start", v_align="start", v_expand=False,
-                         h_expand=True, **kwargs)
+        super().__init__(
+            name="battery-tab", orientation="v", spacing=0,
+            h_align="fill", v_align="fill",
+            h_expand=True, v_expand=True,
+            **kwargs,
+        )
         self._bt_client = bluetooth_client
         self._bt_subs = Subscriptions()
         self._bt_watched: dict[str, object] = {}
@@ -926,7 +965,7 @@ class BatteryTab(Box):
         )
         self._device_event.connect("button-press-event", self._on_device_pressed)
         self._device_event.connect("button-release-event", self._on_device_released)
-        self._device_event.set_margin_top(4)
+        self._device_event.set_valign(Gtk.Align.CENTER)
 
         self._bt_circles = [BatteryCircle(icons.plus) for _ in range(self._BT_SLOTS)]
         for circle in self._bt_circles:
@@ -937,18 +976,10 @@ class BatteryTab(Box):
             name="battery-bt-row", orientation="h", spacing=14,
             h_align="start", v_align="start", children=self._bt_circles,
         )
-        self._bt_spacer = Box(name="battery-bt-spacer")
-        self._bt_spacer.set_size_request(-1, 4)
-
         self._bt_column = Box(
             name="battery-bt-column", orientation="v", spacing=0,
-            h_align="start", v_align="start",
-            children=[self._bt_spacer, self._bt_row],
-        )
-        self._bt_row_revealer = Revealer(
-            name="battery-bt-revealer", transition_type="slide-left",
-            transition_duration=_THRESHOLD_PANEL_TRANSITION_MS,
-            child_revealed=True, child=self._bt_column,
+            h_align="start", v_align="center",
+            children=[self._bt_row],
         )
 
         self._threshold_time_label = Label(
@@ -976,27 +1007,46 @@ class BatteryTab(Box):
 
         self._mode_pulse = PowerModePulse(_power_mode)
 
-        slider_panel = Box(
+        # Панель слайдера центрируется по вертикали внутри стека: её
+        # кольцо (пульс) оказывается на одной линии с кольцами BT-кружков.
+        self._slider_panel = Box(
             name="battery-slider-panel", orientation="h", spacing=14,
-            h_align="start", v_align="start",
+            h_align="start", v_align="center",
             children=[left_col, self._mode_pulse],
         )
-        slider_panel.set_margin_top(4)
 
-        self._slider_revealer = Revealer(
-            name="battery-slider-revealer", transition_type="slide-right",
-            transition_duration=_THRESHOLD_PANEL_TRANSITION_MS,
-            child_revealed=False,
-            h_align="start", h_expand=False, v_align="start", child=slider_panel,
-        )
+        # Один Stack вместо двух Revealer: BT-кружки и панель слайдера
+        # занимают одно место и сменяют друг друга слайдом. Гомогенный
+        # размер — ширина и высота не меняются во время анимации.
+        # ВАЖНО: на этот Stack нельзя вешать padding в CSS (иначе слайд
+        # уедет по вертикали, как было с #quick-panel-stack).
+        self._expand_stack = Gtk.Stack()
+        self._expand_stack.set_name("battery-expand-stack")
+        self._expand_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self._expand_stack.set_transition_duration(_THRESHOLD_PANEL_TRANSITION_MS)
+        self._expand_stack.set_homogeneous(True)
+        self._expand_stack.set_interpolate_size(False)
+        self._expand_stack.set_halign(Gtk.Align.START)
+        self._expand_stack.set_valign(Gtk.Align.CENTER)
+        self._bt_column.show()
+        self._slider_panel.show()
+        self._expand_stack.add_named(self._bt_column, "bt")
+        self._expand_stack.add_named(self._slider_panel, "slider")
+        self._expand_stack.set_visible_child_name("bt")
+        self._expand_stack.connect("notify::transition-running", self._on_expand_transition)
 
+        # Единственный ребёнок вкладки: ряд центрируется и по X, и по Y
+        # средствами GTK. Высота ряда = высота BatteryCircle (кольцо
+        # посередине), поэтому кольца стоят по центру окна.
         self._top_row = Box(
             name="battery-tab-row", orientation="h", spacing=0,
-            h_align="start", v_align="start", h_expand=True,
-            children=[self._device_event, self._bt_row_revealer, self._slider_revealer],
+            h_align="center", v_align="center",
+            h_expand=True, v_expand=True,
+            children=[self._device_event, self._expand_stack],
         )
 
         self.add(self._top_row)
+
         self._mode_pulse.set_mode(_power_mode)
         self._apply_device_visibility()
 
@@ -1023,13 +1073,20 @@ class BatteryTab(Box):
             return
         self._expanded = expanded
         self._device.set_active(expanded)
-        self._bt_row_revealer.set_reveal_child(not expanded)
-        self._slider_revealer.set_reveal_child(expanded)
+        self._expand_stack.set_visible_child_name("slider" if expanded else "bt")
         if expanded:
             self._update_threshold_time()
             self._mode_pulse.set_mode(_power_mode)
             self._mode_pulse.set_running(self._active)
-        else:
+        elif not self._expand_stack.get_transition_running():
+            # Слайд не запущен (анимации выключены / вкладка не показана) —
+            # уведомления об окончании не будет, гасим волну сразу.
+            self._mode_pulse.stop()
+
+    def _on_expand_transition(self, stack, _pspec) -> None:
+        # Волна продолжает бежать, пока панель уезжает, и гасится
+        # только после окончания слайда.
+        if not stack.get_transition_running() and not self._expanded:
             self._mode_pulse.stop()
 
     def _on_threshold_drag(self, _pct: int) -> None:

@@ -204,12 +204,12 @@
 #bluetooth-connect.connected:active {
   background-color: var(--shadow);
   border-color: var(--shadow);
-  color: var(--cursor);
+  color: var(--foreground);
 }
 
 #bluetooth-connect.connected.pressed *,
 #bluetooth-connect.connected:active * {
-  color: var(--cursor);
+  color: var(--foreground);
 }
 
 
@@ -447,26 +447,6 @@
 #bluetooth-devices,
 #bluetooth-devices viewport {
   background: transparent;
-}
-
-scrollbar, scrollbar trough {
-  background: transparent;
-  border: none;
-  min-width: 4px; 
-}
-
-scrollbar slider {
-  background-color: rgba(128, 128, 128, 0.3);
-  border-radius: 100px;
-  margin: 2px;
-}
-
-scrollbar slider:hover {
-  background-color: rgba(128, 128, 128, 0.6);
-}
-
-scrollbar slider:active {
-  background-color: var(--primary);
 }
 
 .net-info-group {

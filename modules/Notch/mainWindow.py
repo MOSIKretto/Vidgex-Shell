@@ -1,6 +1,6 @@
 import gi
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 from fabric.widgets.box import Box
 from fabric.widgets.stack import Stack
@@ -12,6 +12,84 @@ from modules.Notch.MainWindow.dashboard import Dashboard
 
 _NAV_ITEMS = ("dashboard", "player", "wallpapers", "close")
 _DASHBOARD_APPLETS = frozenset({"dashboard", "network_applet", "bluetooth"})
+
+_INDICATOR_MS = 350   # скольжение плашки
+_STACK_MS = 480       # слайд содержимого (у Gtk.Stack easing фиксированный, меняется только время)
+
+
+def _smootherstep(t: float) -> float:
+    return t * t * t * (t * (6.0 * t - 15.0) + 10.0)
+
+
+class SlidingIndicator(Gtk.DrawingArea):
+    """Плашка, плавно переезжающая к целевому прямоугольнику."""
+
+    def __init__(self, duration_ms: int = _INDICATOR_MS):
+        super().__init__(name="switcher-indicator")
+        self._duration = duration_ms * 1000      # микросекунды (frame clock)
+        self._cur = None                         # [x, y, w, h] текущее
+        self._from = None
+        self._to = None                          # (x, y, w, h) цель
+        self._t0 = None
+        self._tick_id = 0
+        self.set_hexpand(True)
+
+    # --- публичное API ---
+    def move_to(self, x, y, w, h, animate: bool = True) -> None:
+        target = (x, y, w, h)
+        if target == self._to:                   # цель не изменилась: не прерываем анимацию
+            return
+        self._to = target
+
+        # Ресайз во время анимации: просто обновляем цель, плашка доедет сама
+        if not animate and self._tick_id:
+            return
+
+        settings = Gtk.Settings.get_default()
+        animations_on = settings.get_property("gtk-enable-animations")
+
+        if self._cur is None or not animate or not animations_on or not self.get_mapped():
+            self.stop()
+            self._cur = list(target)
+            self.queue_draw()
+            return
+
+        self._from = list(self._cur)
+        self._t0 = None
+        if not self._tick_id:
+            self._tick_id = self.add_tick_callback(self._on_tick)
+
+    def stop(self) -> None:
+        if self._tick_id:
+            self.remove_tick_callback(self._tick_id)
+            self._tick_id = 0
+
+    # --- внутреннее ---
+    def _on_tick(self, _widget, clock) -> bool:
+        now = clock.get_frame_time()
+        if self._t0 is None:
+            self._t0 = now
+
+        t = (now - self._t0) / self._duration
+        if t >= 1.0:
+            self._cur = list(self._to)
+            self._tick_id = 0
+            self.queue_draw()
+            return GLib.SOURCE_REMOVE
+
+        e = _smootherstep(t)
+        self._cur = [f + (to - f) * e for f, to in zip(self._from, self._to)]
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def do_draw(self, cr) -> bool:
+        if self._cur is None:
+            return False
+        x, y, w, h = self._cur
+        ctx = self.get_style_context()
+        Gtk.render_background(ctx, cr, x, y, w, h)
+        Gtk.render_frame(ctx, cr, x, y, w, h)
+        return False
 
 
 class MainWindow(Box):
@@ -33,6 +111,7 @@ class MainWindow(Box):
         self.stack = Stack(
             name="stack",
             transition_type="slide-left-right",
+            transition_duration=_STACK_MS,
             v_expand=True,
         )
         self.stack.set_homogeneous(False)
@@ -57,6 +136,7 @@ class MainWindow(Box):
         self.switcher.pack_end(self.close_button, False, False, 0)
 
         self._size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        self._nav_buttons = []
         for child in self.switcher.get_children():
             child.set_can_focus(False)
             if child is not self.close_button:
@@ -64,6 +144,23 @@ class MainWindow(Box):
                     child, True, True, 0, Gtk.PackType.START
                 )
                 self._size_group.add_widget(child)
+                self._nav_buttons.append(child)      # порядок = порядок страниц стека
+        self._nav_buttons.append(self.close_button)  # индекс 3
+
+        # --- Скользящий индикатор: Overlay(main=indicator, overlay=switcher) ---
+        self.indicator = SlidingIndicator()
+        self.switcher_overlay = Gtk.Overlay()
+        self.switcher_overlay.add(self.indicator)
+        self.switcher_overlay.add_overlay(self.switcher)
+
+        self._indicator_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.VERTICAL)
+        self._indicator_group.add_widget(self.indicator)
+        self._indicator_group.add_widget(self.switcher)
+
+        # после раскладки кнопок пересчитываем цель (без анимации: это ресайз)
+        self.switcher.connect_after(
+            "size-allocate", lambda *_: self._sync_indicator(animate=False)
+        )
 
         self.stack.connect("notify::visible-child", self._on_stack_child_changed)
 
@@ -73,7 +170,7 @@ class MainWindow(Box):
             spacing=8,
             visible=True,
             all_visible=True,
-            children=(self.switcher, self.stack),
+            children=(self.switcher_overlay, self.stack),
             **kwargs,
         )
 
@@ -81,6 +178,20 @@ class MainWindow(Box):
         self.connect("key-press-event", self._on_key_press)
         self.connect("destroy", lambda *_: self.cleanup())
         self.show_all()
+
+    # ------------------------------------------------------------------
+    def _sync_indicator(self, animate: bool = True) -> None:
+        if self._destroyed:
+            return
+        btn = self._nav_buttons[self._cur_idx]
+        w = btn.get_allocated_width()
+        h = btn.get_allocated_height()
+        if w <= 1 or h <= 1:
+            return                                   # ещё не размещена
+        pos = btn.translate_coordinates(self.indicator, 0, 0)
+        if pos is None:
+            return
+        self.indicator.move_to(pos[0], pos[1], w, h, animate)
 
     def _clear_close_focus(self) -> None:
         self.switcher.get_style_context().remove_class("close-focused")
@@ -102,6 +213,7 @@ class MainWindow(Box):
                 self._cur_idx = idx
                 self._clear_close_focus()
                 self._sync_notch_cw(name)
+                self._sync_indicator()
                 break
 
     def _set_nav_index(self, idx: int) -> None:
@@ -119,6 +231,8 @@ class MainWindow(Box):
         else:
             sw_ctx.add_class("close-focused")
             btn_ctx.add_class("focused")
+
+        self._sync_indicator()   # нужен и для close, и для close -> уже видимая вкладка
 
     def _on_key_press(self, _, event) -> bool:
         if self._destroyed:
@@ -157,9 +271,12 @@ class MainWindow(Box):
         if self._destroyed:
             return
         self._destroyed = True
+        self.indicator.stop()
         self.dashboard.cleanup()
         self.player.cleanup()
         self.wallpapers.cleanup()
         self.notch = None
         self._sections = None
         self._size_group = None
+        self._indicator_group = None
+        self._nav_buttons = None

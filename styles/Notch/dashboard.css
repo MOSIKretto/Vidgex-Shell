@@ -56,27 +56,6 @@
   border-radius: 0px;
 }
 
-/* Скрываем стандартный круглый ползунок */
-#rage-usage slider,
-.gpu-usage slider,
-#cpu-usage slider,
-#ram-usage slider,
-#disk-usage slider,
-#temp-usage slider,
-#rage-usage:disabled slider,
-.gpu-usage:disabled slider,
-#cpu-usage:disabled slider,
-#ram-usage:disabled slider,
-#disk-usage:disabled slider,
-#temp-usage:disabled slider {
-  min-width: 0px;
-  min-height: 0px;
-  background-color: transparent;
-  box-shadow: none;
-  border-radius: 0px;
-  margin: 0;
-}
-
 /* Цвета подписей */
 #rage-label,
 #cpu-label,
@@ -109,7 +88,12 @@
   min-height: 28px;
 }
 
+/* ==========================================================
+   SWITCHER
+   ========================================================== */
+
 /* --- Сброс системной склейки GTK (.linked) --- */
+/* Фон switcher ОБЯЗАТЕЛЬНО прозрачный, иначе он закроет индикатор */
 #switcher,
 #switcher.stack-switcher,
 #switcher.linked {
@@ -132,43 +116,51 @@
   border-radius: 12px;
 }
 
-/* --- Вкладки switcher --- */
+/* --- Скользящий индикатор (рисуется под кнопками) --- */
+#switcher-indicator {
+  background-color: var(--surface);
+  background-image: none;
+  border: none;
+  border-radius: 12px;
+}
+
+/* --- Вкладки --- */
 #switcher.stack-switcher > button:not(#close-notch-button) {
   padding: 4px 12px;
   background-color: transparent;
   box-shadow: none;
   outline: none;
+  transition: background-color 250ms ease-out;
 }
 
-/* Активная вкладка (когда фокус НЕ на кнопке close) */
-#switcher.stack-switcher > button:not(#close-notch-button):checked {
-  background-color: var(--surface);
+#switcher.stack-switcher > button:not(#close-notch-button) label {
+  font-weight: bold;
+  transition: color 300ms ease-out;
+}
+
+/* Активная вкладка: фон рисует индикатор, здесь меняется только цвет текста */
+#switcher.stack-switcher > button:not(#close-notch-button):checked,
+#switcher.stack-switcher > button:not(#close-notch-button):checked:hover,
+#switcher.stack-switcher > button:not(#close-notch-button):checked:active {
+  background-color: transparent;
 }
 
 #switcher.stack-switcher > button:not(#close-notch-button):checked label {
   color: var(--primary);
 }
 
-/* Наведение мыши на вкладки */
-#switcher.stack-switcher > button:not(#close-notch-button):hover,
-#switcher.stack-switcher > button:not(#close-notch-button):active {
+/* Наведение: только на неактивные вкладки, чтобы не перекрывать индикатор */
+#switcher.stack-switcher > button:not(#close-notch-button):not(:checked):hover,
+#switcher.stack-switcher > button:not(#close-notch-button):not(:checked):active {
   background-color: var(--surface-bright);
 }
 
-#switcher.stack-switcher > button:not(#close-notch-button) label {
-  font-weight: bold;
-}
-
-/* --- Когда фокус на кнопке Close: вкладка гаснет (никаких двух фокусов!) --- */
-#switcher.close-focused > button:not(#close-notch-button):checked {
-  background-color: transparent;
-}
-
+/* Когда фокус на Close: текст активной вкладки возвращается к обычному цвету */
 #switcher.close-focused > button:not(#close-notch-button):checked label {
   color: var(--foreground);
 }
 
-/* --- Кнопка закрытия внутри switcher --- */
+/* --- Кнопка закрытия --- */
 #switcher #close-notch-button {
   padding: 4px 10px;
   border-radius: 12px;
@@ -178,29 +170,35 @@
   margin: 0;
   background-color: transparent;
   background-image: none;
-  transition: none;
+  transition: background-color 250ms ease-out;
 }
 
 #switcher #close-notch-button image {
   color: var(--foreground);
-  transition: none;
+  transition: color 300ms ease-out;
 }
 
-/* Наведение мыши на кнопку закрытия */
-#switcher #close-notch-button:hover,
-#switcher #close-notch-button:active {
+/* Наведение мыши (если кнопка не выбрана стрелками) */
+#switcher #close-notch-button:hover:not(.focused),
+#switcher #close-notch-button:active:not(.focused) {
   background-color: var(--surface-bright);
 }
 
-/* Когда кнопка закрытия выбрана стрелками — она выглядит ТОЧНО как активная вкладка */
-#switcher #close-notch-button.focused {
-  background-color: var(--surface);
+/* Выбрана стрелками: фон рисует индикатор, здесь только цвет иконки */
+#switcher #close-notch-button.focused,
+#switcher #close-notch-button.focused:hover,
+#switcher #close-notch-button.focused:active {
+  background-color: transparent;
 }
 
 #switcher #close-notch-button.focused image,
 #switcher #close-notch-button:active image {
   color: var(--primary);
 }
+
+/* ==========================================================
+   Прочее
+   ========================================================== */
 
 #metrics {
   border-radius: 12px;
