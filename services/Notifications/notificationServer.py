@@ -8,7 +8,7 @@ from fabric.notifications.service import Notification, Notifications
 from fabric.widgets.box import Box
 from gi.repository import GdkPixbuf, GLib, Gtk, Pango
 
-from services.Notifications.glyph import GlitchSound, SideGlyph
+from services.Notifications.glyph import GlyphSound, SideGlyph
 from services.Notifications.image import CustomImage
 
 
@@ -112,7 +112,7 @@ class NotificationServer(Notifications):
 
         self._left_glyph = SideGlyph("left")
         self._right_glyph = SideGlyph("right")
-        self._sound = GlitchSound()
+        self._sound = GlyphSound()
         self.connect("notification-added", self._on_notification_added)
 
         NotificationServer._default = self

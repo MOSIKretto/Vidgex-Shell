@@ -22,54 +22,12 @@
 #player-artist,
 #player-time {
   font-weight: bold;
-  transition: text-shadow 40ms step-end,
-              color       40ms step-end,
-              opacity     40ms step-end;
 }
 
 #player-title  { margin-top: 0; font-size: 11pt; }
 #player-album  { font-size: 9pt;  color: var(--outline); }
 #player-artist { font-size: 10pt; color: var(--primary); }
 #player-time   { color: var(--outline); font-size: 10pt; font-family: monospace; }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   GLITCH
-══════════════════════════════════════════════════════════════════════════════ */
-
-.glitch-aberration {
-  text-shadow: 2px 0 alpha(#ff0040,.85), -2px 0 alpha(#00e5ff,.85);
-}
-.glitch-shift-right {
-  text-shadow: 4px 0 alpha(#ff0040,.7), 8px 0 alpha(#ff0040,.25);
-}
-.glitch-shift-left {
-  text-shadow: -4px 0 alpha(#00e5ff,.7), -8px 0 alpha(#00e5ff,.25);
-}
-.glitch-flicker { opacity: 0.1; }
-.glitch-heavy {
-  text-shadow: 5px 1px alpha(#ff0040,.6),
-              -5px -1px alpha(#00e5ff,.6),
-               0 3px alpha(#76ff03,.35);
-}
-.glitch-color-swap {
-  color: #ff0040;
-  text-shadow: 0 0 8px alpha(#ff0040,.5);
-}
-.glitch-aberration.glitch-color-swap {
-  color: #ff0040;
-  text-shadow: 2px 0 alpha(#ff0040,.85),
-              -2px 0 alpha(#00e5ff,.85),
-               0 0 8px alpha(#ff0040,.4);
-}
-.glitch-shift-right.glitch-flicker {
-  opacity: .3;
-  text-shadow: 4px 0 alpha(#ff0040,.9);
-}
-.glitch-shift-left.glitch-heavy {
-  text-shadow: -5px 0 alpha(#00e5ff,.8),
-                5px 1px alpha(#ff0040,.5),
-                0 3px alpha(#76ff03,.3);
-}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    PLAYER BUTTONS

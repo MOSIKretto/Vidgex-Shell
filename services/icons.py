@@ -304,28 +304,6 @@ tool: str = "&#xeb40;"
 tools: str = "&#xebca;"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  BRAND ICONS
-# ══════════════════════════════════════════════════════════════════════════════
-firefox: str = "&#xecfd;"
-chromium: str = "&#xec18;"
-spotify: str = "&#xfe86;"
-disc: str = "&#x1003e;"
-disc_off: str = "&#xf118;"
-brand_android: str = "&#xec16;"
-brand_apple: str = "&#xec17;"
-brand_chrome: str = "&#xec18;"
-brand_discord: str = "&#xf38e;"
-brand_github: str = "&#xec1c;"
-brand_google: str = "&#xec1f;"
-brand_linux: str = "&#xec25;"
-brand_python: str = "&#xed01;"
-brand_steam: str = "&#xec30;"
-brand_telegram: str = "&#xec31;"
-brand_twitter: str = "&#xec27;"
-brand_windows: str = "&#xec35;"
-brand_youtube: str = "&#xec36;"
-
-# ══════════════════════════════════════════════════════════════════════════════
 #  FILES / FOLDERS
 # ══════════════════════════════════════════════════════════════════════════════
 file: str = "&#xeaab;"
@@ -537,6 +515,8 @@ dead: str = "&#xf2e3;"
 # ══════════════════════════════════════════════════════════════════════════════
 #  MISC
 # ══════════════════════════════════════════════════════════════════════════════
+disc: str = "&#x1003e;"
+disc_play: str = "&#xea90;"
 dot: str = "&#xf698;"
 loader: str = "&#xeca3;"
 radar: str = "&#xf017;"

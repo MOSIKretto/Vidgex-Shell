@@ -19,55 +19,49 @@ class Volume(Service):
         self.audio = Audio()
         self.max_volume = 100
         self._stream = None
-        self._stream_hid = None
-        self._last_val = -1
-        self._last_muted = None
-        self._audio_hid = self.audio.connect("notify::speaker", self._on_stream_notify)
-        self._on_stream_notify()
+        self._hid = None
+        self._last = None
+        self.audio.connect("notify::speaker", self._on_speaker)
+        self._on_speaker()
 
-    def _on_stream_notify(self, *_):
+    def _read(self) -> tuple[int, bool]:
+        s = self._stream
+        return (int(round(s.volume)), bool(s.muted)) if s is not None else (0, True)
+
+    def _sync(self, *_):
+        state = self._read()
+        if state != self._last:
+            self._last = state
+            self.emit("changed", state[0])
+
+    def _on_speaker(self, *_):
         stream = self.audio.speaker
         if stream is self._stream:
-            # notify::speaker сработал без реальной смены устройства —
-            # не пересоздаём подписку впустую.
             return
 
         if self._stream is not None:
-            self._stream.disconnect(self._stream_hid)
-
+            self._stream.disconnect(self._hid)
         self._stream = stream
-        if self._stream is not None:
-            self._stream_hid = self._stream.connect("changed", self._on_stream_changed)
-            self._last_val = -1
-            self._on_stream_changed()
-        elif self._last_val != 0 or self._last_muted is not True:
-            self._last_val = 0
-            self._last_muted = True
-            self.emit("changed", 0)
-
-    def _on_stream_changed(self, *_):
-        val = int(round(self._stream.volume))
-        muted = bool(self._stream.muted)
-        if val != self._last_val or muted != self._last_muted:
-            self._last_val = val
-            self._last_muted = muted
-            self.emit("changed", val)
+        if stream is not None:
+            self._hid = stream.connect("changed", self._sync)
+            self._last = None
+        self._sync()
 
     @Property(int, "read-write")
     def volume(self) -> int:
-        return int(round(self._stream.volume)) if self._stream is not None else 0
+        return self._read()[0]
 
     @volume.setter
     def volume(self, value: int):
         if self._stream is None:
             return
         value = max(0, min(self.max_volume, int(value)))
-        if int(round(self._stream.volume)) != value:
+        if self._read()[0] != value:
             self._stream.volume = float(value)
 
     @property
     def muted(self) -> bool:
-        return bool(self._stream.muted) if self._stream is not None else True
+        return self._read()[1]
 
     @muted.setter
     def muted(self, value: bool):
@@ -76,9 +70,10 @@ class Volume(Service):
 
     @property
     def is_bluetooth(self) -> bool:
-        if self._stream is None:
-            return False
-        return "bluetooth" in (self._stream.icon_name or "").lower()
+        return (
+            self._stream is not None
+            and "bluetooth" in (self._stream.icon_name or "").lower()
+        )
 
 
 def get_audio():

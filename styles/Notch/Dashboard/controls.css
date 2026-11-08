@@ -175,37 +175,3 @@
   margin-top: -2px;
   padding: 0;
 }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   ASCII GLITCH EFFECTS (Адаптированы под крупный размер)
-══════════════════════════════════════════════════════════════════════════════ */
-
-.osd-dot.glitch-aberration {
-  color: #ffffff;
-  text-shadow: 3px 0 #ff0055, -3px 0 #00e5ff;
-}
-
-.osd-dot.glitch-shift-right {
-  color: #ff0055;
-  text-shadow: 4px 0 rgba(255, 0, 85, 0.75);
-}
-
-.osd-dot.glitch-shift-left {
-  color: #00e5ff;
-  text-shadow: -4px 0 rgba(0, 229, 255, 0.75);
-}
-
-.osd-dot.glitch-flicker { 
-  opacity: 0.2; 
-  color: var(--primary);
-}
-
-.osd-dot.glitch-heavy {
-  color: #ffffff;
-  text-shadow: 4px 0 #ff0055, -4px 0 #00e5ff, 0 3px #76ff03;
-}
-
-.osd-dot.glitch-color-swap {
-  color: #ff0055;
-  text-shadow: 0 0 10px #ff0055;
-}

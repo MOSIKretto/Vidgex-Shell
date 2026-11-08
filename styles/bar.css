@@ -15,30 +15,6 @@
     padding: 4px;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   КНОПКИ ВЫЗОВА QUICKPANEL (Wi-Fi / Battery / Tools / Session).
-
-   Единый "ghost-chip" язык: полупрозрачная подложка alpha(var(--primary),0.10)
-   в простое; на hover неактивной кнопки — сплошная заливка var(--primary)
-   + var(--shadow) на тексте/иконке, БЕЗ box-shadow и БЕЗ неонового свечения.
-
-   Активную вкладку (.trigger-active) заливает не сама кнопка, а
-   скользящая плашка, которую рисует TriggerRow (QuickPanel.py) ПОД
-   кнопками и плавно переезжает между ними. Поэтому у активной кнопки
-   фон прозрачный, а меняется только цвет иконки/текста.
-   .trigger-active навешивается/снимается в QuickPanel._activate_tab/
-   _deactivate_tab — не зависит от положения курсора.
-
-   Прозрачность активной кнопки задана как alpha(var(--primary), 0), а не
-   transparent: GTK3 интерполирует transparent как rgba(0,0,0,0), и в
-   середине перехода фон кратко темнеет.
-
-   min-height: 36px — выравнивает кнопки по высоте с остальными
-   элементами этого же ряда (#date-time, #HyprlandLanguage-indicator).
-
-   :active НЕ стилизуется здесь намеренно — оно решается ОТДЕЛЬНЫМ
-   CSS-провайдером с GTK_STYLE_PROVIDER_PRIORITY_USER из кода
-   (см. _install_active_state_fix в wifiTab.py). */
 #button-bar {
     background-color: alpha(var(--primary), 0.10);
     background-image: none;
@@ -53,12 +29,9 @@
     transition: background-color 250ms ease-out;
 }
 
-/* Цвет иконок/текста меняется в темпе плашки (350мс у плашки, 300мс у цвета).
-   #metrics-level исключён на время глитча: иначе плавный переход размоет
-   35-мс вспышки (см. блок ГЛИТЧ-ВСПЫШКА ниже). */
 #button-bar-label,
 #metrics-icon,
-#power-battery-container #metrics-level:not(.glitching) {
+#power-battery-container #metrics-level {
     transition: color 300ms ease-out;
 }
 
@@ -201,42 +174,4 @@
 #bar-right-corner #corner,
 #bar-right-bottom-corner #corner {
     background-color: var(--shadow);
-}
-
-
-/* ══════════════════════════════════════════════════════════════════
-   ГЛИТЧ-ВСПЫШКА (часы/язык/процент заряда) — только реально
-   используемый пул модификаторов (_GLITCH_CLASSES в Bar.py и
-   batteryTab.py = aberration + color-swap). random.sample с
-   randint(1,2) из пула размером 2 МОЖЕТ выбрать оба класса сразу —
-   поэтому их комбинация ниже обязательна, а не избыточна.
-   ════════════════════════════════════════════════════════════════ */
-#date-time.glitching label,
-#lang-label.glitching,
-#metrics-level.glitching {
-    opacity: 0.85;
-}
-
-#date-time.glitch-aberration label,
-#lang-label.glitch-aberration,
-#metrics-level.glitch-aberration {
-    text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
-                 -1.5px 0 alpha(#00e5ff, 0.85),
-                  0      0 4px transparent;
-}
-
-#date-time.glitch-color-swap label,
-#lang-label.glitch-color-swap,
-#metrics-level.glitch-color-swap {
-    color: #ff0040;
-    text-shadow: 0 0 4px alpha(#ff0040, 0.5);
-}
-
-#date-time.glitch-aberration.glitch-color-swap label,
-#lang-label.glitch-aberration.glitch-color-swap,
-#metrics-level.glitch-aberration.glitch-color-swap {
-    color: #ff0040;
-    text-shadow:  1.5px 0 alpha(#ff0040, 0.85),
-                 -1.5px 0 alpha(#00e5ff, 0.85),
-                  0      0 4px alpha(#ff0040, 0.4);
 }

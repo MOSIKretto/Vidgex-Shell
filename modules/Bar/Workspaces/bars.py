@@ -1,4 +1,3 @@
-import random
 from time import monotonic
 
 import gi
@@ -53,15 +52,6 @@ AXIS_REVEAL_MS = 200
 _SM = Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK
 _LST = 0.0
 _ACC = {"x": 0.0, "y": 0.0}
-
-_GLITCH_CLASSES = (
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-)
 
 
 class _AxisSpec:
@@ -176,11 +166,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         self.revealer_dots = None
         self.dots: list[Button] = []
         self._active_idx = -1
-        self._glitch_tid = 0
-        self._glitch_rem: dict[Button, int] = {}
-        self._glitch_removing: set[Button] = set()
 
-        self._connect(self, "unmap", self._on_unmap)
         axis_widgets.append(self)
         bind_global_conn(conn)
         self._build_axis_controls()
@@ -256,29 +242,6 @@ class _AxisWorkspaces(LifecycleMixin, Box):
     def _on_plus(self, _):
         self._resize(1)
 
-    def _repaint_glitch_area(self, btn: Button):
-        # box-shadow глитч-классов рисуется за пределами 8x8 аллокации кнопки;
-        # инвалидируем весь контейнер, чтобы GTK гарантированно перерисовал фон вокруг точки.
-        btn.queue_draw()
-        if self.dots_box is not None:
-            self.dots_box.queue_draw()
-        self.queue_draw()
-
-    def _clear_glitch_classes(self, btn: Button):
-        ctx = btn.get_style_context()
-        for cls in _GLITCH_CLASSES:
-            ctx.remove_class(cls)
-        self._repaint_glitch_area(btn)
-
-    def _apply_random_glitch_classes(self, btn: Button):
-        ctx = btn.get_style_context()
-        for cls in _GLITCH_CLASSES:
-            ctx.remove_class(cls)
-        count = 1 if random.random() > 0.4 else 2
-        for cls in random.sample(_GLITCH_CLASSES, count):
-            ctx.add_class(cls)
-        self._repaint_glitch_area(btn)
-
     def _mount_dot_widget(self, btn: Button):
         self.dots.append(btn)
         self.dots_box.add(btn)
@@ -288,76 +251,10 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         self.dots_box.remove(btn)
         btn.destroy()
 
-    def _on_dot_glitch_state_changed(self, btn: Button, removing: bool):
-        # Точка расширения для наследников/декораторов (например, скрытие слотов при глитче удаления);
-        # по умолчанию бездействие — осознанное.
-        pass
-
     def _remove_dot_widget(self, btn: Button):
-        self._clear_glitch_classes(btn)
-        self._glitch_rem.pop(btn, None)
-        self._glitch_removing.discard(btn)
-        if not self._glitch_rem:
-            self._glitch_tid = self._cancel_source(self._glitch_tid)
         if btn in self.dots:
             self.dots.remove(btn)
         self._unmount_dot_widget(btn)
-        if self.dots_box is not None:
-            self.dots_box.queue_draw()
-        self.queue_draw()
-
-    def _finish_all_glitches(self):
-        had_removing = bool(self._glitch_removing)
-        for btn in tuple(self._glitch_removing):
-            self._remove_dot_widget(btn)
-        self._glitch_tid = self._cancel_source(self._glitch_tid)
-        self._glitch_rem.clear()
-        for btn in self.dots:
-            self._clear_glitch_classes(btn)
-        if had_removing and not self._destroyed and self.revealer_dots is not None:
-            self.sync_visibility()
-
-    def _on_unmap(self, *_):
-        self._finish_all_glitches()
-
-    def _start_dot_glitch(self, btn: Button, removing: bool):
-        if removing:
-            self._glitch_removing.add(btn)
-        else:
-            self._glitch_removing.discard(btn)
-
-        self._on_dot_glitch_state_changed(btn, removing)
-        self._apply_random_glitch_classes(btn)
-        self._glitch_rem[btn] = 6
-        if not self._glitch_tid:
-            self._glitch_tid = GLib.timeout_add(35, self._glitch_tick)
-
-    def _glitch_tick(self) -> bool:
-        if self._destroyed or not self._glitch_rem:
-            self._glitch_tid = 0
-            return False
-
-        removed_any = False
-        for btn in tuple(self._glitch_rem):
-            rem = self._glitch_rem[btn] - 1
-            if rem <= 0:
-                self._glitch_rem.pop(btn, None)
-                if btn in self._glitch_removing:
-                    self._remove_dot_widget(btn)
-                    removed_any = True
-                else:
-                    self._clear_glitch_classes(btn)
-            else:
-                self._glitch_rem[btn] = rem
-                self._apply_random_glitch_classes(btn)
-
-        if removed_any:
-            self.sync_visibility()
-
-        if not self._glitch_rem:
-            self._glitch_tid = 0
-            return False
-        return True
 
     def _create_dot(self) -> Button:
         btn = Button(h_expand=False, v_expand=False, h_align="center", v_align="center", can_focus=False)
@@ -369,6 +266,8 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         return btn
 
     def _sync_dots(self, animate: bool = True):
+        # Параметр animate оставлен для совместимости с вызовами из наследников/миксинов;
+        # точки теперь всегда добавляются и удаляются сразу.
         target = self._axis_count()
 
         if self._active_idx >= target:
@@ -376,30 +275,10 @@ class _AxisWorkspaces(LifecycleMixin, Box):
                 _set_dot_active(self.dots[self._active_idx], False)
             self._active_idx = -1
 
-        if not animate or not self.get_mapped():
-            self._finish_all_glitches()
-            while len(self.dots) > target:
-                self._remove_dot_widget(self.dots[-1])
-            for _ in range(len(self.dots), target):
-                self._mount_dot_widget(self._create_dot())
-            return
-
-        for idx in range(target):
-            if idx < len(self.dots):
-                if self.dots[idx] in self._glitch_removing:
-                    self._start_dot_glitch(self.dots[idx], removing=False)
-            else:
-                btn = self._create_dot()
-                self._mount_dot_widget(btn)
-                self._start_dot_glitch(btn, removing=False)
-
-        for idx in range(target, len(self.dots)):
-            btn = self.dots[idx]
-            if btn not in self._glitch_removing:
-                if idx == self._active_idx:
-                    self._active_idx = -1
-                _set_dot_active(btn, False)
-                self._start_dot_glitch(btn, removing=True)
+        while len(self.dots) > target:
+            self._remove_dot_widget(self.dots[-1])
+        for _ in range(len(self.dots), target):
+            self._mount_dot_widget(self._create_dot())
 
     def on_matrix_order_changed(self, ws: int | None = None):
         if self._destroyed:
@@ -447,7 +326,7 @@ class _AxisWorkspaces(LifecycleMixin, Box):
         return True
 
     def _on_dot_button_clicked(self, btn: Button):
-        if btn in self.dots and btn not in self._glitch_removing:
+        if btn in self.dots:
             self._on_dot_clicked(self.dots.index(btn))
 
     def _on_dot_clicked(self, target_idx: int):
@@ -475,7 +354,6 @@ class _AxisWorkspaces(LifecycleMixin, Box):
             return
         if self in axis_widgets:
             axis_widgets.remove(self)
-        self._finish_all_glitches()
         super().cleanup()
         release_global_conn_if_unused()
 

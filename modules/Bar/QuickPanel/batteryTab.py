@@ -1,6 +1,5 @@
 import math
 import os
-import random
 
 import gi
 gi.require_version("PangoCairo", "1.0")
@@ -24,16 +23,6 @@ _RETRY_DELAY_MS = 2000
 _THRESHOLD_PANEL_TRANSITION_MS = 480
 _SLIDER_COL_WIDTH_PX = 157
 _HEADER_HEIGHT_PX = 16
-
-_GLITCH_CLASSES = ("glitch-aberration", "glitch-color-swap")
-_TICK_GLITCH_CLASSES = (
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-)
 
 _TICK_BELOW_CLASS = "below-threshold"
 _TICK_AT_CLASS = "at-threshold"
@@ -91,83 +80,6 @@ def _build_trigger_button(icon_label: Label, *extra_widgets: Label) -> Button:
     )
     return Button(name="button-bar", v_align="center", can_focus=False, child=wrapper)
 
-
-class _GlitchFX:
-    FRAMES = 7
-    FRAME_MS = 35
-
-    __slots__ = (
-        "_widget", "_classes", "_base_class", "_state_classes",
-        "_rem", "_timer_id", "_target", "_destroyed",
-    )
-
-    def __init__(self, widget, classes, base_class=None, state_classes=()):
-        self._widget = widget
-        self._classes = classes
-        self._base_class = base_class
-        self._state_classes = state_classes
-        self._rem = 0
-        self._timer_id = None
-        self._target = None
-        self._destroyed = False
-
-    def trigger(self, target_class: str | None = None) -> None:
-        if self._destroyed:
-            return
-        if self._timer_id is not None:
-            GLib.source_remove(self._timer_id)
-            self._timer_id = None
-        self._target = target_class
-        if not self._widget.get_mapped():
-            ctx = self._widget.get_style_context()
-            self._clear(ctx)
-            self._apply_target(ctx)
-            return
-        self._rem = self.FRAMES
-        self._timer_id = GLib.timeout_add(self.FRAME_MS, self._tick)
-
-    def _clear(self, ctx) -> None:
-        for cls in self._classes:
-            ctx.remove_class(cls)
-        if self._base_class is not None:
-            ctx.remove_class(self._base_class)
-
-    def _apply_target(self, ctx) -> None:
-        if self._target is not None:
-            for cls in self._state_classes:
-                ctx.remove_class(cls)
-            ctx.add_class(self._target)
-
-    def _tick(self) -> bool:
-        if self._destroyed or not self._widget.get_mapped():
-            self._timer_id = None
-            ctx = self._widget.get_style_context()
-            self._clear(ctx)
-            self._apply_target(ctx)
-            return False
-
-        ctx = self._widget.get_style_context()
-        self._clear(ctx)
-
-        self._rem -= 1
-        if self._rem <= 0:
-            self._timer_id = None
-            self._apply_target(ctx)
-            return False
-
-        if self._base_class is not None:
-            ctx.add_class(self._base_class)
-        count = 1 if random.random() > 0.4 else 2
-        for cls in random.sample(self._classes, min(count, len(self._classes))):
-            ctx.add_class(cls)
-        return True
-
-    def stop(self) -> None:
-        self._destroyed = True
-        if self._timer_id is not None:
-            GLib.source_remove(self._timer_id)
-            self._timer_id = None
-        self._clear(self._widget.get_style_context())
 
 def _read_uevent(bat_path: str) -> dict[str, str]:
     try:
@@ -360,7 +272,6 @@ class BatteryTrigger:
         self._pct = Label(name="metrics-level", style_classes="bat", label="—")
         self._pct.set_xalign(1.0)
         self._pct.set_size_request(_PCT_WIDTH_PX, -1)
-        self._pct_glitch = _GlitchFX(self._pct, _GLITCH_CLASSES, base_class="glitching")
         self.button = _build_trigger_button(self._icon, self._pct)
         self.button.connect("destroy", lambda *_: self.cleanup())
 
@@ -409,11 +320,8 @@ class BatteryTrigger:
 
         pct_text = f"{int(val)}%"
         if pct_text != self._last_pct_text:
-            changed = self._last_pct_text is not None
             self._last_pct_text = pct_text
             self._pct.set_label(pct_text)
-            if changed:
-                self._pct_glitch.trigger()
 
         self._evaluate_profile()
 
@@ -487,7 +395,6 @@ class BatteryTrigger:
 
     def cleanup(self) -> None:
         self._destroyed = True
-        self._pct_glitch.stop()
         if self._timer_id is not None:
             GLib.source_remove(self._timer_id)
             self._timer_id = None
@@ -570,7 +477,6 @@ class PowerModePulse(Gtk.DrawingArea):
     RING_WIDTH = BatteryRing.RING_WIDTH
     _HALF_SPAN = 11.5
     _FRAME_MS = 40
-    _GLITCH_FRAMES = 7
 
     def __init__(self, mode: str = "balanced"):
         super().__init__()
@@ -581,10 +487,6 @@ class PowerModePulse(Gtk.DrawingArea):
         self._running = False
         self._timer_id = None
         self._destroyed = False
-        self._glitch_rem = 0
-        self._split_x = 0.0
-        self._split_y = 0.0
-        self._gain = 1.0
         self.connect("draw", self._on_draw)
         self.connect("map", self._sync_timer)
         self.connect("unmap", self._sync_timer)
@@ -596,26 +498,14 @@ class PowerModePulse(Gtk.DrawingArea):
         if mode == self._mode:
             return
         self._mode = mode
-        self.trigger_glitch()
         self.queue_draw()
 
     def set_running(self, running: bool) -> None:
         self._running = running
         self._sync_timer()
 
-    def trigger_glitch(self) -> None:
-        if self._destroyed or not self._running or not self.get_mapped():
-            return
-        self._glitch_rem = self._GLITCH_FRAMES
-        self._step_glitch()
-        self._sync_timer()
-        self.queue_draw()
-
     def stop(self) -> None:
         self._running = False
-        self._glitch_rem = 0
-        self._split_x = self._split_y = 0.0
-        self._gain = 1.0
         if self._timer_id is not None:
             GLib.source_remove(self._timer_id)
             self._timer_id = None
@@ -625,43 +515,27 @@ class PowerModePulse(Gtk.DrawingArea):
         self.stop()
 
     def _sync_timer(self, *_args) -> None:
-        need_timer = (not self._destroyed) and self.get_mapped() and (self._running or self._glitch_rem > 0)
+        need_timer = (not self._destroyed) and self.get_mapped() and self._running
         if need_timer and self._timer_id is None:
             self._timer_id = GLib.timeout_add(self._FRAME_MS, self._on_tick)
         elif not need_timer and self._timer_id is not None:
             GLib.source_remove(self._timer_id)
             self._timer_id = None
 
-    def _step_glitch(self) -> None:
-        self._split_x = random.choice((-2.0, -1.4, 1.4, 2.0))
-        self._split_y = random.uniform(-1.1, 1.1)
-        self._gain = random.choice((0.65, 1.28, 1.40, -0.85))
-
     def _on_tick(self) -> bool:
-        if self._destroyed or not self.get_mapped():
+        if self._destroyed or not self.get_mapped() or not self._running:
             self._timer_id = None
             return False
 
         _, speed, period, _ = _MODE_PULSE_SPEC[self._mode]
         self._phase = (self._phase + speed) % period
 
-        if self._glitch_rem > 0:
-            self._glitch_rem -= 1
-            if self._glitch_rem > 0:
-                self._step_glitch()
-            else:
-                self._split_x = self._split_y = 0.0
-                self._gain = 1.0
-
         self.queue_draw()
-        if not self._running and self._glitch_rem <= 0:
-            self._timer_id = None
-            return False
         return True
 
     def _trace_running_wave(self, cr, cx: float, cy: float, period: float,
                             shape: tuple[tuple[float, float], ...],
-                            phase: float, dx: float, dy: float, gain: float) -> None:
+                            phase: float, dx: float, dy: float) -> None:
         base_x = cx + dx
         base_y = cy + dy
         cr.move_to(base_x - self._HALF_SPAN, base_y)
@@ -671,7 +545,7 @@ class PowerModePulse(Gtk.DrawingArea):
                 nx = center + ox
                 if -1.0 < nx < 1.0:
                     env = min(1.0, (1.0 - nx * nx) * 2.5)
-                    cr.line_to(base_x + nx * self._HALF_SPAN, base_y + py * gain * env)
+                    cr.line_to(base_x + nx * self._HALF_SPAN, base_y + py * env)
         cr.line_to(base_x + self._HALF_SPAN, base_y)
 
     def _on_draw(self, widget, cr) -> bool:
@@ -682,7 +556,6 @@ class PowerModePulse(Gtk.DrawingArea):
         cx = cy = self.SIZE / 2.0
         radius = (self.SIZE - self.RING_WIDTH) / 2.0
         frac, _, period, shape = _MODE_PULSE_SPEC[self._mode]
-        glitching = self._glitch_rem > 0
 
         cr.set_line_width(self.RING_WIDTH)
         cr.arc(cx, cy, radius, 0, 2 * math.pi)
@@ -697,42 +570,28 @@ class PowerModePulse(Gtk.DrawingArea):
         cr.set_line_cap(1)
         cr.set_line_join(1)
 
-        sx = self._split_x if glitching else 0.75
-        sy = self._split_y if glitching else 0.25
-        ghost_alpha = 0.80 if glitching else 0.42
-        gain = self._gain if glitching else 1.0
-        lag = 0.16 if glitching else 0.08
+        sx, sy = 0.75, 0.25
+        ghost_alpha = 0.42
+        lag = 0.08
 
         cr.set_line_width(1.5)
-        self._trace_running_wave(cr, cx, cy, period, shape, (self._phase - lag) % period, -sx, -sy, gain)
+        self._trace_running_wave(cr, cx, cy, period, shape, (self._phase - lag) % period, -sx, -sy)
         cr.set_source_rgba(0.0, 0.898, 1.0, ghost_alpha)
         cr.stroke()
 
-        self._trace_running_wave(cr, cx, cy, period, shape, (self._phase - lag * 0.5) % period, sx, sy, gain)
+        self._trace_running_wave(cr, cx, cy, period, shape, (self._phase - lag * 0.5) % period, sx, sy)
         cr.set_source_rgba(1.0, 0.0, 0.333, ghost_alpha)
         cr.stroke()
 
         cr.set_line_width(2.0)
-        self._trace_running_wave(cr, cx, cy, period, shape, self._phase, 0.0, 0.0, gain)
+        self._trace_running_wave(cr, cx, cy, period, shape, self._phase, 0.0, 0.0)
         cr.set_source_rgba(r, g, b, 1.0)
         cr.stroke()
         return False
 
 
 class BatteryCircle(Box):
-    """Кружок с кольцом и подписью-процентом.
-
-    Раскладка (сверху вниз): верхний отступ, кольцо, нижний слот под
-    подпись. Отступ и слот ВСЕГДА одной высоты (Gtk.SizeGroup), высота
-    слота задаётся невидимой "призрачной" подписью с тем же шрифтом.
-    Поэтому:
-      - кольцо всегда ровно по центру виджета, независимо от подписи;
-      - подпись выезжает (Revealer) внутри своего слота и не обрезается;
-      - высота виджета не меняется при наведении.
-    Никаких констант-отступов: размер берётся из реального шрифта.
-    """
-
-    _LABEL_GAP_PX = 2   # зазор между кольцом и подписью
+    _LABEL_GAP_PX = 2
 
     def __init__(self, icon_markup: str):
         super().__init__(name="battery-circle", orientation="v", spacing=0,
@@ -841,12 +700,10 @@ class BatteryThresholdSlider(EventBox):
         self._on_commit = on_commit
         self._dragging = False
         self._ticks = []
-        self._tick_glitches = []
         for _ in range(self.SEGMENTS):
             tick = Box(style_classes=["battery-threshold-tick"], h_expand=True)
             tick.set_size_request(self.STICK_WIDTH, self.STICK_HEIGHT)
             self._ticks.append(tick)
-            self._tick_glitches.append(_GlitchFX(tick, _TICK_GLITCH_CLASSES, state_classes=_TICK_STATE_CLASSES))
         row = Box(
             name="battery-threshold-row", orientation="h",
             spacing=self.STICK_GAP, h_align="fill", h_expand=True,
@@ -866,7 +723,6 @@ class BatteryThresholdSlider(EventBox):
         self.connect("button-press-event", self._on_press)
         self.connect("motion-notify-event", self._on_motion)
         self.connect("button-release-event", self._on_release)
-        self.connect("destroy", self._on_destroy)
         self._apply_classes()
 
     def get_percentage(self) -> int:
@@ -889,10 +745,8 @@ class BatteryThresholdSlider(EventBox):
     def _set_index(self, idx: int) -> None:
         if idx == self._index:
             return
-        old_index, self._index = self._index, idx
-        lo, hi = (old_index, idx) if old_index < idx else (idx, old_index)
-        for i in range(lo, hi + 1):
-            self._tick_glitches[i].trigger(self._tick_class(i))
+        self._index = idx
+        self._apply_classes()
         self._on_drag(self.get_percentage())
 
     def _apply_classes(self) -> None:
@@ -922,10 +776,6 @@ class BatteryThresholdSlider(EventBox):
         self._on_commit(self.get_percentage())
         return True
 
-    def _on_destroy(self, *_args) -> None:
-        for glitch in self._tick_glitches:
-            glitch.stop()
-
 
 class BatteryTab(Box):
     _SLOT_ICON = {
@@ -950,7 +800,6 @@ class BatteryTab(Box):
         self._bt_pct_state: dict[str, tuple[float | None, object]] = {}
         self._active = False
         self._expanded = False
-        self._last_pct: int | None = None
         self.connect("destroy", lambda *_: self.deactivate())
         self._build()
 
@@ -1119,7 +968,6 @@ class BatteryTab(Box):
         if not self._active:
             return
         self._active = False
-        self._last_pct = None
         self._device.set_pressed(False)
         self._mode_pulse.stop()
         _bat_unsub(self)
@@ -1131,9 +979,6 @@ class BatteryTab(Box):
     def _upd(self) -> None:
         pct, charging = _bat_pct, _bat_chg
         pct_int = int(pct)
-        if self._last_pct is not None and pct_int != self._last_pct:
-            self._mode_pulse.trigger_glitch()
-        self._last_pct = pct_int
         self._device.set_state(_bat_icon(pct, bool(charging)), pct, f"{pct_int}%")
         self._mode_pulse.set_mode(_power_mode)
         if self._expanded:

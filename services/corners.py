@@ -24,6 +24,8 @@ class Corners(WaylandWindow):
             pass_through=True,
         )
 
+        self._shown = True
+
         self.corners_box = Box(
             name="all-corners",
             orientation="v",
@@ -45,22 +47,14 @@ class Corners(WaylandWindow):
         self.show_all()
 
         self.hyprland = Hyprland()
+        for event in ("fullscreen", "workspace", "activewindow", "closewindow", "focusedmon"):
+            self.hyprland.connect(f"event::{event}", self._refresh)
 
-        events = [
-            "fullscreen",
-            "workspace",
-            "activewindow",
-            "closewindow",
-            "focusedmon",
-        ]
-        for event in events:
-            self.hyprland.connect(f"event::{event}", self.update_visibility)
+        self._refresh()
 
-        self.update_visibility()
-
-    def update_visibility(self, *args):
-        response = self.hyprland.send_command("j/activeworkspace").reply.decode()
-        workspace_data = json.loads(response)
-        has_fullscreen = workspace_data.get("hasfullscreen", False)
-
-        self.corners_box.set_visible(not has_fullscreen)
+    def _refresh(self, *_) -> None:
+        reply = self.hyprland.send_command("j/activeworkspace").reply
+        show = not json.loads(reply).get("hasfullscreen", False)
+        if show != self._shown:
+            self._shown = show
+            self.corners_box.set_visible(show)

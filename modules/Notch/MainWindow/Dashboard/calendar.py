@@ -1,5 +1,4 @@
-import calendar
-import datetime
+from datetime import date, timedelta
 
 import gi
 
@@ -14,12 +13,10 @@ import services.icons as icons
 
 class Calendar(Gtk.Box):
     _M = (
-        "January", "February", "March", "April",
-        "May", "June", "July", "August",
-        "September", "October", "November", "December"
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
     )
     _D = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
-
     _SLIDE = {
         -1: Gtk.StackTransitionType.SLIDE_RIGHT,
         1: Gtk.StackTransitionType.SLIDE_LEFT,
@@ -27,171 +24,104 @@ class Calendar(Gtk.Box):
 
     def __init__(self, view_mode="month", first_weekday=0):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8, name="calendar")
-
         self.view_mode = view_mode
         self.first_weekday = first_weekday
+        month = self._month = view_mode == "month"
 
-        self._active_page = 0
-        self._labels = [[], []]
-
-        if view_mode == "month":
-            self.set_halign(Gtk.Align.CENTER)
-            self.set_hexpand(False)
-        else:
-            self.set_halign(Gtk.Align.FILL)
-            self.set_hexpand(True)
+        self.set_halign(Gtk.Align.CENTER if month else Gtk.Align.FILL)
+        self.set_hexpand(not month)
+        if not month:
             self.set_valign(Gtk.Align.CENTER)
-            self.set_vexpand(False)
 
-        self._sync_today()
-        self._rst()
+        self._page = 0
+        self._labels = ([], [])
+        self._reset()
 
-        self._pb = Gtk.Button(name="prev-month-button", child=Label(name="month-button-label", markup=icons.chevron_left))
-        self._nb = Gtk.Button(name="next-month-button", child=Label(name="month-button-label", markup=icons.chevron_right))
+        pb = Gtk.Button(name="prev-month-button", child=Label(name="month-button-label", markup=icons.chevron_left))
+        nb = Gtk.Button(name="next-month-button", child=Label(name="month-button-label", markup=icons.chevron_right))
+        pb.connect("clicked", lambda _: self._shift(-1))
+        nb.connect("clicked", lambda _: self._shift(1))
         self._ml = Gtk.Label(name="month-label")
-
-        self._pb.connect("clicked", self._prev)
-        self._nb.connect("clicked", self._next)
 
         self.add(CenterBox(
             spacing=4, name="header",
-            start_children=(self._pb,), center_children=(self._ml,), end_children=(self._nb,)
+            start_children=(pb,), center_children=(self._ml,), end_children=(nb,),
         ))
 
-        weekday_row = Gtk.Box(spacing=4, name="weekday-row")
+        row = Gtk.Box(spacing=4, name="weekday-row")
         fw = first_weekday
         for n in self._D[fw:] + self._D[:fw]:
-            weekday_row.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
-        self.pack_start(weekday_row, False, False, 0)
+            row.pack_start(Gtk.Label(label=n, name="weekday-label"), True, True, 0)
+        self.pack_start(row, False, False, 0)
 
         self.stack = Gtk.Stack(name="calendar-stack")
         self.stack.set_transition_duration(300)
         self.pack_start(self.stack, True, True, 0)
 
-        rows = 6 if view_mode == "month" else 1
-        grid_name = "calendar-grid" if view_mode == "month" else "calendar-grid-week-view"
-
         for i in range(2):
-            grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=False, name=grid_name)
-            for r in range(rows):
-                for c in range(7):
-                    lbl = Gtk.Label(name="day-label", valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
-                    grid.attach(lbl, c, r, 1, 1)
-                    self._labels[i].append(lbl)
+            grid = Gtk.Grid(
+                column_homogeneous=True,
+                name="calendar-grid" if month else "calendar-grid-week-view",
+            )
+            for n in range(42 if month else 7):
+                lbl = Gtk.Label(
+                    name="day-label", halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                    hexpand=True, vexpand=True,
+                )
+                grid.attach(lbl, n % 7, n // 7, 1, 1)
+                self._labels[i].append(lbl)
             self.stack.add_named(grid, f"page_{i}")
 
         self.connect("map", self._on_map)
         self.show_all()
+        self._show()
 
-        self._upd(transition=Gtk.StackTransitionType.NONE)
+    def _align(self, d):
+        return d - timedelta((d.weekday() - self.first_weekday) % 7)
 
-    def _sync_today(self):
-        now = datetime.date.today()
-        self.ty, self.tm, self.td = now.year, now.month, now.day
+    def _reset(self):
+        self._today = t = date.today()
+        self._cur = t.replace(day=1) if self._month else self._align(t)
 
-    def _rst(self):
-        if self.view_mode == "month":
-            self.sy, self.sm, self.sd = self.ty, self.tm, 1
-        else:
-            today = datetime.date(self.ty, self.tm, self.td)
-            offset = (today.weekday() - self.first_weekday) % 7
-            start = today - datetime.timedelta(days=offset)
-            self.sy, self.sm, self.sd = start.year, start.month, start.day
+    def _on_map(self, *_):
+        today = date.today()
+        if today != self._today:
+            self._today = today
+            self._fill(self._labels[self._page])
 
-    def _on_map(self, *_args) -> None:
-        prev = (self.ty, self.tm, self.td)
-        self._sync_today()
-        if (self.ty, self.tm, self.td) != prev:
-            self._refresh_current_page()
+    def _show(self, transition=Gtk.StackTransitionType.NONE):
+        cur = self._cur
+        self._ml.set_text(f"{self._M[cur.month - 1]} {cur.year}")
+        self._page ^= 1
+        self._fill(self._labels[self._page])
+        self.stack.set_visible_child_full(f"page_{self._page}", transition)
 
-    def _refresh_current_page(self) -> None:
-        labels = self._labels[self._active_page]
-        if self.view_mode == "month":
-            self._um(labels)
-        else:
-            self._uw(labels)
-
-    def _upd(self, transition=Gtk.StackTransitionType.NONE):
-        self._ml.set_text(f"{self._M[self.sm - 1]} {self.sy}")
-
-        target_page = 0 if transition == Gtk.StackTransitionType.NONE else 1 - self._active_page
-        target_labels = self._labels[target_page]
-
-        if self.view_mode == "month":
-            self._um(target_labels)
-        else:
-            self._uw(target_labels)
-
-        page_name = f"page_{target_page}"
-        if transition != Gtk.StackTransitionType.NONE:
-            self.stack.set_visible_child_full(page_name, transition)
-        else:
-            self.stack.set_visible_child_name(page_name)
-
-        self._active_page = target_page
-
-    def _um(self, labels):
-        f_wd, mdays = calendar.monthrange(self.sy, self.sm)
-        off = (f_wd - self.first_weekday) % 7
-
-        ty, tm, td = self.ty, self.tm, self.td
-        sy, sm = self.sy, self.sm
-
-        is_curr_m_y = (sm == tm and sy == ty)
-
+    def _fill(self, labels):
+        cur, today, month = self._cur, self._today, self._month
+        start = self._align(cur)
         for i, lbl in enumerate(labels):
-            ctx = lbl.get_style_context()
-            ctx.remove_class("current-day")
-
-            day = i - off + 1
-
-            if 1 <= day <= mdays:
-                lbl.set_text(str(day))
-                lbl.set_name("day-label")
-                if is_curr_m_y and day == td:
-                    ctx.add_class("current-day")
-            else:
+            d = start + timedelta(i)
+            out = d.month != cur.month
+            dot = out and month
+            if dot:
                 lbl.set_name("day-empty")
                 lbl.set_markup(icons.dot)
-
-    def _uw(self, labels):
-        ty, tm, td = self.ty, self.tm, self.td
-        ref_m = self.sm
-
-        start_date = datetime.date(self.sy, self.sm, self.sd)
-
-        for i, lbl in enumerate(labels):
-            curr = start_date + datetime.timedelta(days=i)
-            y, m, d = curr.year, curr.month, curr.day
-
-            lbl.set_text(str(d))
-
+            else:
+                lbl.set_name("day-label")
+                lbl.set_text(str(d.day))
             ctx = lbl.get_style_context()
-            ctx.remove_class("current-day")
-            ctx.remove_class("dim-label")
-
-            if d == td and m == tm and y == ty:
-                ctx.add_class("current-day")
-            if m != ref_m:
-                ctx.add_class("dim-label")
+            for cls, on in (("current-day", d == today and not dot), ("dim-label", out and not month)):
+                (ctx.add_class if on else ctx.remove_class)(cls)
 
     def reset_to_current(self):
-        self._sync_today()
-        self._rst()
-        self._upd(transition=Gtk.StackTransitionType.CROSSFADE)
+        self._reset()
+        self._show(Gtk.StackTransitionType.CROSSFADE)
 
     def _shift(self, step):
-        if self.view_mode == "month":
-            self.sy, month0 = divmod(self.sy * 12 + self.sm - 1 + step, 12)
-            self.sm = month0 + 1
+        cur = self._cur
+        if self._month:
+            n = cur.year * 12 + cur.month - 1 + step
+            self._cur = date(n // 12, n % 12 + 1, 1)
         else:
-            moved = datetime.date(self.sy, self.sm, self.sd) + datetime.timedelta(days=7 * step)
-            self.sy, self.sm, self.sd = moved.year, moved.month, moved.day
-
-        self._upd(transition=self._SLIDE[step])
-
-    def _prev(self, _):
-        self._shift(-1)
-
-    def _next(self, _):
-        self._shift(1)
+            self._cur = cur + timedelta(7 * step)
+        self._show(self._SLIDE[step])

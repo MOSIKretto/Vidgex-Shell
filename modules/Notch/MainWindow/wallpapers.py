@@ -1,6 +1,5 @@
 import os
 import time
-import random
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 
@@ -114,34 +113,6 @@ _ARR_FONT.set_size(_ARR_FONT_PT * Pango.SCALE)
 _ARR_FONT.set_weight(Pango.Weight.BOLD)
 _ARR_FONT_STR = _ARR_FONT.to_string()
 
-_GL_FRAMES = 14
-_GL_FRAME_MS = 35
-_CF_BURSTS = 2
-
-_GLITCH_CLASSES = (
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-)
-
-_NO_CLASSES = ()
-
-
-def _apply_glitch(ctx, chance, active):
-    if active:
-        for cls in active:
-            ctx.remove_class(cls)
-    if random.random() >= chance:
-        return _NO_CLASSES
-    classes = random.sample(_GLITCH_CLASSES, 1 if random.random() > 0.4 else 2)
-    for cls in classes:
-        ctx.add_class(cls)
-    return classes
-
-
 _md5 = hashlib.md5
 _CMAP = {}
 _MD5_CACHE = {}
@@ -199,9 +170,13 @@ def _arr_set_art(lbl, lines):
             parts.append(v)
         ml.append("".join(parts))
     inner = "\n".join(ml)
-    lbl.set_markup(
-        f'<span font_desc="{_ARR_FONT_STR}" foreground="{fg}">{inner}</span>'
-    )
+    markup = f'<span font_desc="{_ARR_FONT_STR}" foreground="{fg}">{inner}</span>'
+    # style-updated приходит при любой смене стиля — не трогаем label,
+    # если разметка не изменилась.
+    if getattr(lbl, "_arr_last", None) == markup:
+        return
+    lbl._arr_last = markup
+    lbl.set_markup(markup)
 
 
 def _short_path(p):
@@ -700,7 +675,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
         if -_HSZ < rx < _HSZ:
             self._sel()
         else:
-            self.nav(-1 if rx < 0.0 else 1, glitch=True)
+            self.nav(-1 if rx < 0.0 else 1)
         return True
 
     def _scroll(self, _, e):
@@ -720,10 +695,10 @@ class WallpaperCarousel(Gtk.DrawingArea):
             elif ady > 0.5:
                 d = 1 if dy > 0.0 else -1
         if d and not self._anim:
-            self.nav(d, glitch=True)
+            self.nav(d)
         return True
 
-    def nav(self, dr, anim=True, glitch=False):
+    def nav(self, dr, anim=True):
         if not self._flt or (self._anim and anim and not self._spl):
             return
         self._idx = (self._idx + dr) % len(self._flt)
@@ -736,7 +711,7 @@ class WallpaperCarousel(Gtk.DrawingArea):
             self.queue_draw()
         self._sched()
         if self._on_nav:
-            self._on_nav(dr, glitch)
+            self._on_nav(dr)
 
     def _slide(self):
         if self._dead:
@@ -835,12 +810,6 @@ class WallpaperSelector(Box):
         self._mon = None
         self._walls = _INITIAL_WALLS_DIR
         self._last_apply = 0.0
-
-        self._gl_rem = [0, 0]
-        self._gl_tid = [None, None]
-        self._gl_active = [_NO_CLASSES, _NO_CLASSES]
-        self._cf_tid = None
-        self._cf_frame = 0
 
         self._io_ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wall-io")
         self._color_ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wall-color")
@@ -1140,58 +1109,6 @@ class WallpaperSelector(Box):
         self._arr_render(0)
         self._arr_render(1)
 
-    def _start_glitch(self, idx):
-        old = self._gl_tid[idx]
-        if old is not None:
-            _remove_source(old)
-            self._gl_tid[idx] = None
-        self._gl_rem[idx] = _GL_FRAMES
-        self._gl_tid[idx] = GLib.timeout_add(_GL_FRAME_MS, self._gl_tick, idx)
-
-    def _gl_tick(self, idx):
-        ctx = self._arr_lbls[idx].get_style_context()
-        rem = self._gl_rem[idx]
-        self._gl_active[idx] = _apply_glitch(ctx, rem / _GL_FRAMES, self._gl_active[idx])
-        rem -= 1
-        if rem <= 0:
-            self._gl_tid[idx] = None
-            for cls in self._gl_active[idx]:
-                ctx.remove_class(cls)
-            self._gl_active[idx] = _NO_CLASSES
-            return False
-        self._gl_rem[idx] = rem
-        return True
-
-    def _start_confirm(self):
-        for i in (0, 1):
-            tid = self._gl_tid[i]
-            if tid is not None:
-                _remove_source(tid)
-                self._gl_tid[i] = None
-        if self._cf_tid is not None:
-            _remove_source(self._cf_tid)
-        self._cf_frame = 0
-        self._cf_tid = GLib.timeout_add(_GL_FRAME_MS, self._cf_tick)
-
-    def _cf_tick(self):
-        frame_in_burst = self._cf_frame % _GL_FRAMES
-        progress = 1.0 - frame_in_burst / _GL_FRAMES
-
-        active = self._gl_active
-        for i, lbl in enumerate(self._arr_lbls):
-            active[i] = _apply_glitch(lbl.get_style_context(), progress, active[i])
-
-        self._cf_frame += 1
-        if self._cf_frame >= _GL_FRAMES * _CF_BURSTS:
-            self._cf_tid = None
-            for i, lbl in enumerate(self._arr_lbls):
-                ctx = lbl.get_style_context()
-                for cls in active[i]:
-                    ctx.remove_class(cls)
-                active[i] = _NO_CLASSES
-            return False
-        return True
-
     def _on_car_click(self, *_):
         if self._sch_rev.get_reveal_child():
             self._sch_rev.set_reveal_child(False)
@@ -1199,15 +1116,12 @@ class WallpaperSelector(Box):
         if self._dir_revealer.get_reveal_child():
             self._close_dir_chooser()
 
-    def _on_nav(self, direction, glitch):
+    def _on_nav(self, _direction):
         self._ulbl()
-        if glitch:
-            self._start_glitch(0 if direction < 0 else 1)
 
     def _on_sel(self, nm):
         self._apply(nm)
         self._ulbl()
-        self._start_confirm()
 
     def _on_sch_item_click(self, btn):
         self._on_list_item_clicked(btn._si)
@@ -1458,7 +1372,6 @@ class WallpaperSelector(Box):
     def _on_spin_done(self, nm, ext):
         self._apply(nm, notify=ext)
         self._ulbl()
-        self._start_confirm()
         self._roll()
 
     def _ulbl(self, *_):
@@ -1492,10 +1405,6 @@ class WallpaperSelector(Box):
         if self._mon:
             self._mon.cancel()
             self._mon = None
-        for tid in (self._gl_tid[0], self._gl_tid[1], self._cf_tid):
-            _remove_source(tid)
-        self._gl_tid = [None, None]
-        self._cf_tid = None
         for sid in self._pend.values():
             _remove_source(sid)
         self._pend.clear()

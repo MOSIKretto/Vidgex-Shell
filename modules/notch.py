@@ -1,5 +1,4 @@
 import json
-import threading
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -34,17 +33,25 @@ class Notch(Window):
         super().__init__(anchor="top", margin="-36px 0px 0px 0px", monitor=0)
 
         self._cw: str | None = None
-        self._cht: int | None = None
         self._last_win: tuple = (None, None)
-        self._conn = get_hyprland_connection()
-        self._fetching = False
-        self._fetch_pending = False
-        self._destroyed = False
         self._init = False
+        self._osd_tick = None
+        self._osd_t0 = None
 
         self._build()
-        self._bind()
-        self.connect("destroy", self._cleanup)
+
+        conn = get_hyprland_connection()
+        ids = [
+            conn.connect(f"event::{name}", self._refresh)
+            for name in ("workspace", "activewindow", "closewindow", "focusedmon")
+        ]
+        self.connect("destroy", lambda _: [conn.disconnect(i) for i in ids])
+        self.compact.connect(
+            "button-press-event",
+            lambda *_: self.toggle_notch("dashboard") or True,
+        )
+        self._conn = conn
+
         GLib.idle_add(self._final)
 
     def _build(self) -> None:
@@ -77,12 +84,12 @@ class Notch(Window):
 
         self.compact = Gtk.EventBox(name="notch-compact", visible=True)
         self.compact.add(
-            Box(name="compact-content", h_align="center", v_align="center",
-                children=[self.cs])
+            Box(name="compact-content", h_align="center", v_align="center", children=[self.cs])
         )
         self.compact.set_size_request(290, 36)
 
         self.main_window = MainWindow(notch=self)
+        self.main_window.set_size_request(1093, 472)
 
         self.notif_popup = NotificationsPopup()
         self.notif_popup.set_handlers(
@@ -90,7 +97,6 @@ class Notch(Window):
             on_show=self.open_notification,
             on_hide=self.close_notification,
         )
-        self.main_window.set_size_request(1093, 472)
         self.notif_popup.set_size_request(360, -1)
 
         self.stack = Stack(
@@ -133,60 +139,44 @@ class Notch(Window):
         root_box = Box(
             name="notch-root-container", orientation="h",
             h_align="center", v_align="start", spacing=0,
+            children=[self.notif_popup.side_left, hover_box, self.notif_popup.side_right],
         )
-        root_box.add(self.notif_popup.side_left)
-        root_box.add(hover_box)
-        root_box.add(self.notif_popup.side_right)
         self.add(root_box)
-
-    def _bind(self) -> None:
-        self.compact.connect(
-            "button-press-event",
-            lambda *_: self.toggle_notch("dashboard") or True,
-        )
-        self._hypr_handler_id = self._conn.connect(
-            "event", lambda *_: self._schedule_updwin()
-        )
-
-    def _cleanup(self, *_) -> None:
-        if self._destroyed:
-            return
-        self._destroyed = True
-        self._cancel_osd_timer()
-        self._conn.disconnect(self._hypr_handler_id)
 
     @property
     def notifications_blocked(self) -> bool:
         return self._cw not in (None, "notification")
 
-    def _cancel_osd_timer(self) -> None:
-        if self._cht is not None:
-            GLib.source_remove(self._cht)
-            self._cht = None
-
-    def _on_ctrl_changed(self) -> None:
-        if self._destroyed or not self._init or self._cw:
-            return
-        self._cancel_osd_timer()
-        self.cs.set_visible_child_name("control")
-        self._cht = GLib.timeout_add(2200, self._reset_compact_stack)
-
-    def _reset_compact_stack(self) -> bool:
-        self._cht = None
-        if not self._destroyed and not self._cw:
-            self.cs.set_visible_child_name("window")
-        return False
-
     def _final(self) -> bool:
-        if self._destroyed:
-            return False
         self.show_all()
-        self._schedule_updwin()
+        self._refresh()
         self._init = True
         return False
 
+    def _on_ctrl_changed(self) -> None:
+        if not self._init or self._cw:
+            return
+        self.cs.set_visible_child_name("control")
+        self._osd_t0 = None
+        if self._osd_tick is None:
+            self._osd_tick = self.cs.add_tick_callback(self._osd_step)
+
+    def _osd_step(self, _, clock) -> bool:
+        now = clock.get_frame_time()
+        self._osd_t0 = self._osd_t0 or now
+        if now - self._osd_t0 < 2_200_000:
+            return True
+        self._osd_tick = None
+        self.cs.set_visible_child_name("window")
+        return False
+
+    def _stop_osd(self) -> None:
+        if self._osd_tick is not None:
+            self.cs.remove_tick_callback(self._osd_tick)
+            self._osd_tick = None
+
     def _open_panel(self) -> None:
-        self._cancel_osd_timer()
+        self._stop_osd()
         self.cs.set_visible_child_name("window")
         self.nb.add_style_class("open")
         self.stack.add_style_class("open")
@@ -196,7 +186,7 @@ class Notch(Window):
         self.stack.remove_style_class("open")
         self._cw = None
         self.stack.set_visible_child(self.compact)
-        self._schedule_updwin()
+        self._refresh()
 
     def open_notification(self) -> None:
         self._open_panel()
@@ -204,9 +194,8 @@ class Notch(Window):
         self.stack.set_visible_child(self.notif_popup)
 
     def close_notification(self) -> None:
-        if self._cw != "notification":
-            return
-        self._close_panel()
+        if self._cw == "notification":
+            self._close_panel()
 
     def toggle_notch(self, name: str) -> None:
         if self._cw == name:
@@ -228,53 +217,31 @@ class Notch(Window):
         self.keyboard_mode = "none"
         self._close_panel()
 
-    def _schedule_updwin(self) -> None:
-        if self._destroyed or self._cw:
+    def _refresh(self, *_) -> None:
+        if self._cw:
             return
-        if self._fetching:
-            self._fetch_pending = True
-            return
-        self._fetching = True
-        threading.Thread(target=self._fetch_win_info, daemon=True).start()
-
-    def _fetch_win_info(self) -> None:
-        result = None
         try:
-            ws = json.loads(self._conn.send_command("j/activeworkspace").reply.decode())["id"]
-            win = json.loads(self._conn.send_command("j/activewindow").reply.decode())
-            cls = win.get("class", "") or win.get("initialClass", "")
-            result = (ws, cls)
-        except (OSError, ValueError):
-            pass
-        finally:
-            GLib.idle_add(self._on_fetch_done, result)
+            ws = json.loads(self._conn.send_command("j/activeworkspace").reply)["id"]
+            win = json.loads(self._conn.send_command("j/activewindow").reply)
+        except (OSError, ValueError, KeyError):
+            return
 
-    def _on_fetch_done(self, result: tuple | None) -> bool:
-        self._fetching = False
-        if self._destroyed:
-            return False
-
-        if self._fetch_pending:
-            self._fetch_pending = False
-            self._schedule_updwin()
-            return False
-
-        if self._cw or result is None or result == self._last_win:
-            return False
+        result = (ws, win.get("class") or win.get("initialClass") or "")
+        if result == self._last_win:
+            return
         self._last_win = result
 
-        ws, wc = result
         self.ws_lbl.set_label(f"Workspace {ws}")
-        if wc.strip():
-            px = resolve_app_pixbuf(wc, 20)
-            if px:
-                self.win_ic.set_from_pixbuf(px)
-            else:
-                self.win_ic.set_from_icon_name("application-x-executable-symbolic", 20)
-            self.win_ic.show()
-            self.awc.set_spacing(8)
-        else:
+        wc = result[1].strip()
+        if not wc:
             self.win_ic.hide()
             self.awc.set_spacing(0)
+            return
 
-        return False
+        px = resolve_app_pixbuf(wc, 20)
+        if px:
+            self.win_ic.set_from_pixbuf(px)
+        else:
+            self.win_ic.set_from_icon_name("application-x-executable-symbolic", 20)
+        self.win_ic.show()
+        self.awc.set_spacing(8)

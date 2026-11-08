@@ -24,7 +24,7 @@ from fabric.widgets.stack import Stack
 import services.icons as icons
 from modules.Notch.MainWindow.MusicPlayer.Player.mpris import MprisPlayer, MprisPlayerManager
 from modules.Notch.MainWindow.MusicPlayer.Player.circleImage import CircleImage
-from modules.Notch.MainWindow.MusicPlayer.Player.visualizer import GlitchVisualizer
+from modules.Notch.MainWindow.MusicPlayer.Player.visualizer import Visualizer
 
 _LBL_H = 20
 _COVER_SIZE = 174
@@ -124,17 +124,6 @@ _V_ART = '\n'.join(l.ljust(_V_MAX_W) for l in _V_ART_LINES)
 
 _V_SCROLL_SPEED = 1.0
 _V_GAP = 12
-
-_GL_FRAMES = 14
-_GL_FRAME_MS = 35
-_GL_RAND_MIN = 1
-_GL_RAND_MAX = 60
-_GL_REPEAT_CHANCE = 0.5
-
-_GLITCH_CLASSES = [
-    "glitch-shift-right", "glitch-shift-left", "glitch-flicker",
-    "glitch-aberration", "glitch-heavy", "glitch-color-swap",
-]
 
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
@@ -397,7 +386,6 @@ class PlayerBox(Box):
         '_a_active', '_a_t0', '_a_from', '_a_to',
         '_a_dur', '_a_pow', '_a_chain', '_a_done',
         '_v_layout', '_v_font', '_v_block', '_v_lh', '_v_cached_h',
-        '_gl_active', '_gl_rem', '_gl_total', '_gl_tid', '_gl_rand_tid', '_active_glitches',
         'visualizer', 'bg_overlay',
         '_blur_pyr', '_blur_size', '_blur_valid', '_mask_surf', '_mask_ctx', '_mask_key'
     )
@@ -423,12 +411,6 @@ class PlayerBox(Box):
         self._v_scroll_id = self._v_layout = self._v_font = None
         self._v_block = self._v_lh = 0
         self._v_cached_h = -1
-
-        self._gl_active = False
-        self._gl_rem = 0
-        self._gl_total = _GL_FRAMES
-        self._gl_tid = self._gl_rand_tid = None
-        self._active_glitches = []
 
         self._pv = self._last_pv = 0.0
         self._ptimer = self._stimer = None
@@ -527,7 +509,7 @@ class PlayerBox(Box):
                                homogeneous=True, children=(self.overlay_container, self.info_box))
         self.player_box.connect("draw", self._on_player_box_draw)
 
-        self.visualizer = GlitchVisualizer(player=mp, local_player=local_player, bands=40)
+        self.visualizer = Visualizer(player=mp, local_player=local_player, bands=40)
         self.bg_overlay = Overlay(h_expand=True, v_expand=True, h_align="fill", v_align="fill",
                                    child=self.visualizer, overlays=(self.player_box,))
         self.visualizer.show()
@@ -695,86 +677,6 @@ class PlayerBox(Box):
                       child=Label(name="player-btn-label", markup=icon, style_classes=sc),
                       style_classes=sc, h_expand=False, v_expand=False, h_align="center", v_align="center")
 
-    # ─── glitch text (random ambient "no cover" effect) ────────────────────
-    def _schedule_random_glitch(self):
-        if not self._is_wall: return
-        self._gl_rand_tid = GLib.timeout_add_seconds(
-            random.randint(_GL_RAND_MIN, _GL_RAND_MAX), self._fire_random_glitch)
-
-    def _fire_random_glitch(self):
-        self._gl_rand_tid = None
-        if not self._gl_active and self._is_wall: self._start_glitch()
-        self._schedule_random_glitch()
-        return False
-
-    def _start_glitch(self):
-        self._gl_rem = self._gl_total = _GL_FRAMES
-        self._gl_active = True
-        if self._gl_tid: GLib.source_remove(self._gl_tid)
-        self._gl_tid = GLib.timeout_add(_GL_FRAME_MS, self._gl_tick)
-
-    def _clear_glitch(self): self._active_glitches = []
-
-    def _gl_tick(self):
-        progress = 1.0 - self._gl_rem / self._gl_total
-        self._clear_glitch()
-        if random.random() > progress:
-            self._active_glitches = random.sample(_GLITCH_CLASSES, 1 if random.random() > 0.4 else 2)
-
-        self._cover_box.queue_draw()
-        self._gl_rem -= 1
-        if self._gl_rem <= 0:
-            self._gl_active = False
-            self._gl_tid = None
-            self._clear_glitch()
-            self._cover_box.queue_draw()
-            if random.random() < _GL_REPEAT_CHANCE: self._start_glitch()
-            return False
-        return True
-
-    def _draw_glitch_text(self, cr, layout, x, y, r, g, b, a):
-        gl = self._active_glitches
-        if not gl:
-            cr.move_to(x, y); cr.set_source_rgba(r, g, b, a); PangoCairo.show_layout(cr, layout)
-            return
-
-        sh_r = "glitch-shift-right" in gl
-        sh_l = "glitch-shift-left" in gl
-        flicker = "glitch-flicker" in gl
-        aberr = "glitch-aberration" in gl
-        heavy = "glitch-heavy" in gl
-        swap = "glitch-color-swap" in gl
-
-        base_a = (0.3 if sh_r else 0.1) if flicker else a
-        base_r, base_g, base_b = (1.0, 0.0, 0.25) if swap else (r, g, b)
-
-        shadows = []
-        if aberr:
-            shadows += [(2, 0, 1.0, 0.0, 0.25, 0.85), (-2, 0, 0.0, 0.9, 1.0, 0.85)]
-            if swap: shadows.append((0, 0, 1.0, 0.0, 0.25, 0.4))
-        elif swap:
-            shadows.append((0, 0, 1.0, 0.0, 0.25, 0.5))
-
-        if sh_r:
-            shadows.append((4, 0, 1.0, 0.0, 0.25, 0.9 if flicker else 0.7))
-            if not flicker: shadows.append((8, 0, 1.0, 0.0, 0.25, 0.25))
-
-        if sh_l:
-            shadows.append((-5 if heavy else -4, 0, 0.0, 0.9, 1.0, 0.8 if heavy else 0.7))
-            if heavy: shadows += [(5, 1, 1.0, 0.0, 0.25, 0.5), (0, 3, 0.46, 1.0, 0.01, 0.3)]
-            else: shadows.append((-8, 0, 0.0, 0.9, 1.0, 0.25))
-        elif heavy:
-            shadows += [(5, 1, 1.0, 0.0, 0.25, 0.6), (-5, -1, 0.0, 0.9, 1.0, 0.6), (0, 3, 0.46, 1.0, 0.01, 0.35)]
-
-        for dx, dy, sr, sg, sb, sa in shadows:
-            cr.move_to(x + dx, y + dy)
-            cr.set_source_rgba(sr, sg, sb, sa)
-            PangoCairo.show_layout(cr, layout)
-
-        cr.move_to(x, y)
-        cr.set_source_rgba(base_r, base_g, base_b, base_a)
-        PangoCairo.show_layout(cr, layout)
-
     # ─── order/repeat helpers ───────────────────────────────────────────────
     def _get_order(self):
         return self.mpris_player._order_mode if self._is_local else self._local_order
@@ -846,9 +748,11 @@ class PlayerBox(Box):
         cr.save()
         cr.arc(w * 0.5, h * 0.5, min(w, h) * 0.5, 0, _TAU)
         cr.clip()
+        cr.set_source_rgba(r, g, b, a)
         x = -off
         while x < w:
-            self._draw_glitch_text(cr, layout, x, y0, r, g, b, a)
+            cr.move_to(x, y0)
+            PangoCairo.show_layout(cr, layout)
             x += block
         cr.restore()
 
@@ -964,16 +868,12 @@ class PlayerBox(Box):
         if self._anim_id is not None: GLib.source_remove(self._anim_id); self._anim_id = None
         self._is_wall = True
         self._v_start_scroll()
-        if not self._gl_rand_tid and not self._gl_active: self._schedule_random_glitch()
         self._cover_box.queue_draw()
 
     def _set_img(self, p):
         if not _fex(p): return self._placeholder()
         self.cover.set_image_from_file(p)
         self._is_wall = False
-        self._clear_glitch()
-        self._gl_active = False
-        if self._gl_tid: GLib.source_remove(self._gl_tid); self._gl_tid = None
         self._v_stop_scroll()
         self._cover_box.queue_draw()
         self._check_spin_state()
@@ -1341,9 +1241,9 @@ class PlayerBox(Box):
     def cleanup(self):
         self._spinning = False
         self._flick_v = 0.0
-        for attr in ('_anim_id', '_gl_tid', '_gl_rand_tid'):
-            tid = getattr(self, attr, None)
-            if tid is not None: GLib.source_remove(tid); setattr(self, attr, None)
+        if self._anim_id is not None:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
         self._v_stop_scroll()
         self._prog_stop()
         self._cancel_anim()

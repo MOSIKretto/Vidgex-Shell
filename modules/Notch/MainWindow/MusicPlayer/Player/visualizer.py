@@ -1,5 +1,4 @@
 import json
-import random
 import subprocess
 import time as _time
 from gi.repository import Gst, GLib, Gtk
@@ -10,9 +9,6 @@ _NUM_BARS = 80
 # Число полос FFT спектра. Должно совпадать с _SPECTRUM_BANDS в player.py.
 _FFT_BINS = 512
 _FPS_MS = 20  # ~50 fps — не менять
-
-_CLR_CYAN = (0.0, 0.95, 1.0, 0.85)
-_CLR_RED = (1.0, 0.05, 0.35, 0.85)
 
 _MONITOR_CACHE_TTL = 30.0
 _monitor_cache = {"name": None, "ts": 0.0}
@@ -85,7 +81,7 @@ def _read_wpctl_volume():
 class _SystemVolumePoller:
     """
     Единый на весь процесс опрос системной громкости через wpctl.
-    Раньше каждый GlitchVisualizer сам спавнил subprocess каждые 150мс —
+    Раньше каждый визуализатор сам спавнил subprocess каждые 150мс —
     при нескольких вкладках плеера это было десятки fork/exec в секунду
     просто в фоне. Теперь это один процесс на всё приложение.
     """
@@ -240,7 +236,7 @@ class AudioSpectrum:
     def cleanup(self): self._stop_pipeline()
 
 
-class GlitchVisualizer(Gtk.DrawingArea):
+class Visualizer(Gtk.DrawingArea):
     """
     Фоновый визуализатор музыки, строго привязанный к громкости своего трека.
     Активен, только если реально играет привязанный к нему плеер.
@@ -255,9 +251,8 @@ class GlitchVisualizer(Gtk.DrawingArea):
         self.set_hexpand(True); self.set_vexpand(True)
         self.set_size_request(-1, 200)
 
-        self.set_name("glitch-visualizer")
-        self.get_style_context().add_class("glitch-visualizer")
-        self._inject_css()
+        self.set_name("visualizer")
+        self.get_style_context().add_class("visualizer")
         self.show()
 
         self.analyzer = AudioSpectrum(player=player, bands=bands)
@@ -266,7 +261,6 @@ class GlitchVisualizer(Gtk.DrawingArea):
         self.peak_fall = [0.0] * bands
 
         self._active = False
-        self._glitch_intensity = self._tear_y = self._tear_h = self._tear_shift = 0.0
 
         self._vol_target = self._vol_current = 1.0
         self._vol_svc = self._vol_sig_id = None
@@ -283,18 +277,6 @@ class GlitchVisualizer(Gtk.DrawingArea):
         self._init_volume_tracker()
 
         self.connect("draw", self._on_draw)
-
-    def _inject_css(self):
-        try:
-            provider = Gtk.CssProvider()
-            provider.load_from_data(b"""
-            #glitch-visualizer, .glitch-visualizer {
-                background-color: transparent;
-                color: var(--primary);
-            }
-            """)
-            self.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 50)
-        except Exception: pass
 
     def _init_volume_tracker(self):
         if Volume is not None:
@@ -358,7 +340,6 @@ class GlitchVisualizer(Gtk.DrawingArea):
             self.bars[i] = max(0.0, self.bars[i] * 0.65 - 0.05)
             self.peaks[i] = max(0.0, self.peaks[i] * 0.65 - 0.05)
             if self.bars[i] > 0.001 or self.peaks[i] > 0.001: has_energy = True
-        self._glitch_intensity = 0.0
         return has_energy
 
     def _tick(self):
@@ -379,29 +360,6 @@ class GlitchVisualizer(Gtk.DrawingArea):
             return True
 
         targets = self.analyzer.get_spectrum()
-        half = self.bands // 2
-        bass = targets[:16] + targets[-16:]
-        treble = targets[half - 16:half + 16]
-        bass_e = sum(bass) / len(bass) if bass else 0.0
-        treble_e = sum(treble) / len(treble) if treble else 0.0
-
-        audible = self._vol_current >= 0.15
-        both_active = audible and bass_e > 0.48 and treble_e > 0.48
-        both_extreme = audible and bass_e > 0.65 and treble_e > 0.65
-
-        if both_extreme and random.random() < 0.45:
-            self._glitch_intensity = random.uniform(0.75, 1.0)
-            self._tear_y = random.uniform(0.08, 0.85)
-            self._tear_h = random.uniform(0.06, 0.22)
-            self._tear_shift = random.choice([-18, -12, 12, 18])
-        elif both_active and random.random() < 0.25:
-            self._glitch_intensity = random.uniform(0.35, 0.60)
-            self._tear_shift = random.choice([-8, 8])
-        else:
-            self._glitch_intensity *= 0.66
-            if self._glitch_intensity < 0.02:
-                self._glitch_intensity = 0.0
-                self._tear_shift = 0.0
 
         for i in range(self.bands):
             t = targets[i]
@@ -432,28 +390,10 @@ class GlitchVisualizer(Gtk.DrawingArea):
             rgba = style_ctx.get_color(Gtk.StateFlags.NORMAL)
             r, g, b = rgba.red, rgba.green, rgba.blue
 
-        is_glitch = self._glitch_intensity > 0.05
-
-        if is_glitch and abs(self._tear_shift) > 0.1:
-            y_start, y_len = self._tear_y * h, self._tear_h * h
-
-            cr.save(); cr.rectangle(0, y_start, w, y_len); cr.clip()
-            cr.translate(self._tear_shift, 0)
-            self._render_bars(cr, w, h, r, g, b, 0.90, is_glitch)
-            cr.restore()
-
-            cr.save()
-            cr.rectangle(0, 0, w, y_start)
-            cr.rectangle(0, y_start + y_len, w, h - (y_start + y_len))
-            cr.clip()
-            self._render_bars(cr, w, h, r, g, b, 0.85, is_glitch)
-            cr.restore()
-        else:
-            self._render_bars(cr, w, h, r, g, b, 0.88, is_glitch)
-
+        self._render_bars(cr, w, h, r, g, b, 0.88)
         return False
 
-    def _render_bars(self, cr, w, h, r, g, b, alpha, is_glitch):
+    def _render_bars(self, cr, w, h, r, g, b, alpha):
         spacing = 1.5
         bar_w = max(1.5, (w - (self.bands - 1) * spacing) / float(self.bands))
         max_bar_h = float(h) * self._vol_current
@@ -461,15 +401,8 @@ class GlitchVisualizer(Gtk.DrawingArea):
 
         if max_bar_h < 1.0 or self._vol_current <= 0.001: return
 
-        if is_glitch:
-            shift = int(2 + self._glitch_intensity * 6)
-            for dx, clr in ((-shift, _CLR_CYAN), (shift, _CLR_RED)):
-                cr.save(); cr.translate(dx, 0)
-                self._draw_bars_pass(cr, bar_w, spacing, max_bar_h, bottom_y, clr[0], clr[1], clr[2], 0.75)
-                cr.restore()
-
         self._draw_bars_pass(cr, bar_w, spacing, max_bar_h, bottom_y, r, g, b, alpha)
-        self._draw_peak_elements(cr, bar_w, spacing, max_bar_h, bottom_y, is_glitch)
+        self._draw_peak_elements(cr, bar_w, spacing, max_bar_h, bottom_y)
 
     def _draw_bars_pass(self, cr, bar_w, spacing, max_bar_h, bottom_y, r, g, b, alpha):
         cr.set_source_rgba(r, g, b, alpha)
@@ -478,7 +411,7 @@ class GlitchVisualizer(Gtk.DrawingArea):
         for i in range(self.bands):
             bh = self.bars[i] * max_bar_h
             if bh < 1.0: continue
-            bx = i * (bar_w + spacing)
+            bx = i * (bar_w + seg_space * 0 + spacing - spacing)
             by = bottom_y - bh
 
             y_cur = bottom_y
@@ -490,13 +423,13 @@ class GlitchVisualizer(Gtk.DrawingArea):
 
         cr.fill()
 
-    def _draw_peak_elements(self, cr, bar_w, spacing, max_bar_h, bottom_y, is_glitch):
+    def _draw_peak_elements(self, cr, bar_w, spacing, max_bar_h, bottom_y):
         for i in range(self.bands):
             ph = self.peaks[i] * max_bar_h
             if ph < 2.0: continue
             bx, by = i * (bar_w + spacing), bottom_y - ph
             cr.rectangle(bx, by - 2, bar_w, 1.5)
-            cr.set_source_rgba(*(_CLR_RED[:3] + (0.95,)) if is_glitch else (1.0, 1.0, 1.0, 0.85))
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.85)
             cr.fill()
 
     def cleanup(self):

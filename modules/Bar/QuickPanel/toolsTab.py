@@ -1,5 +1,4 @@
 import os
-import random
 import re
 import subprocess
 import threading
@@ -18,18 +17,10 @@ from fabric.widgets.label import Label
 
 import services.icons as icons
 
+
 _MAX_RECORD_MINUTES = 90
 _MAX_RECORD_SECONDS = _MAX_RECORD_MINUTES * 60
 _PID_RE = re.compile(r"^(\d+)$", re.MULTILINE)
-
-_GLITCH_CLASSES = (
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-)
 
 
 def _cancel_source(source_id: int | None) -> None:
@@ -37,17 +28,18 @@ def _cancel_source(source_id: int | None) -> None:
         GLib.source_remove(source_id)
     return None
 
-
 def _get_pictures_dir() -> Path:
     pic_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES)
     if pic_dir: return Path(pic_dir)
     if "XDG_PICTURES_DIR" in os.environ: return Path(os.environ["XDG_PICTURES_DIR"])
     return Path.home() / "Pictures"
+
 def _get_videos_dir() -> Path:
     vid_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_VIDEOS)
     if vid_dir: return Path(vid_dir)
     if "XDG_VIDEOS_DIR" in os.environ: return Path(os.environ["XDG_VIDEOS_DIR"])
     return Path.home() / "Videos"
+
 def _send_notification(summary: str, body: str = "", icon=None, actions=None) -> str:
     cmd = ["notify-send","-a","Vidgex-Shell",summary]
     if body: cmd.append(body)
@@ -56,8 +48,10 @@ def _send_notification(summary: str, body: str = "", icon=None, actions=None) ->
         for act_id, act_label in actions: cmd.extend(["-A", f"{act_id}={act_label}"])
     res = subprocess.run(cmd, capture_output=True, text=True)
     return res.stdout.strip()
+
 def _copy_to_clipboard(file_path: Path):
     with open(file_path,"rb") as f: subprocess.run(["wl-copy"], stdin=f)
+
 def _get_recording_state() -> tuple[int, float] | None:
     res = subprocess.run(
         ["pgrep", "-f", "gpu-screen-recorder"],
@@ -77,8 +71,10 @@ def _get_recording_state() -> tuple[int, float] | None:
         except OSError:
             continue
     return None
+
 def _is_recording() -> bool:
     return _get_recording_state() is not None
+
 def _run_ocr():
     time.sleep(0.5)
     p1 = subprocess.Popen(["hyprshot","-m","region","-z","-r","-s"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -88,6 +84,7 @@ def _run_ocr():
     text = out.decode("utf-8").strip()
     subprocess.run(["wl-copy"], input=text.encode("utf-8"))
     _send_notification("OCR Success","Text Copied to Clipboard")
+
 def _run_recording():
     save_dir = _get_videos_dir() / "Recordings"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +99,7 @@ def _run_recording():
         output_file = save_dir / f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.mp4"
         _send_notification("🔴 Recording started")
         subprocess.Popen(["gpu-screen-recorder","-w","screen","-q","ultra","-a","default_output","-ac","opus","-cr","full","-f","60","-o",str(output_file)])
+
 def _wait_for_file(file_path: Path, timeout: float = 6.0):
     count=0; max_steps=int(timeout/0.2)
     while count<max_steps:
@@ -109,12 +107,14 @@ def _wait_for_file(file_path: Path, timeout: float = 6.0):
             lsof=subprocess.run(["lsof",str(file_path)], capture_output=True)
             if lsof.returncode!=0: time.sleep(0.2); return
         time.sleep(0.2); count+=1
+
 def _apply_mockup(full_path: Path):
     temp_file=full_path.with_name(f"{full_path.stem}_temp.png"); mockup_file=full_path.with_name(f"{full_path.stem}_mockup.png")
     cmd1=["magick",str(full_path),"(","+clone","-alpha","extract","-draw","fill black polygon 0,0 0,20 20,0 fill white circle 20,20 20,0","("+ "+clone","-flip",")","-compose","Multiply","-composite","("+ "+clone","-flop",")","-compose","Multiply","-composite",")","-alpha","off","-compose","CopyOpacity","-composite",str(temp_file)]
     cmd2=["magick",str(temp_file),"("+ "+clone","-background","black","-shadow","60x20+0+10","-alpha","set","-channel","A","-evaluate","multiply","1","+channel",")","+swap","-background","none","-layers","merge","+repage",str(mockup_file)]
     subprocess.run(cmd1,capture_output=True); subprocess.run(cmd2,capture_output=True)
     mockup_file.replace(full_path); temp_file.unlink(missing_ok=True)
+
 def _run_screenshot(mode: str, mockup: bool=False):
     time.sleep(0.5)
     save_dir=_get_pictures_dir()/ "Screenshots"; save_dir.mkdir(parents=True, exist_ok=True)
@@ -145,13 +145,6 @@ class RecordTimerWidget(Box):
         self.add(self.ss_label)
 
         self._last_sec: int | None = None
-        self._last_mm: int | None = None
-        self._gl_rem = 0
-        self._gl_tid: int | None = None
-        self._destroyed = False
-
-        self.connect("unmap", self._on_unmap)
-        self.connect("destroy", lambda *_: self.cleanup())
 
     def update_time(self, elapsed_seconds: int) -> None:
         clamped = max(0, min(_MAX_RECORD_SECONDS, elapsed_seconds))
@@ -162,65 +155,13 @@ class RecordTimerWidget(Box):
         mm = min(_MAX_RECORD_MINUTES, clamped // 60)
         ss = clamped % 60 if mm < _MAX_RECORD_MINUTES else 0
 
-        if self._last_mm is not None and mm != self._last_mm:
-            self._trigger_glitch()
-        self._last_mm = mm
-
         self.mm_label.set_label(f"{mm:02d}")
         self.ss_label.set_label(f"{ss:02d}")
 
     def reset(self) -> None:
-        self._stop_glitch()
         self._last_sec = None
-        self._last_mm = None
         self.mm_label.set_label("00")
         self.ss_label.set_label("00")
-
-    def _trigger_glitch(self) -> None:
-        if self._destroyed or not self.get_mapped():
-            return
-        self._gl_rem = 6
-        if self._gl_tid is None:
-            self._gl_tid = GLib.timeout_add(35, self._glitch_tick)
-
-    def _clear_glitch(self) -> None:
-        for lbl in (self.mm_label, self.ss_label):
-            ctx = lbl.get_style_context()
-            for cls in _GLITCH_CLASSES:
-                ctx.remove_class(cls)
-            ctx.remove_class("glitching")
-
-    def _stop_glitch(self) -> None:
-        self._gl_tid = _cancel_source(self._gl_tid)
-        self._gl_rem = 0
-        self._clear_glitch()
-
-    def _glitch_tick(self) -> bool:
-        if self._destroyed:
-            self._gl_tid = None
-            return False
-
-        self._clear_glitch()
-        if self._gl_rem == 0:
-            self._gl_tid = None
-            return False
-
-        self._gl_rem -= 1
-        for lbl in (self.mm_label, self.ss_label):
-            ctx = lbl.get_style_context()
-            ctx.add_class("glitching")
-            for cls in random.sample(_GLITCH_CLASSES, random.randint(1, 2)):
-                ctx.add_class(cls)
-        return True
-
-    def _on_unmap(self, *_args) -> None:
-        self._stop_glitch()
-
-    def cleanup(self) -> None:
-        if self._destroyed:
-            return
-        self._destroyed = True
-        self._stop_glitch()
 
 
 class ToolsTab(Box):
@@ -299,15 +240,12 @@ class ToolsTab(Box):
                 self._dyn["record_btn"] = btn
             row.add(btn)
 
-        # Единственный ребёнок вкладки: ряд кнопок центрируется и по X,
-        # и по Y средствами GTK.
         self.add(row)
 
     def activate(self) -> None:
         self._refresh_dyn()
 
     def deactivate(self) -> None:
-        # Вкладка скрыта из поля зрения — останавливаем секундный опрос
         self._stop_rec_timer()
 
     def _on_map(self, *_args) -> None:
@@ -324,9 +262,6 @@ class ToolsTab(Box):
         for tid in self._pending_timers:
             GLib.source_remove(tid)
         self._pending_timers.clear()
-        timer_widget = self._dyn.get("record_timer")
-        if timer_widget is not None:
-            timer_widget.cleanup()
 
     def _schedule_refresh(self, delay_ms: int) -> None:
         if self._destroyed:

@@ -363,7 +363,7 @@
 
 
 /* ═══════════════════════════════════════════════════════════════
-   ОСТАЛЬНЫЕ ЭЛЕМЕНТЫ (СХЕМЫ, ИМЯ ОБОЕВ, КАРУСЕЛЬ, GLITCH)
+   ОСТАЛЬНЫЕ ЭЛЕМЕНТЫ (СХЕМЫ, ИМЯ ОБОЕВ, КАРУСЕЛЬ)
    ═══════════════════════════════════════════════════════════════ */
 
 #scheme-list-container {
@@ -417,56 +417,4 @@
 
 #wallpaper-carousel {
     color: var(--primary);
-}
-
-#carousel-arrow-label {
-    transition: text-shadow 40ms step-end, color 40ms step-end, opacity 40ms step-end;
-}
-
-#wallpaper-name-label.glitch-aberration,
-#carousel-arrow-label.glitch-aberration {
-    text-shadow: 2px 0 alpha(#ff0040, 0.85), -2px 0 alpha(#00e5ff, 0.85);
-}
-
-#wallpaper-name-label.glitch-shift-right,
-#carousel-arrow-label.glitch-shift-right {
-    text-shadow: 4px 0 alpha(#ff0040, 0.7), 8px 0 alpha(#ff0040, 0.25);
-}
-
-#wallpaper-name-label.glitch-shift-left,
-#carousel-arrow-label.glitch-shift-left {
-    text-shadow: -4px 0 alpha(#00e5ff, 0.7), -8px 0 alpha(#00e5ff, 0.25);
-}
-
-#wallpaper-name-label.glitch-flicker,
-#carousel-arrow-label.glitch-flicker {
-    opacity: 0.1;
-}
-
-#wallpaper-name-label.glitch-heavy,
-#carousel-arrow-label.glitch-heavy {
-    text-shadow: 5px 1px alpha(#ff0040, 0.6), -5px -1px alpha(#00e5ff, 0.6), 0 3px alpha(#76ff03, 0.35);
-}
-
-#wallpaper-name-label.glitch-color-swap,
-#carousel-arrow-label.glitch-color-swap {
-    color: #ff0040;
-    text-shadow: 0 0 8px alpha(#ff0040, 0.5);
-}
-
-#wallpaper-name-label.glitch-aberration.glitch-color-swap,
-#carousel-arrow-label.glitch-aberration.glitch-color-swap {
-    color: #ff0040;
-    text-shadow: 2px 0 alpha(#ff0040, 0.85), -2px 0 alpha(#00e5ff, 0.85), 0 0 8px alpha(#ff0040, 0.4);
-}
-
-#wallpaper-name-label.glitch-shift-right.glitch-flicker,
-#carousel-arrow-label.glitch-shift-right.glitch-flicker {
-    opacity: 0.3;
-    text-shadow: 4px 0 alpha(#ff0040, 0.9);
-}
-
-#wallpaper-name-label.glitch-shift-left.glitch-heavy,
-#carousel-arrow-label.glitch-shift-left.glitch-heavy {
-    text-shadow: -5px 0 alpha(#00e5ff, 0.8), 5px 1px alpha(#ff0040, 0.5), 0 3px alpha(#76ff03, 0.3);
 }

@@ -213,82 +213,7 @@
   margin: 0px 2px;
 }
 
-/* ── 6. Глитч точек. Цвета общие; тени уходят ПОПЕРЁК пилюли (ось своя) ── */
-#workspaces-dots .ws-dot.glitch-aberration,
-#workspaces-dots .ws-dot.glitch-shift-right,
-#workspaces-dots .ws-dot.glitch-shift-left,
-#workspaces-dots .ws-dot.glitch-flicker,
-#workspaces-dots .ws-dot.glitch-heavy,
-#workspaces-dots .ws-dot.glitch-color-swap {
-  transition: min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              min-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Порядок блоков = приоритет при совпадении классов (поздний выигрывает) */
-#workspaces-dots .ws-dot.glitch-aberration {
-  background-color: #ffffff;
-}
-
-#workspaces-dots .ws-dot.glitch-shift-right {
-  background-color: #ff0055;
-}
-
-#workspaces-dots .ws-dot.glitch-shift-left {
-  background-color: #00e5ff;
-}
-
-#workspaces-dots .ws-dot.glitch-flicker {
-  opacity: 0.2;
-  background-color: var(--primary);
-}
-
-#workspaces-dots .ws-dot.glitch-heavy {
-  background-color: #ffffff;
-}
-
-#workspaces-dots .ws-dot.glitch-color-swap {
-  background-color: #ff0055;
-}
-
-/* Тени: все правила одинаковой специфичности, порядок как у фонов */
-#workspaces-dots.ws-axis-v .ws-dot.glitch-aberration {
-  box-shadow: 3px 0 0 #ff0055, -3px 0 0 #00e5ff;
-}
-
-#workspaces-dots.ws-axis-h .ws-dot.glitch-aberration {
-  box-shadow: 0 3px 0 #ff0055, 0 -3px 0 #00e5ff;
-}
-
-#workspaces-dots.ws-axis-v .ws-dot.glitch-shift-right {
-  box-shadow: 4px 0 0 rgba(255, 0, 85, 0.75);
-}
-
-#workspaces-dots.ws-axis-h .ws-dot.glitch-shift-right {
-  box-shadow: 0 4px 0 rgba(255, 0, 85, 0.75);
-}
-
-#workspaces-dots.ws-axis-v .ws-dot.glitch-shift-left {
-  box-shadow: -4px 0 0 rgba(0, 229, 255, 0.75);
-}
-
-#workspaces-dots.ws-axis-h .ws-dot.glitch-shift-left {
-  box-shadow: 0 -4px 0 rgba(0, 229, 255, 0.75);
-}
-
-#workspaces-dots.ws-axis-v .ws-dot.glitch-heavy {
-  box-shadow: 4px 0 0 #ff0055, -4px 0 0 #00e5ff, 0 3px 0 #76ff03;
-}
-
-#workspaces-dots.ws-axis-h .ws-dot.glitch-heavy {
-  box-shadow: 0 4px 0 #ff0055, 0 -4px 0 #00e5ff, 3px 0 0 #76ff03;
-}
-
-#workspaces-dots.ws-axis-v .ws-dot.glitch-color-swap,
-#workspaces-dots.ws-axis-h .ws-dot.glitch-color-swap {
-  box-shadow: 0 0 10px #ff0055;
-}
-
-/* ── 7. Кнопка настроек (только верх) ── */
+/* ── 6. Кнопка настроек (только верх) ── */
 #workspaces-num-top > button {
   background-color: transparent;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -307,7 +232,7 @@
   color: var(--shadow);
 }
 
-/* ── 8. Кнопки −/+ (общие для обеих осей) ── */
+/* ── 7. Кнопки −/+ (общие для обеих осей) ── */
 #workspaces-action > button {
   background-color: var(--surface-bright);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

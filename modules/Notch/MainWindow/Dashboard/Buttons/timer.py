@@ -1,6 +1,5 @@
 import json
 import os
-import random
 
 import gi
 
@@ -12,15 +11,6 @@ from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 
-
-_GLITCH_CLASSES = (
-    "glitch-shift-right",
-    "glitch-shift-left",
-    "glitch-flicker",
-    "glitch-aberration",
-    "glitch-heavy",
-    "glitch-color-swap",
-)
 
 CACHE_DIR = os.path.expanduser("~/.cache/vidgex-shell")
 SETTINGS_FILE = os.path.join(CACHE_DIR, "timer_settings.json")
@@ -108,10 +98,6 @@ class TimerWidget(Box):
         self.add(self.mm_label)
 
         self._last_str = ""
-        self._gl_rem = 0
-        self._gl_tid = None
-        self._destroyed = False
-        self.connect("destroy", self._on_destroy)
 
     def update_time(self, total_seconds: int):
         total_minutes = total_seconds // 60
@@ -121,45 +107,9 @@ class TimerWidget(Box):
         if time_str == self._last_str:
             return
 
-        if self._last_str:
-            self._trigger_glitch()
         self._last_str = time_str
         self.hh_label.set_label(f"{hh:02d}")
         self.mm_label.set_label(f"{mm:02d}")
-
-    def _trigger_glitch(self):
-        self._gl_rem = 6
-        if self._gl_tid is None:
-            self._gl_tid = GLib.timeout_add(35, self._glitch_tick)
-
-    def _clear_glitch(self):
-        for lbl in (self.hh_label, self.mm_label):
-            ctx = lbl.get_style_context()
-            for cls in _GLITCH_CLASSES:
-                ctx.remove_class(cls)
-            ctx.remove_class("glitching")
-
-    def _glitch_tick(self) -> bool:
-        if self._destroyed:
-            self._gl_tid = None
-            return False
-
-        self._clear_glitch()
-        if self._gl_rem == 0:
-            self._gl_tid = None
-            return False
-
-        self._gl_rem -= 1
-        for lbl in (self.hh_label, self.mm_label):
-            ctx = lbl.get_style_context()
-            ctx.add_class("glitching")
-            for cls in random.sample(_GLITCH_CLASSES, random.randint(1, 2)):
-                ctx.add_class(cls)
-        return True
-
-    def _on_destroy(self, *_):
-        self._destroyed = True
-        self._gl_tid = _cancel(self._gl_tid)
 
 
 class TimerSplitButton(Box):

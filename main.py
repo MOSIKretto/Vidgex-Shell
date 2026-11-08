@@ -4,6 +4,7 @@ import setproctitle
 from gi.repository import GLib
 
 from fabric import Application
+from fabric.hyprland.service import Hyprland
 from fabric.utils import get_relative_path
 
 from modules.notch import Notch
@@ -17,49 +18,35 @@ from services.session import SessionManager, AppResolver
 
 setproctitle.setproctitle("vidgex-shell")
 
-
 notification_server = NotificationServer()
 bar = Bar()
 notch = Notch()
 dock = Dock()
-corners = Corners()
 
 bar.notch = notch
 notch.bar = weakref.ref(bar)
 
-app_widgets = [bar, notch, dock, corners]
-
-app = Application("vidgex-shell", *app_widgets)
+app = Application("vidgex-shell", bar, notch, dock, Corners())
 css_path = get_relative_path("main.css")
 app.set_stylesheet_from_file(css_path)
 app.set_css = lambda: app.set_stylesheet_from_file(css_path)
 
-resolver = AppResolver()
-session = SessionManager(resolver=resolver)
-
-
-def _autosave() -> bool:
-    session.save_all()
-    return True
-
-def _quit(*_):
-    session.save_all()
-    app.quit()
-    return GLib.SOURCE_REMOVE
+session = SessionManager(resolver=AppResolver())
 
 
 def run():
     session.restore()
 
-    autosave_id = GLib.timeout_add_seconds(5, _autosave)
+    hypr = Hyprland()
+    for event in ("openwindow", "closewindow", "movewindow"):
+        hypr.connect(f"event::{event}", lambda *_: session.save_all())
 
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, _quit)
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, _quit)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, lambda *_: app.quit())
 
     try:
         return app.run()
     finally:
-        GLib.source_remove(autosave_id)
         session.save_all()
         notification_server.cleanup()
 

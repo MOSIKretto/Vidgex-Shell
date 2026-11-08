@@ -2,9 +2,14 @@ import cairo
 from fabric.widgets.window import Window
 from gi.repository import Gdk, Gtk, GtkLayerShell
 
-_LAYER_MAP = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
-_EXCL_MAP = {"none": 0, "normal": 1, "auto": 2}
-_KBD_MAP = {"none": 0, "exclusive": 1, "on_demand": 2, "on-demand": 2}
+
+_LAYER = {"background": 0, "bottom": 1, "top": 2, "overlay": 3}
+_EXCL = {"none": 0, "normal": 1, "auto": 2}
+_KBD = {"none": 0, "exclusive": 1, "on_demand": 2, "on-demand": 2}
+_EDGES = ("left", "right", "top", "bottom")
+
+def _enum(table: dict, value, default: int) -> int:
+    return table.get(value.lower(), default) if isinstance(value, str) else value
 
 
 class WaylandWindow(Window):
@@ -24,17 +29,10 @@ class WaylandWindow(Window):
         **kwargs,
     ) -> None:
         super().__init__(
-            title=title,
-            type=window_type,
-            visible=False,
-            all_visible=False,
-            **kwargs,
+            title=title, type=window_type,
+            visible=False, all_visible=False, **kwargs,
         )
-
-        self._display = Gdk.Display.get_default()
-        self._monitor_obj = None
-
-        self._layer = self._exclusivity = self._keyboard_mode = -1
+        self._exclusivity = 0
         self._pass_through = False
 
         GtkLayerShell.init_for_window(self)
@@ -48,132 +46,69 @@ class WaylandWindow(Window):
         if pass_through: self.pass_through = True
         if monitor is not None: self.monitor = monitor
 
-        self.connect("notify::title", self._on_title_changed)
-
-        self._monitor_removed_id = self._display.connect(
-            "monitor-removed", self._on_monitor_removed
-        )
-
-        self.connect("destroy", self._on_destroy)
+        self.connect("notify::title", lambda *_: GtkLayerShell.set_namespace(self, self.get_title()))
 
         if all_visible: self.show_all()
         elif visible: self.show()
 
-    def _on_destroy(self, *_) -> None:
-        if self._monitor_removed_id is not None:
-            self._display.disconnect(self._monitor_removed_id)
-            self._monitor_removed_id = None
-
-    def _on_monitor_removed(self, _display, monitor: Gdk.Monitor) -> None:
-        if self._monitor_obj is monitor:
-            self._monitor_obj = None
-
-    def _on_title_changed(self, *_) -> None:
-        GtkLayerShell.set_namespace(self, self.get_title())
-
     @property
     def layer(self) -> int:
-        return self._layer if self._layer >= 0 else 2
+        return GtkLayerShell.get_layer(self)
 
     @layer.setter
     def layer(self, value: str | int) -> None:
-        val = _LAYER_MAP.get(value.lower(), 2) if type(value) is str else value
-        if self._layer != val:
-            self._layer = val
-            GtkLayerShell.set_layer(self, val)
+        GtkLayerShell.set_layer(self, _enum(_LAYER, value, 2))
 
     @property
-    def anchor(self) -> int:
-        return (GtkLayerShell.get_anchor(self, 0) |
-               (GtkLayerShell.get_anchor(self, 1) << 1) |
-               (GtkLayerShell.get_anchor(self, 2) << 2) |
-               (GtkLayerShell.get_anchor(self, 3) << 3))
+    def keyboard_mode(self) -> int:
+        return GtkLayerShell.get_keyboard_mode(self)
 
-    @anchor.setter
-    def anchor(self, value: str | tuple | list | set) -> None:
-        if type(value) is str:
-            v = value.lower().split()
-            GtkLayerShell.set_anchor(self, 0, "left" in v)
-            GtkLayerShell.set_anchor(self, 1, "right" in v)
-            GtkLayerShell.set_anchor(self, 2, "top" in v)
-            GtkLayerShell.set_anchor(self, 3, "bottom" in v)
-        else:
-            GtkLayerShell.set_anchor(self, 0, "left" in value or 0 in value)
-            GtkLayerShell.set_anchor(self, 1, "right" in value or 1 in value)
-            GtkLayerShell.set_anchor(self, 2, "top" in value or 2 in value)
-            GtkLayerShell.set_anchor(self, 3, "bottom" in value or 3 in value)
+    @keyboard_mode.setter
+    def keyboard_mode(self, value: str | int) -> None:
+        GtkLayerShell.set_keyboard_mode(self, _enum(_KBD, value, 0))
 
     @property
-    def margin(self) -> tuple[int, int, int, int]:
-        return (
-            GtkLayerShell.get_margin(self, 2),
-            GtkLayerShell.get_margin(self, 1),
-            GtkLayerShell.get_margin(self, 3),
-            GtkLayerShell.get_margin(self, 0),
-        )
+    def exclusivity(self) -> int:
+        return self._exclusivity
 
-    @margin.setter
-    def margin(self, value: str | tuple | list) -> None:
-        nums = []
-        if type(value) is str:
-            for x in value.replace(",", " ").replace("px", "").split():
-                nums.append(int(float(x)))
+    @exclusivity.setter
+    def exclusivity(self, value: str | int) -> None:
+        val = _enum(_EXCL, value, 0)
+        if self._exclusivity != val:
+            self._exclusivity = val
+            if val == 2: GtkLayerShell.auto_exclusive_zone_enable(self)
+            else: GtkLayerShell.set_exclusive_zone(self, -1 if val == 1 else 0)
+
+    def _set_anchor(self, value: str | tuple | list | set) -> None:
+        v = value.lower().split() if isinstance(value, str) else value
+        for i, name in enumerate(_EDGES):
+            GtkLayerShell.set_anchor(self, i, name in v or i in v)
+
+    def _set_margin(self, value: str | tuple | list) -> None:
+        if isinstance(value, str):
+            nums = [int(float(x)) for x in value.replace(",", " ").replace("px", "").split()]
         else:
-            nums = [int(v) for v in value[:4] if isinstance(v, (int, float))]
-
-        l = len(nums)
-        if l == 0: t = r = b = left = 0
-        elif l == 1: t = r = b = left = nums[0]
-        elif l == 2: t = b = nums[0]; r = left = nums[1]
-        elif l == 3: t = nums[0]; r = left = nums[1]; b = nums[2]
-        else: t, r, b, left = nums[:4]
-
-        GtkLayerShell.set_margin(self, 0, left)
+            nums = [int(v) for v in value if isinstance(v, (int, float))]
+        nums = nums[:4] or [0]
+        n = len(nums)
+        t = nums[0]
+        r = nums[1] if n > 1 else t
+        b = nums[2] if n > 2 else t
+        l = nums[3] if n > 3 else r
+        GtkLayerShell.set_margin(self, 0, l)
         GtkLayerShell.set_margin(self, 1, r)
         GtkLayerShell.set_margin(self, 2, t)
         GtkLayerShell.set_margin(self, 3, b)
 
-    @property
-    def monitor(self) -> int | None:
-        for i in range(self._display.get_n_monitors()):
-            if self._display.get_monitor(i) is self._monitor_obj: return i
-        return None
+    def _set_monitor(self, value: int | Gdk.Monitor | None) -> None:
+        if value is not None and not isinstance(value, Gdk.Monitor):
+            display = Gdk.Display.get_default()
+            value = display.get_monitor(value) if 0 <= value < display.get_n_monitors() else None
+        GtkLayerShell.set_monitor(self, value)
 
-    @monitor.setter
-    def monitor(self, value: int | Gdk.Monitor | None) -> None:
-        mon = None
-        if type(value) is Gdk.Monitor: mon = value
-        elif value is not None:
-            if 0 <= value < self._display.get_n_monitors():
-                mon = self._display.get_monitor(value)
-
-        if self._monitor_obj is not mon:
-            self._monitor_obj = mon
-            GtkLayerShell.set_monitor(self, mon)
-
-    @property
-    def exclusivity(self) -> int:
-        return self._exclusivity if self._exclusivity >= 0 else 0
-
-    @exclusivity.setter
-    def exclusivity(self, value: str | int) -> None:
-        val = _EXCL_MAP.get(value.lower(), 0) if type(value) is str else value
-        if self._exclusivity != val:
-            self._exclusivity = val
-            if val == 1: GtkLayerShell.set_exclusive_zone(self, -1)
-            elif val == 2: GtkLayerShell.auto_exclusive_zone_enable(self)
-            else: GtkLayerShell.set_exclusive_zone(self, 0)
-
-    @property
-    def keyboard_mode(self) -> int:
-        return self._keyboard_mode if self._keyboard_mode >= 0 else 0
-
-    @keyboard_mode.setter
-    def keyboard_mode(self, value: str | int) -> None:
-        val = _KBD_MAP.get(value.lower(), 0) if type(value) is str else value
-        if self._keyboard_mode != val:
-            self._keyboard_mode = val
-            GtkLayerShell.set_keyboard_mode(self, val)
+    anchor = property(fset=_set_anchor)
+    margin = property(fset=_set_margin)
+    monitor = property(fset=_set_monitor)
 
     @property
     def pass_through(self) -> bool:
@@ -183,19 +118,21 @@ class WaylandWindow(Window):
     def pass_through(self, value: bool) -> None:
         if self._pass_through != value:
             self._pass_through = value
-            if self.get_visible(): self._apply_input_region()
+            if self.get_visible():
+                self._apply_input_region()
 
     def _apply_input_region(self) -> None:
-        region = cairo.Region() if self._pass_through else None
-        self.input_shape_combine_region(region)
+        self.input_shape_combine_region(cairo.Region() if self._pass_through else None)
 
     def show(self) -> None:
         super().show()
-        if self._pass_through: self._apply_input_region()
+        if self._pass_through:
+            self._apply_input_region()
 
     def show_all(self) -> None:
         super().show_all()
-        if self._pass_through: self._apply_input_region()
+        if self._pass_through:
+            self._apply_input_region()
 
     def steal_input(self) -> None:
         self.keyboard_mode = "exclusive"

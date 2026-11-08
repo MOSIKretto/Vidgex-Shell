@@ -253,8 +253,7 @@ class DotSlot:
         self._sync_btn_visible()
 
     def _sync_btn_visible(self):
-        # Уходящая точка (глитч удаления) остаётся видимой до конца анимации.
-        hidden = solo_desk() and not state.order_actions_visible and self.btn not in self.owner._glitch_removing
+        hidden = solo_desk() and not state.order_actions_visible
         self.btn.set_visible(not hidden)
 
     def _drop_hover(self):
@@ -325,11 +324,7 @@ class DotSlot:
                 self.icons_box.add(img)
 
     def _compute_should_show(self) -> bool:
-        if (
-            self.owner._destroyed
-            or state.order_actions_visible
-            or self.btn in self.owner._glitch_removing
-        ):
+        if self.owner._destroyed or state.order_actions_visible:
             self._drop_hover()
             return False
 
@@ -386,6 +381,7 @@ class AppIconsMixin:
         self._last_ws = 1
         super().__init__(conn, *args, **kwargs)
         self._connect(self, "map", self._on_icons_map)
+        self._connect(self, "unmap", self._on_unmap)
         bind_app_icons_conn(conn)
         request_clients_sync()
 
@@ -408,17 +404,11 @@ class AppIconsMixin:
         else:
             super()._unmount_dot_widget(btn)
 
-    def _on_dot_glitch_state_changed(self, btn: Button, removing: bool):
-        slot = self._slots.get(btn)
-        if slot is not None:
-            slot.sync_reveal()
-
     def _on_icons_map(self, *_):
         request_clients_sync()
         refresh_all_axis_icons(ws=self._last_ws)
 
     def _on_unmap(self, *_):
-        super()._on_unmap()
         for slot in self._slots.values():
             slot._set_hovered(False)
         if not self._is_vertical:
@@ -445,7 +435,7 @@ class AppIconsMixin:
             slot = self._slots.get(btn)
             if slot is None:
                 continue
-            if idx >= target or btn in self._glitch_removing:
+            if idx >= target:
                 slot.set_apps((), force_reload=force_reload)
                 continue
             slot_ws = resolve_slot_ws(self._is_vertical, idx, active_ws)

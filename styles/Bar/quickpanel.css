@@ -117,47 +117,6 @@
     transition: color 0.15s ease, opacity 0.15s ease, margin 0.08s ease;
 }
 
-.toolbox-icon-btn #record-timer-mm.glitching,
-.toolbox-icon-btn #record-timer-ss.glitching {
-    opacity: 0.85;
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-shift-right,
-.toolbox-icon-btn #record-timer-ss.glitch-shift-right {
-    margin-left: 1px;
-    color: #ff0055;
-    text-shadow: 2px 0 0 rgba(255, 0, 85, 0.75);
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-shift-left,
-.toolbox-icon-btn #record-timer-ss.glitch-shift-left {
-    margin-left: -1px;
-    color: #00e5ff;
-    text-shadow: -2px 0 0 rgba(0, 229, 255, 0.75);
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-flicker,
-.toolbox-icon-btn #record-timer-ss.glitch-flicker {
-    opacity: 0.25;
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-aberration,
-.toolbox-icon-btn #record-timer-ss.glitch-aberration {
-    color: #ffffff;
-    text-shadow: 2px 0 0 rgba(255, 0, 85, 0.85), -2px 0 0 rgba(0, 229, 255, 0.85);
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-heavy,
-.toolbox-icon-btn #record-timer-ss.glitch-heavy {
-    opacity: 0.5;
-    color: #ffffff;
-}
-
-.toolbox-icon-btn #record-timer-mm.glitch-color-swap,
-.toolbox-icon-btn #record-timer-ss.glitch-color-swap {
-    color: #ff0055;
-}
-
 #power-battery-container #HyprlandLanguage-indicator {
     background-color: transparent;
     transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -262,34 +221,6 @@
 
 .battery-threshold-tick.above-threshold {
     background-color: var(--outline);
-}
-
-.battery-threshold-tick.glitch-aberration {
-    background-color: #ffffff;
-    box-shadow: 3px 0 0 0 rgba(255, 0, 85, 0.75), -3px 0 0 0 rgba(0, 229, 255, 0.75);
-}
-
-.battery-threshold-tick.glitch-shift-right {
-    background-color: #ff0055;
-    box-shadow: 4px 0 0 0 rgba(255, 0, 85, 0.6);
-}
-
-.battery-threshold-tick.glitch-shift-left {
-    background-color: #00e5ff;
-    box-shadow: -4px 0 0 0 rgba(0, 229, 255, 0.6);
-}
-
-.battery-threshold-tick.glitch-flicker {
-    opacity: 0.2;
-}
-
-.battery-threshold-tick.glitch-heavy {
-    background-color: #ffffff;
-    box-shadow: 4px 0 0 0 #ff0055, -4px 0 0 0 #00e5ff;
-}
-
-.battery-threshold-tick.glitch-color-swap {
-    background-color: #ff0055;
 }
 
 #wifi-tab-row { margin-bottom: 0; }
