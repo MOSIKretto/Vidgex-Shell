@@ -25,14 +25,51 @@ _SCROLL_HEIGHT = _SLOT_HEIGHT * _SLOTS_VISIBLE + 4
 def _ease_out_cubic(t: float) -> float:
     return 1.0 - (1.0 - t) ** 3
 
+
 def _val_from_x(scale: Gtk.Widget, x: float) -> float:
     w = scale.get_allocation().width
     return max(0.0, min(1.0, x / w)) if w > 0 else 0.0
+
 
 def _truncate(name: str, n: int = _MAX_DEVICE_CHARS) -> str:
     if not name:
         return "Unknown"
     return name if len(name) <= n else name[: n - 1] + "…"
+
+
+# ───────────── Работа с громкостью напрямую через Cvc ─────────────
+# У Fabric-овского AudioStream.volume геттер вызывает
+# Cvc.MixerStream.get_volume(), которого в некоторых сборках нет,
+# поэтому читаем GObject-свойства и пишем через set_volume/push_volume.
+
+def _norm(stream) -> float:
+    return stream._control.get_vol_max_norm()
+
+
+def get_vol(stream) -> float:
+    """Громкость потока в процентах (0..100+)."""
+    try:
+        return stream.stream.get_property("volume") / _norm(stream) * 100.0
+    except Exception:
+        return 0.0
+
+
+def set_vol(stream, pct: float) -> None:
+    try:
+        pct = max(0.0, min(float(stream._parent.max_volume), float(pct)))
+        raw = stream.stream
+        raw.set_volume(int(pct * _norm(stream) / 100))
+        raw.push_volume()
+    except Exception as e:
+        print(f"[Mixer] set_vol error: {e}")
+
+
+def get_muted(stream) -> bool:
+    try:
+        return bool(stream.stream.get_property("is-muted"))
+    except Exception:
+        return False
+
 
 def _make_ctrl_btn(label_text: str) -> Gtk.Button:
     btn = Gtk.Button()
@@ -81,8 +118,8 @@ class DeviceDropdown(Gtk.Box):
         self._arrow.set_name("device-dropdown-arrow")
         self._arrow.set_xalign(1.0)
 
-        row.pack_start(self._dev_lbl, True,  True,  0)
-        row.pack_start(self._arrow,   False, False, 0)
+        row.pack_start(self._dev_lbl, True, True, 0)
+        row.pack_start(self._arrow, False, False, 0)
         self._btn.add(row)
 
         self._btn.connect("clicked", self._on_clicked)
@@ -128,11 +165,11 @@ class DeviceDropdown(Gtk.Box):
         overlay.set_overlay_pass_through(self._rev, False)
 
     def _deferred_refresh(self):
-        # Если устройство ещё не загружено — продолжаем цикличный опрос
+        # Если устройство ещё не загружено, продолжаем опрос
         dev = self._default_device()
         if dev is None and not self._devices():
             self._init_retries += 1
-            if self._init_retries < 50:  # Опрашиваем до ~5 секунд
+            if self._init_retries < 50:  # до ~5 секунд
                 return True
         self.refresh_label()
         return False
@@ -213,13 +250,11 @@ class DeviceDropdown(Gtk.Box):
         )
         self._rev.set_margin_top(header_h)
 
-        devices  = self._devices()
-        cur      = self._default_device()
+        devices = self._devices()
+        cur = self._default_device()
         cur_name = getattr(cur, "name", None) if cur else None
 
-        container = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL, spacing=0
-        )
+        container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         container.set_name("device-list-container")
         if btn_w > 10:
             container.set_size_request(btn_w, -1)
@@ -241,9 +276,7 @@ class DeviceDropdown(Gtk.Box):
                     or "?"
                 )
                 dev_name = getattr(dev, "name", None)
-                active   = bool(
-                    cur_name and dev_name and dev_name == cur_name
-                )
+                active = bool(cur_name and dev_name and dev_name == cur_name)
 
                 item_btn = Gtk.Button()
                 item_btn.set_name(
@@ -253,31 +286,25 @@ class DeviceDropdown(Gtk.Box):
                 item_btn.set_relief(Gtk.ReliefStyle.NONE)
                 item_btn.set_hexpand(False)
 
-                inner = Gtk.Box(
-                    orientation=Gtk.Orientation.HORIZONTAL, spacing=6
-                )
+                inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
 
                 dot = Gtk.Label(label="▶" if active else "")
                 dot.set_name("device-list-dot")
                 dot.set_size_request(14, -1)
                 dot.set_xalign(0.5)
 
-                name_lbl = Gtk.Label(
-                    label=_truncate(desc, _MAX_LIST_CHARS)
-                )
+                name_lbl = Gtk.Label(label=_truncate(desc, _MAX_LIST_CHARS))
                 name_lbl.set_name("device-list-name")
                 name_lbl.set_xalign(0.0)
                 name_lbl.set_ellipsize(3)
                 name_lbl.set_hexpand(True)
                 name_lbl.set_tooltip_text(desc)
 
-                inner.pack_start(dot,      False, False, 0)
-                inner.pack_start(name_lbl, True,  True,  0)
+                inner.pack_start(dot, False, False, 0)
+                inner.pack_start(name_lbl, True, True, 0)
                 item_btn.add(inner)
 
-                item_btn.connect(
-                    "clicked", lambda _b, d=dev: self._select(d)
-                )
+                item_btn.connect("clicked", lambda _b, d=dev: self._select(d))
                 container.pack_start(item_btn, False, False, 0)
 
         container.show_all()
@@ -300,7 +327,7 @@ class DeviceDropdown(Gtk.Box):
     def _switch(self, device):
         try:
             from gi.repository import Cvc
-            ctrl   = device._control
+            ctrl = device._control
             stream = device._stream
             if isinstance(stream, Cvc.MixerSource):
                 ctrl.set_default_source(stream)
@@ -344,25 +371,28 @@ class MixerSlider(Scale):
             style_classes=("no-icon",),
             **kwargs,
         )
-        self.stream       = stream
-        self._updating    = False
-        self._canim_id    = None
-        self._pressed     = False
-        self._muted_style = stream.muted
+        self.stream = stream
+        self._updating = False
+        self._canim_id = None
+        self._pressed = False
+        self._muted_style = get_muted(stream)
 
         self.set_draw_value(False)
         self.set_size_request(100, 20)
-        self.set_value(stream.volume * 0.01)
-        self.set_tooltip_text(f"{int(stream.volume + 0.5)}%")
+        vol = get_vol(stream)
+        self.set_value(vol * 0.01)
+        self.set_tooltip_text(f"{int(vol + 0.5)}%")
 
-        self.connect("value-changed",        self._on_value_changed)
-        self.connect("button-press-event",   self._on_press)
+        self.connect("value-changed", self._on_value_changed)
+        self.connect("button-press-event", self._on_press)
         self.connect("button-release-event", self._on_release)
-        self.connect("motion-notify-event",  self._on_motion)
+        self.connect("motion-notify-event", self._on_motion)
 
-        ltype = getattr(stream, "type", "").lower()
+        ltype = (getattr(stream, "type", "") or "").lower()
         self.add_style_class(
-            "mic" if ("microphone" in ltype or "input" in ltype) else "vol"
+            "mic"
+            if ("microphone" in ltype or "input" in ltype or "recorder" in ltype)
+            else "vol"
         )
         if self._muted_style:
             self.add_style_class(_MUTED_CLASS)
@@ -408,12 +438,13 @@ class MixerSlider(Scale):
         if self._canim_id or self._pressed:
             return
         self._updating = True
-        self.value = stream.volume * 0.01
+        self.value = get_vol(stream) * 0.01
         if pct_str:
             self.set_tooltip_text(pct_str)
-        if stream.muted != self._muted_style:
-            self._muted_style = stream.muted
-            if self._muted_style:
+        muted = get_muted(stream)
+        if muted != self._muted_style:
+            self._muted_style = muted
+            if muted:
                 self.add_style_class(_MUTED_CLASS)
             else:
                 self.remove_style_class(_MUTED_CLASS)
@@ -423,8 +454,8 @@ class MixerSlider(Scale):
         if self._updating or not self.stream:
             return
         vol = self.value * 100.0
-        if abs(self.stream.volume - vol) > 0.5:
-            self.stream.volume = vol
+        if abs(get_vol(self.stream) - vol) > 0.5:
+            set_vol(self.stream, vol)
             self.set_tooltip_text(f"{int(vol + 0.5)}%")
 
     def cleanup(self):
@@ -438,7 +469,7 @@ class MixerSlot(Box):
             name="mixer-slot", orientation="v", spacing=2, h_expand=True
         )
         self.stream = stream
-        self._last_pct = int(stream.volume + 0.5)
+        self._last_pct = int(get_vol(stream) + 0.5)
         self._last_desc = stream.description
 
         self.desc_lbl = Label(
@@ -467,7 +498,7 @@ class MixerSlot(Box):
         self._sig_id = stream.connect("changed", self._on_changed)
 
     def _on_changed(self, stream):
-        pct     = int(stream.volume + 0.5)
+        pct = int(get_vol(stream) + 0.5)
         pct_str = f"{pct}%" if pct != self._last_pct else None
         if pct_str:
             self._last_pct = pct
@@ -502,11 +533,11 @@ class MixerSection(Box):
             **kwargs,
         )
         self._audio = audio
-        self._is_input      = is_input
-        self._muted         = False
+        self._is_input = is_input
+        self._muted = False
         self._saved_volumes = {}
-        self._anim_id       = None
-        self._slots: dict   = {}
+        self._anim_id = None
+        self._slots: dict = {}
 
         if MixerSection._size_group is None:
             MixerSection._size_group = Gtk.SizeGroup(
@@ -515,9 +546,7 @@ class MixerSection(Box):
         MixerSection._size_group.add_widget(self)
 
         if audio:
-            self._device_btn = DeviceDropdown(
-                audio=audio, is_input=is_input
-            )
+            self._device_btn = DeviceDropdown(audio=audio, is_input=is_input)
         else:
             self._device_btn = None
 
@@ -552,9 +581,7 @@ class MixerSection(Box):
             h_expand=True,
         )
 
-        scroll_name = (
-            "inputs-scrolled" if is_input else "outputs-scrolled"
-        )
+        scroll_name = "inputs-scrolled" if is_input else "outputs-scrolled"
         self._scroll = ScrolledWindow(
             name=scroll_name,
             child=self._content,
@@ -578,9 +605,7 @@ class MixerSection(Box):
         self._overlay.add(base)
 
         if self._device_btn:
-            self._device_btn.register_revealer(
-                self._overlay, self._header
-            )
+            self._device_btn.register_revealer(self._overlay, self._header)
 
         self.pack_start(self._overlay, False, False, 0)
         self.show_all()
@@ -592,14 +617,12 @@ class MixerSection(Box):
 
         if not self._muted:
             self._saved_volumes = {
-                sid: slot.stream.volume
+                sid: get_vol(slot.stream)
                 for sid, slot in self._slots.items()
                 if slot.stream
             }
             self._muted = True
-            self._mute_btn.get_style_context().add_class(
-                _SECTION_MUTED_CLASS
-            )
+            self._mute_btn.get_style_context().add_class(_SECTION_MUTED_CLASS)
         else:
             self._muted = False
             self._mute_btn.get_style_context().remove_class(
@@ -613,8 +636,8 @@ class MixerSection(Box):
         for sid, slot in self._slots.items():
             if not slot.stream:
                 continue
-            start = slot.stream.volume
-            end   = (
+            start = get_vol(slot.stream)
+            end = (
                 0.0 if to_zero
                 else self._saved_volumes.get(sid, 100.0)
             )
@@ -625,10 +648,10 @@ class MixerSection(Box):
         def _tick():
             nonlocal step
             step += 1
-            t    = min(step * _INV_ANIM_STEPS, 1.0)
+            t = min(step * _INV_ANIM_STEPS, 1.0)
             ease = _ease_out_cubic(t)
             for stream, start, delta in anim_list:
-                stream.volume = start + delta * ease
+                set_vol(stream, start + delta * ease)
             if step >= _ANIM_STEPS:
                 self._anim_id = None
                 return False
@@ -637,13 +660,17 @@ class MixerSection(Box):
         self._anim_id = GLib.timeout_add(_ANIM_INTERVAL_MS, _tick)
 
     def update_streams(self, streams):
-        seen  = set()
+        seen = set()
         added = False
         for stream in streams:
             sid = id(stream)
             seen.add(sid)
             if sid not in self._slots:
-                slot = MixerSlot(stream)
+                try:
+                    slot = MixerSlot(stream)
+                except Exception as e:
+                    print(f"[Mixer] cannot create slot: {e}")
+                    continue
                 self._slots[sid] = slot
                 self._content.add(slot)
                 added = True

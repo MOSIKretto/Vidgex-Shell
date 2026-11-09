@@ -18,62 +18,55 @@ class Volume(Service):
         super().__init__()
         self.audio = Audio()
         self.max_volume = 100
-        self._stream = None
-        self._hid = None
-        self._last = None
-        self.audio.connect("notify::speaker", self._on_speaker)
-        self._on_speaker()
+        self._state = (0, True)
+
+        self.audio.connect("changed", self._refresh)
+        self.audio.connect("speaker-changed", self._refresh)
 
     def _read(self) -> tuple[int, bool]:
-        s = self._stream
-        return (int(round(s.volume)), bool(s.muted)) if s is not None else (0, True)
-
-    def _sync(self, *_):
-        state = self._read()
-        if state != self._last:
-            self._last = state
-            self.emit("changed", state[0])
-
-    def _on_speaker(self, *_):
         stream = self.audio.speaker
-        if stream is self._stream:
-            return
+        if stream is None:
+            return 0, True
+        raw = stream.stream
+        norm = self.audio._control.get_vol_max_norm()
+        vol = round(raw.get_property("volume") / norm * 100)
+        return min(vol, self.max_volume), bool(raw.get_property("is-muted"))
 
-        if self._stream is not None:
-            self._stream.disconnect(self._hid)
-        self._stream = stream
-        if stream is not None:
-            self._hid = stream.connect("changed", self._sync)
-            self._last = None
-        self._sync()
+    def _refresh(self, *_):
+        state = self._read()
+        if state != self._state:
+            self._state = state
+            self.emit("changed", state[0])
 
     @Property(int, "read-write")
     def volume(self) -> int:
-        return self._read()[0]
+        return self._state[0]
 
     @volume.setter
     def volume(self, value: int):
-        if self._stream is None:
+        stream = self.audio.speaker
+        if stream is None:
             return
         value = max(0, min(self.max_volume, int(value)))
-        if self._read()[0] != value:
-            self._stream.volume = float(value)
+        raw = stream.stream
+        raw.set_volume(int(value * self.audio._control.get_vol_max_norm() / 100))
+        raw.push_volume()
 
     @property
     def muted(self) -> bool:
-        return self._read()[1]
+        return self._state[1]
 
     @muted.setter
     def muted(self, value: bool):
-        if self._stream is not None:
-            self._stream.muted = bool(value)
+        stream = self.audio.speaker
+        if stream is not None:
+            stream.stream.set_is_muted(bool(value))
+            stream.stream.change_is_muted(bool(value))
 
     @property
     def is_bluetooth(self) -> bool:
-        return (
-            self._stream is not None
-            and "bluetooth" in (self._stream.icon_name or "").lower()
-        )
+        stream = self.audio.speaker
+        return stream is not None and "bluetooth" in (stream.icon_name or "").lower()
 
 
 def get_audio():

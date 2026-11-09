@@ -1,5 +1,7 @@
+import json
 import os
 import random
+import time
 
 import gi
 gi.require_version("Cvc", "1.0")
@@ -15,8 +17,13 @@ from fabric.widgets.revealer import Revealer
 _TICKS = 35
 _TICK_MS = 40
 _DUCK_RATIO = 0.20
-_FADE_MS = 25
-_STEPS = 13
+_FADE_MS = 16
+_STEPS = 20
+
+_TOL_RATIO = 0.01        # допуск на округление PipeWire (1% от максимума)
+_GRACE_S = 0.5           # игнорировать эхо собственных записей
+_PENDING_TTL_S = 30      # сколько ждать вернувшийся поток приложения
+_MAX_PLAY_S = 20         # страховка, если EOS не придёт
 
 _IDLE, _DUCK, _PLAY, _UNDUCK = range(4)
 
@@ -29,10 +36,26 @@ _STREAM_PROPS_DESC = (
     f"media.name=(string){_STREAM_NAME}"
 )
 
-_SOUND_URI = GLib.filename_to_uri(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "Glyph", "glyph.wav"),
-    None,
+_SOUND_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "Glyph", "glyph.wav"
 )
+_SOUND_URI = GLib.filename_to_uri(_SOUND_PATH, None)
+
+_STATE_FILE = os.path.join(
+    GLib.get_user_cache_dir(), "vidgex-shell", "glyph_duck.json"
+)
+
+
+def _ease(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
+
+
+def _vol(stream) -> int:
+    """Сырая громкость потока (get_volume() в этой сборке Cvc отсутствует)."""
+    try:
+        return int(stream.get_property("volume"))
+    except Exception:
+        return 0
 
 
 def _mk(text: str) -> str:
@@ -49,8 +72,9 @@ _TIERS = (
 
 class GlyphSound:
     __slots__ = (
-        "_closed", "_state", "_step", "_tid", "_wait", "_duck_vol",
-        "_sigs", "_saved", "_fade", "_pending",
+        "_closed", "_state", "_step", "_tid", "_wait", "_ready", "_recover",
+        "_wd", "_duck_vol", "_tol",
+        "_sigs", "_saved", "_fade", "_pending", "_written",
         "_control", "_playbin", "_bus", "_props",
     )
 
@@ -59,17 +83,30 @@ class GlyphSound:
         self._state = _IDLE
         self._step = 0
         self._tid: int | None = None
+        self._wd: int | None = None
         self._wait = False
+        self._ready = False
+        self._recover = False
         self._duck_vol = 0
+        self._tol = 8
         self._sigs: dict[int, tuple[Cvc.MixerStream, int]] = {}
         self._saved: dict[int, int] = {}
         self._fade: dict[int, tuple[int, int]] = {}
-        self._pending: dict[str, int] = {}
+        # ключ приложения -> (исходная громкость, дедлайн по monotonic)
+        self._pending: dict[str, tuple[int, float]] = {}
+        # sid -> время нашей последней записи громкости
+        self._written: dict[int, float] = {}
         self._control: Cvc.MixerControl | None = None
         self._playbin = None
         self._bus = None
         self._props = None
 
+        # Если прошлый запуск умер во время приглушения, вернём громкость.
+        if os.path.exists(_STATE_FILE):
+            self._recover = True
+            GLib.idle_add(self._start_recover)
+
+    # ───────────────────────── инициализация ─────────────────────────
     def _open(self) -> None:
         Gst.init(None)
         self._props, _ = Gst.Structure.from_string(_STREAM_PROPS_DESC)
@@ -90,8 +127,29 @@ class GlyphSound:
 
         self._control.open()
 
-    def _on_state(self, _control, state: int) -> None:
-        if self._wait and state == Cvc.MixerControlState.READY:
+    def _start_recover(self) -> bool:
+        if self._closed:
+            return False
+        if self._control is None:
+            self._open()
+        elif self._ready and self._recover:
+            self._recover_now()
+        return False
+
+    def _calc_levels(self) -> None:
+        norm = self._control.get_vol_max_norm()
+        self._duck_vol = int(norm * _DUCK_RATIO)
+        self._tol = max(8, int(norm * _TOL_RATIO))
+
+    def _on_state(self, _control, state) -> None:
+        if state != Cvc.MixerControlState.READY:
+            return
+        self._ready = True
+        self._calc_levels()
+        if self._recover:
+            # ВАЖНО: до _begin, иначе 20% запишутся как исходные
+            self._recover_now()
+        if self._wait:
             self._begin()
 
     def _on_element_setup(self, _playbin, element) -> None:
@@ -100,6 +158,7 @@ class GlyphSound:
         if element.find_property("client-name") is not None:
             element.set_property("client-name", _STREAM_NAME)
 
+    # ───────────────────────── хелперы ─────────────────────────
     @staticmethod
     def _is_own(stream) -> bool:
         return _APP_ID == stream.get_application_id() or _STREAM_NAME in (
@@ -110,9 +169,11 @@ class GlyphSound:
     def _key(stream) -> str | None:
         return stream.get_application_id() or stream.get_name() or None
 
-    @staticmethod
-    def _set(stream, vol: int) -> None:
-        if stream.get_volume() != vol:
+    def _set(self, stream, vol: int) -> None:
+        vol = max(0, int(vol))
+        if _vol(stream) != vol:
+            # метка ставится ДО записи: notify::volume приходит синхронно
+            self._written[stream.get_id()] = time.monotonic()
             stream.set_volume(vol)
             stream.push_volume()
 
@@ -121,11 +182,111 @@ class GlyphSound:
             GLib.source_remove(self._tid)
             self._tid = None
 
+    def _arm_watchdog(self) -> None:
+        self._disarm_watchdog()
+        self._wd = GLib.timeout_add_seconds(_MAX_PLAY_S, self._on_watchdog)
+
+    def _disarm_watchdog(self) -> None:
+        if self._wd is not None:
+            GLib.source_remove(self._wd)
+            self._wd = None
+
+    def _on_watchdog(self) -> bool:
+        self._wd = None
+        if self._state == _PLAY:
+            self._playbin.set_state(Gst.State.NULL)
+            self._unduck()
+        return False
+
     def _start_fade(self, state: int) -> None:
         self._state = state
         self._step = 0
         self._tid = GLib.timeout_add(_FADE_MS, self._tick)
 
+    # ───────────────────────── сохранение на диск ─────────────────────────
+    def _persist(self) -> None:
+        """Пишем исходные громкости на диск, пока они не возвращены."""
+        now = time.monotonic()
+        data: dict[str, int] = {}
+        for sid, saved in self._saved.items():
+            entry = self._sigs.get(sid)
+            key = self._key(entry[0]) if entry else None
+            if key:
+                data[key] = max(saved, data.get(key, 0))
+        for key, (saved, deadline) in self._pending.items():
+            if deadline > now:
+                data[key] = max(saved, data.get(key, 0))
+        try:
+            if data:
+                os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
+                tmp = _STATE_FILE + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(data, f)
+                os.replace(tmp, _STATE_FILE)
+            elif os.path.exists(_STATE_FILE):
+                os.remove(_STATE_FILE)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _load_state() -> dict[str, int]:
+        try:
+            with open(_STATE_FILE) as f:
+                raw = json.load(f)
+            return {str(k): int(v) for k, v in raw.items()}
+        except (OSError, ValueError, AttributeError, TypeError):
+            return {}
+
+    def _recover_now(self) -> None:
+        self._recover = False
+        data = self._load_state()
+        matched: set[str] = set()
+        for stream in self._control.get_sink_inputs():
+            if not isinstance(stream, Cvc.MixerSinkInput) or self._is_own(stream):
+                continue
+            key = self._key(stream)
+            if key in data:
+                matched.add(key)
+                self._restore(stream, data[key])
+
+        # приложения, которых пока нет (например, плеер ещё не запущен)
+        deadline = time.monotonic() + _PENDING_TTL_S
+        for key, saved in data.items():
+            if key not in matched:
+                self._pending[key] = (saved, deadline)
+        if self._pending:
+            GLib.timeout_add_seconds(_PENDING_TTL_S + 1, self._expire_pending)
+        self._persist()  # удалит файл, если ждать нечего
+
+    def _expire_pending(self) -> bool:
+        if self._closed:
+            return False
+        now = time.monotonic()
+        self._pending = {k: v for k, v in self._pending.items() if v[1] > now}
+        self._persist()
+        return False
+
+    # ───────────────────────── восстановление потока ─────────────────────────
+    def _restore(self, stream, saved: int) -> None:
+        if _vol(stream) < saved - self._tol:
+            self._set(stream, saved)
+            if self._state == _IDLE:
+                # звуковой сервер мог после нас применить свою запомненную громкость
+                GLib.timeout_add(400, self._recheck, stream, saved)
+
+    def _recheck(self, stream, saved: int) -> bool:
+        try:
+            if (
+                not self._closed
+                and self._state == _IDLE
+                and _vol(stream) < saved - self._tol
+            ):
+                self._set(stream, saved)
+        except Exception:
+            pass
+        return False
+
+    # ───────────────────────── приглушение ─────────────────────────
     def _register(self, stream, immediate: bool) -> None:
         if not isinstance(stream, Cvc.MixerSinkInput) or self._is_own(stream):
             return
@@ -133,9 +294,9 @@ class GlyphSound:
         if sid not in self._sigs:
             self._sigs[sid] = (stream, stream.connect("notify::volume", self._on_volume))
 
-        cur = stream.get_volume()
-        if cur <= self._duck_vol:
-            return
+        cur = _vol(stream)
+        if cur <= self._duck_vol + self._tol:
+            return  # уже тихий (или уже приглушён нами)
         self._saved.setdefault(sid, cur)
         if immediate:
             self._set(stream, self._duck_vol)
@@ -143,18 +304,24 @@ class GlyphSound:
             self._fade[sid] = (cur, self._duck_vol)
 
     def _on_volume(self, stream, _pspec) -> None:
+        # пока играет звук, приложения не должны «перекрикивать» его
         if self._state != _PLAY:
             return
-        sid, target, cur = stream.get_id(), self._duck_vol, stream.get_volume()
-        if cur == target:
+        sid = stream.get_id()
+        # эхо наших собственных записей (с округлением сервера) пропускаем
+        if time.monotonic() - self._written.get(sid, 0.0) < _GRACE_S:
             return
-        saved = self._saved.get(sid)
+        target, cur = self._duck_vol, _vol(stream)
+        if abs(cur - target) <= self._tol:
+            return
         if cur > target:
-            if saved is None or cur < saved:
-                self._saved[sid] = cur
-            self._set(stream, target)
-        elif saved is not None and cur < saved:
+            # приложение/пользователь поднял громкость: это новая «исходная»
             self._saved[sid] = cur
+            self._set(stream, target)
+            self._persist()
+        elif sid in self._saved:
+            self._saved[sid] = cur
+            self._persist()
 
     def _on_stream_added(self, _control, sid: int) -> None:
         if not self._pending and self._state not in (_DUCK, _PLAY):
@@ -162,29 +329,43 @@ class GlyphSound:
         stream = self._control.lookup_stream_id(sid)
         if stream is None:
             return
-        saved = self._pending.pop(self._key(stream), None)
-        if saved is not None and stream.get_volume() < saved:
-            self._set(stream, saved)
+
+        entry = self._pending.pop(self._key(stream), None)
+        if entry is not None:
+            saved, deadline = entry
+            if deadline > time.monotonic():
+                # восстанавливаем ДО регистрации, иначе 20% станут «исходными»
+                self._restore(stream, saved)
+
         if self._state in (_DUCK, _PLAY):
             self._register(stream, self._state == _PLAY)
+        self._persist()
 
     def _on_stream_removed(self, _control, sid: int) -> None:
         entry = self._sigs.pop(sid, None)
         saved = self._saved.pop(sid, None)
         self._fade.pop(sid, None)
+        self._written.pop(sid, None)
         if entry is None:
             return
         stream, handler = entry
-        stream.disconnect(handler)
+        try:
+            stream.disconnect(handler)
+        except Exception:
+            pass
         key = self._key(stream)
         if saved is not None and key:
-            self._pending[key] = saved
+            self._pending[key] = (saved, time.monotonic() + _PENDING_TTL_S)
+            GLib.timeout_add_seconds(_PENDING_TTL_S + 1, self._expire_pending)
+            self._persist()
 
     def _tick(self) -> bool:
         self._step += 1
-        progress = min(1.0, self._step / _STEPS)
-        for sid, (a, b) in self._fade.items():
-            self._set(self._sigs[sid][0], int(a + (b - a) * progress))
+        progress = _ease(min(1.0, self._step / _STEPS))
+        for sid, (a, b) in list(self._fade.items()):
+            entry = self._sigs.get(sid)
+            if entry is not None:
+                self._set(entry[0], a + (b - a) * progress)
         if self._step < _STEPS:
             return True
         self._tid = None
@@ -197,15 +378,20 @@ class GlyphSound:
     def _play_now(self) -> None:
         self._cancel()
         self._state = _PLAY
+        self._arm_watchdog()
         self._playbin.set_state(Gst.State.NULL)
         if self._playbin.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             self._unduck()
 
     def _unduck(self) -> None:
         self._cancel()
+        self._disarm_watchdog()
         self._fade.clear()
         for sid, saved in self._saved.items():
-            cur = self._sigs[sid][0].get_volume()
+            entry = self._sigs.get(sid)
+            if entry is None:
+                continue
+            cur = _vol(entry[0])
             if cur != saved:
                 self._fade[sid] = (cur, saved)
         if self._fade:
@@ -213,33 +399,46 @@ class GlyphSound:
         else:
             self._idle()
 
-    def _idle(self) -> None:
+    def _idle(self, persist: bool = True) -> None:
         self._cancel()
+        self._disarm_watchdog()
         self._state = _IDLE
         self._fade.clear()
         self._saved.clear()
+        self._written.clear()
         for stream, handler in self._sigs.values():
-            stream.disconnect(handler)
+            try:
+                stream.disconnect(handler)
+            except Exception:
+                pass
         self._sigs.clear()
+        if persist:
+            self._persist()
 
     def _begin(self) -> None:
         self._wait = False
+        self._calc_levels()
         playing = self._state == _PLAY
         self._cancel()
         self._fade.clear()
-        self._duck_vol = int(self._control.get_vol_max_norm() * _DUCK_RATIO)
         for stream in self._control.get_sink_inputs():
             self._register(stream, playing)
+        self._persist()
         if playing or not self._fade:
             self._play_now()
         else:
             self._start_fade(_DUCK)
 
+    # ───────────────────────── публичный API ─────────────────────────
     def play(self) -> None:
         if self._closed:
             return
+        if not os.path.exists(_SOUND_PATH):
+            return
         if self._control is None:
             self._open()
+            self._wait = True
+        elif not self._ready:
             self._wait = True
         else:
             self._begin()
@@ -255,14 +454,20 @@ class GlyphSound:
         self._closed = True
         self._wait = False
         self._cancel()
+        self._disarm_watchdog()
         if self._control is None:
             return
+        # Файл оставляем: если push_volume не успеет уйти при выходе,
+        # громкость вернётся при следующем запуске.
+        self._persist()
         self._bus.remove_signal_watch()
         self._playbin.set_state(Gst.State.NULL)
         for sid, saved in self._saved.items():
-            self._set(self._sigs[sid][0], saved)
+            entry = self._sigs.get(sid)
+            if entry is not None:
+                self._set(entry[0], saved)
         self._pending.clear()
-        self._idle()
+        self._idle(persist=False)
         self._control.close()
 
 
