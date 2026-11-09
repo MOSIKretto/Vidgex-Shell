@@ -1,15 +1,11 @@
-/* ══════════════════════════════════════════════════════════════════════════════
-   SLIDERS (VOLUME / MIC / BRIGHTNESS)
-══════════════════════════════════════════════════════════════════════════════ */
-
 #control-slider {
   background-color: var(--surface);
   margin: 0;
   border-radius: 2px 10px 10px 2px;
 }
 
-#control-slider.no-icon { 
-  border-radius: 10px; 
+#control-slider.no-icon {
+  border-radius: 10px;
 }
 
 #control-slider trough {
@@ -40,16 +36,12 @@
   transition: background-color 150ms ease;
 }
 
-#control-slider slider:hover { 
-  background-color: var(--foreground); 
+#control-slider slider:hover {
+  background-color: var(--foreground);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CONTROL ICONS & BUTTONS (DASHBOARD)
-══════════════════════════════════════════════════════════════════════════════ */
-
-#vol-icon, 
-#mic-icon, 
+#vol-icon,
+#mic-icon,
 #brightness-icon {
   min-width: 32px;
   min-height: 32px;
@@ -59,8 +51,8 @@
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-#vol-label-dash, 
-#mic-label-dash, 
+#vol-label-dash,
+#mic-label-dash,
 #brightness-label-dash {
   color: var(--shadow);
   font-size: 20px;
@@ -80,10 +72,6 @@
   border-radius: inherit;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   SMALL WIDGETS (FALLBACK / COMPATIBILITY)
-══════════════════════════════════════════════════════════════════════════════ */
-
 #control-small {
   padding: 4px;
   background-color: var(--shadow);
@@ -98,15 +86,11 @@
   border-radius: 12px;
 }
 
-#vol-label, 
-#mic-label, 
-#brightness-label { 
-  font-size: 16px; 
+#vol-label,
+#mic-label,
+#brightness-label {
+  font-size: 16px;
 }
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   NOTCH COMPACT & HARMONIOUS ASCII OSD (PIXEL-PERFECT ALIGNMENT)
-══════════════════════════════════════════════════════════════════════════════ */
 
 #compact-content {
   min-height: 36px;
@@ -121,11 +105,10 @@
   padding: 0 2px;
 }
 
-/* 1. Иконка контрола */
 #osd-icon-box {
   min-width: 22px;
   min-height: 22px;
-  margin-top: 0px; /* При необходимости можно сместить: 1px или -1px */
+  margin-top: 0px;
 }
 
 #osd-icon-label {
@@ -136,38 +119,19 @@
   padding: 0;
 }
 
-/* 2. Контейнер точек */
-#osd-dots-box {
+#osd-bar {
+  color: var(--primary);
+  background-color: alpha(var(--surface-bright), 0.14);
+  border-radius: 6px;
   margin: 0 4px;
 }
 
-/* Точки и ASCII символы */
-.osd-dot {
-  font-family: "JetBrainsMono Nerd Font", monospace;
-  font-size: 19px;
-  font-weight: 800;
-  min-width: 17px;
-  /* Оптический сдвиг: компенсирует завышенное положение символа '●' */
-  margin-top: -5px;
-  margin-bottom: 0px;
-  padding: 0;
-  color: alpha(var(--surface-bright), 0.35);
-  transition: color 80ms ease, text-shadow 80ms ease;
+#osd-bar:active {
+  color: var(--surface-bright);
 }
 
-.osd-dot.active {
-  color: var(--primary);
-  text-shadow: 0 0 8px alpha(var(--primary), 0.65);
-}
-
-.osd-dot.inactive {
-  color: alpha(var(--surface-bright), 0.28);
-  text-shadow: none;
-}
-
-/* 3. Числовое процентное значение */
 #osd-value-label {
-  font-family: "JetBrainsMono Nerd Font", monospace;
+  font-family: "JetBrainsMono Nerd Font", momospace;
   font-size: 13px;
   font-weight: 700;
   color: var(--foreground);

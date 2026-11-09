@@ -1,6 +1,11 @@
+import math
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk
+
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
-from gi.repository import GLib
 
 from services.Controls.brightness import Brightness
 from services.Controls.microphone import Microphone
@@ -8,12 +13,117 @@ from services.Controls.volume import Volume
 import services.icons as icons
 
 
-DOT_ACTIVE = "●"
-DOT_INACTIVE = "○"
+_BAR_W = 168
+_BAR_H = 12
+_INSET = 2
+_DOTS = 10
+_DOT_R = 2.8
+_DOT_PITCH = 16
+_DOT_PAD = 12
+_ANIM_MS = 350
+_TWO_PI = 2 * math.pi
 
 
-def _dots(v: int) -> int:
-    return max(0, min(10, int(round(v / 10.0))))
+def ease_out_cubic(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
+
+
+class OsdBar(Gtk.DrawingArea):
+    def __init__(self):
+        super().__init__(valign=Gtk.Align.CENTER)
+        self.set_name("osd-bar")
+        self.set_size_request(_BAR_W, _BAR_H)
+        self._ctx = self.get_style_context()
+        self._target = 0.0
+        self._shown = 0.0
+        self._anim = None
+        self._colors = None
+
+        self.connect("draw", self._on_draw)
+        self.connect("style-updated", self._on_style_updated)
+        self.connect("unmap", self._on_unmap)
+        self.connect("destroy", lambda _: self._stop())
+
+    def set_fraction(self, frac: float) -> None:
+        frac = max(0.0, min(1.0, frac))
+        if frac == self._target:
+            return
+        self._target = frac
+        if not self.get_mapped():
+            self._stop()
+            self._shown = frac
+            return
+        self._animate(self._shown, frac)
+
+    def _animate(self, a: float, b: float) -> None:
+        self._stop()
+        t0 = 0
+
+        def tick(_widget, clock):
+            nonlocal t0
+            now = clock.get_frame_time()
+            t0 = t0 or now
+            t = min((now - t0) / (_ANIM_MS * 1000), 1.0)
+            self._shown = a + (b - a) * ease_out_cubic(t)
+            self.queue_draw()
+            if t < 1.0:
+                return True
+            self._anim = None
+            return False
+
+        self._anim = self.add_tick_callback(tick)
+
+    def _stop(self) -> None:
+        if self._anim is not None:
+            self.remove_tick_callback(self._anim)
+            self._anim = None
+
+    def _on_unmap(self, _w) -> None:
+        self._stop()
+        self._shown = self._target
+
+    def _on_style_updated(self, _w) -> None:
+        self._colors = None
+
+    def _load_colors(self) -> None:
+        state = self._ctx.get_state()
+        fill = self._ctx.get_color(state)
+        dots = self._ctx.get_color(state | Gtk.StateFlags.ACTIVE)
+        self._colors = tuple((c.red, c.green, c.blue, c.alpha) for c in (fill, dots))
+
+    @staticmethod
+    def _capsule(cr, x: float, y: float, w: float, h: float) -> None:
+        r = min(h / 2, w / 2)
+        cr.new_sub_path()
+        cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+        cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+        cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        cr.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
+        cr.close_path()
+
+    def _on_draw(self, _w, cr) -> bool:
+        if self._colors is None:
+            self._load_colors()
+        fill, dots = self._colors
+
+        w, h = self.get_allocated_width(), self.get_allocated_height()
+        Gtk.render_background(self._ctx, cr, 0, 0, w, h)
+
+        cy = h / 2
+        cr.set_source_rgba(*dots)
+        for i in range(_DOTS):
+            cr.new_sub_path()
+            cr.arc(_DOT_PAD + i * _DOT_PITCH, cy, _DOT_R, 0, _TWO_PI)
+        cr.fill()
+
+        fw = (w - 2 * _INSET) * self._shown
+        if fw <= 0:
+            return False
+
+        self._capsule(cr, _INSET, _INSET, fw, h - 2 * _INSET)
+        cr.set_source_rgba(*fill)
+        cr.fill()
+        return False
 
 
 class ControlOSD(Box):
@@ -27,30 +137,17 @@ class ControlOSD(Box):
         self._on_changed = on_changed
         self._init_done = False
         self._hids = []
-        self._cur_dev = "speaker"
+        self._shown_icon = None
+        self._shown_text = None
 
-        self._icon_lbl = Label(name="osd-icon-label", markup=icons.vol_high, v_align="center")
+        self._icon_lbl = Label(name="osd-icon-label", v_align="center")
         self._icon_lbl.set_yalign(0.5)
         self.add(Box(name="osd-icon-box", v_align="center", children=[self._icon_lbl]))
 
-        self._dots = []
-        self._ctxs = []
-        dots_box = Box(name="osd-dots-box", orientation="h", spacing=2, v_align="center")
-        for i in range(10):
-            lbl = Label(name="osd-dot", label=DOT_INACTIVE, v_align="center")
-            lbl.set_width_chars(1)
-            lbl.set_max_width_chars(1)
-            lbl.set_xalign(0.5)
-            lbl.set_yalign(0.5)
-            ctx = lbl.get_style_context()
-            ctx.add_class("osd-dot")
-            ctx.add_class("inactive")
-            self._dots.append(lbl)
-            self._ctxs.append(ctx)
-            dots_box.add(lbl)
-        self.add(dots_box)
+        self._bar = OsdBar()
+        self.add(self._bar)
 
-        self._val_lbl = Label(name="osd-value-label", label="0%", v_align="center")
+        self._val_lbl = Label(name="osd-value-label", v_align="center")
         self._val_lbl.set_yalign(0.5)
         self.add(self._val_lbl)
 
@@ -70,9 +167,7 @@ class ControlOSD(Box):
             self._dev_levels["screen"] = pct(br.screen_brightness)
             self._hids.append((br, br.connect("screen", lambda _, v: self._check_change("screen", pct(v)))))
 
-        self._dev_dots = {k: _dots(v) for k, v in self._dev_levels.items()}
-
-        self._update_display("speaker", vol.volume, vol.muted, is_init=True)
+        self._render("speaker", vol.volume, vol.muted)
         GLib.idle_add(self._mark_init_done)
         self.show_all()
 
@@ -80,64 +175,41 @@ class ControlOSD(Box):
         self._init_done = True
         return False
 
-    def _paint(self, i: int, active: bool) -> None:
-        ctx = self._ctxs[i]
-        ctx.add_class("active" if active else "inactive")
-        ctx.remove_class("inactive" if active else "active")
-        self._dots[i].set_text(DOT_ACTIVE if active else DOT_INACTIVE)
+    def _icon_for(self, dev: str, val: int, is_muted: bool) -> str:
+        if dev == "speaker":
+            off = is_muted or val <= 0
+            if self._vol.is_bluetooth:
+                return (icons.bluetooth_disconnected if off
+                        else icons.bluetooth_connected if val > 74 else icons.bluetooth)
+            return icons.vol_mute if off else icons.vol_high if val > 74 else icons.vol_medium
+        if dev == "microphone":
+            return icons.mic if (val > 0 and not is_muted) else icons.mic_mute
+        return (icons.brightness_high if val >= 75
+                else icons.brightness_medium if val >= 24 else icons.brightness_low)
 
-    def _paint_all(self, n: int) -> None:
-        for i in range(10):
-            self._paint(i, i < n)
+    def _render(self, dev: str, val: int, is_muted: bool) -> None:
+        icon = self._icon_for(dev, val, is_muted)
+        if icon != self._shown_icon:
+            self._shown_icon = icon
+            self._icon_lbl.set_markup(icon)
+
+        eff = 0 if is_muted else val
+        text = f"{eff}%"
+        if text != self._shown_text:
+            self._shown_text = text
+            self._val_lbl.set_label(text)
+
+        self._bar.set_fraction(eff / 100.0)
+        self._dev_levels[dev] = eff
 
     def _check_change(self, dev: str, val: int, is_muted: bool = False):
         if not self._init_done:
             return
         if val != self._dev_levels[dev] or is_muted != self._dev_muted[dev]:
             self._dev_muted[dev] = is_muted
-            self._update_display(dev, val, is_muted)
-
-    def _update_display(self, dev: str, val: int, is_muted: bool = False, is_init: bool = False):
-        if dev == "speaker":
-            off = is_muted or val <= 0
-            if self._vol.is_bluetooth:
-                icon = (icons.bluetooth_disconnected if off
-                        else icons.bluetooth_connected if val > 74 else icons.bluetooth)
-            else:
-                icon = icons.vol_mute if off else icons.vol_high if val > 74 else icons.vol_medium
-        elif dev == "microphone":
-            icon = icons.mic if (val > 0 and not is_muted) else icons.mic_mute
-        else:
-            icon = (icons.brightness_high if val >= 75
-                    else icons.brightness_medium if val >= 24 else icons.brightness_low)
-        self._icon_lbl.set_markup(icon)
-
-        eff = 0 if is_muted else val
-        self._val_lbl.set_label(f"{eff}%")
-
-        new = _dots(eff)
-        old = self._dev_dots[dev]
-        old_val = self._dev_levels[dev]
-
-        if self._cur_dev != dev:
-            self._cur_dev = dev
-            self._paint_all(old)
-
-        if is_init or not self._init_done:
-            self._dev_dots[dev], self._dev_levels[dev] = new, eff
-            self._paint_all(new)
-            return
-
-        if new != old:
-            for i in range(min(new, old), max(new, old)):
-                self._paint(i, new > old)
-        elif eff != old_val:
-            self._paint(min(9, max(0, new - 1)), new > 0)
-
-        self._dev_dots[dev], self._dev_levels[dev] = new, eff
-
-        if self._on_changed:
-            self._on_changed()
+            self._render(dev, val, is_muted)
+            if self._on_changed:
+                self._on_changed()
 
     def cleanup(self):
         for service, hid in self._hids:

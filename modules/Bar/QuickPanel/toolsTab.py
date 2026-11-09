@@ -20,6 +20,7 @@ import services.icons as icons
 
 _MAX_RECORD_MINUTES = 90
 _MAX_RECORD_SECONDS = _MAX_RECORD_MINUTES * 60
+_MIN_SLIDE_MS = 300
 _PID_RE = re.compile(r"^(\d+)$", re.MULTILINE)
 
 
@@ -131,6 +132,43 @@ def _run_screenshot(mode: str, mockup: bool=False):
     elif action=="open": subprocess.run(["xdg-open",str(full_path.parent)])
 
 
+class _SlideLabel(Gtk.Stack):
+    """Две накладываемые метки, между которыми идёт горизонтальный слайд влево."""
+
+    def __init__(self, label_name: str, text: str):
+        super().__init__(
+            transition_type=Gtk.StackTransitionType.NONE,
+            transition_duration=_MIN_SLIDE_MS,
+            homogeneous=True,
+        )
+        # Обе метки имеют то же имя, что и раньше, поэтому CSS
+        # #record-timer-mm применяется к ним без изменений.
+        self._lbls = (
+            Label(name=label_name, label=text, xalign=0.5),
+            Label(name=label_name, label=text, xalign=0.5),
+        )
+        self._idx = 0
+        self._text = text
+        for lbl in self._lbls:
+            self.add(lbl)
+        self.show_all()
+        self.set_visible_child(self._lbls[0])
+
+    def set_text(self, text: str, animate: bool) -> None:
+        if text == self._text:
+            return
+        self._text = text
+        self._idx ^= 1
+        lbl = self._lbls[self._idx]
+        lbl.set_label(text)
+        # Тип перехода задаётся до смены видимого child
+        self.set_transition_type(
+            Gtk.StackTransitionType.SLIDE_LEFT if animate
+            else Gtk.StackTransitionType.NONE
+        )
+        self.set_visible_child(lbl)
+
+
 class RecordTimerWidget(Box):
     def __init__(self):
         super().__init__(
@@ -139,10 +177,10 @@ class RecordTimerWidget(Box):
             v_align="center",
             h_align="center",
         )
-        self.mm_label = Label(name="record-timer-mm", label="00", xalign=0.5)
-        self.ss_label = Label(name="record-timer-ss", label="00", xalign=0.5)
-        self.add(self.mm_label)
-        self.add(self.ss_label)
+        self.mm_stack = _SlideLabel("record-timer-mm", "00")
+        self.ss_stack = _SlideLabel("record-timer-ss", "00")
+        self.add(self.mm_stack)
+        self.add(self.ss_stack)
 
         self._last_sec: int | None = None
 
@@ -150,18 +188,19 @@ class RecordTimerWidget(Box):
         clamped = max(0, min(_MAX_RECORD_SECONDS, elapsed_seconds))
         if clamped == self._last_sec:
             return
+        animate = self._last_sec is not None
         self._last_sec = clamped
 
         mm = min(_MAX_RECORD_MINUTES, clamped // 60)
         ss = clamped % 60 if mm < _MAX_RECORD_MINUTES else 0
 
-        self.mm_label.set_label(f"{mm:02d}")
-        self.ss_label.set_label(f"{ss:02d}")
+        self.mm_stack.set_text(f"{mm:02d}", animate)
+        self.ss_stack.set_text(f"{ss:02d}", animate)
 
     def reset(self) -> None:
         self._last_sec = None
-        self.mm_label.set_label("00")
-        self.ss_label.set_label("00")
+        self.mm_stack.set_text("00", animate=False)
+        self.ss_stack.set_text("00", animate=False)
 
 
 class ToolsTab(Box):

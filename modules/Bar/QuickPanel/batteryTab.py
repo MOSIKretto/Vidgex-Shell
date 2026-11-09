@@ -19,6 +19,7 @@ import services.icons as icons
 _POWER_SUPPLY_DIR = "/sys/class/power_supply"
 _FALLBACK_POLL_SECONDS = 30
 _PCT_WIDTH_PX = 34
+_DIGIT_MS = 350
 _RETRY_DELAY_MS = 2000
 _THRESHOLD_PANEL_TRANSITION_MS = 480
 _SLIDER_COL_WIDTH_PX = 157
@@ -59,6 +60,10 @@ _MODE_TITLES = {
     "performance": "Performance Mode",
 }
 
+_THRESH_ANIM_MS = 280
+
+def _ease_out_cubic(t: float) -> float:
+    return 1.0 - (1.0 - t) ** 3
 
 def _set_css_class(widget: Gtk.Widget, cls_name: str, enabled: bool) -> bool:
     ctx = widget.get_style_context()
@@ -70,7 +75,7 @@ def _set_css_class(widget: Gtk.Widget, cls_name: str, enabled: bool) -> bool:
         ctx.remove_class(cls_name)
     return True
 
-def _build_trigger_button(icon_label: Label, *extra_widgets: Label) -> Button:
+def _build_trigger_button(icon_label: Gtk.Widget, *extra_widgets: Gtk.Widget) -> Button:
     wrapper = Box(
         name="button-bar-content",
         orientation="h", spacing=0,
@@ -261,17 +266,81 @@ def set_threshold(value: int) -> None:
         widget.recheck_threshold()
 
 
+class _RollDigit(Gtk.Stack):
+    def __init__(self):
+        super().__init__()
+        self.set_homogeneous(True)
+        self.set_transition_duration(_DIGIT_MS)
+        self.set_no_show_all(True)
+        self._lbls = (Gtk.Label(), Gtk.Label())
+        for lbl in self._lbls:
+            lbl.show()
+            self.add(lbl)
+        self._idx = 0
+        self.set_visible_child(self._lbls[0])
+
+    def set_char(self, ch: str, transition: Gtk.StackTransitionType) -> None:
+        self._idx ^= 1
+        lbl = self._lbls[self._idx]
+        lbl.set_text(ch)
+        self.set_transition_type(transition)
+        self.set_visible_child(lbl)
+
+
+class _BatPercent(Box):
+    def __init__(self):
+        super().__init__(
+            name="metrics-level", style_classes="bat",
+            orientation="h", spacing=0, v_align="center",
+        )
+        self.set_size_request(_PCT_WIDTH_PX, -1)
+        self._value: int | None = None
+        self._sign = Gtk.Label(label="%")
+        self._sign.set_no_show_all(True)
+        self._slots = [_RollDigit() for _ in range(3)]
+        self.pack_end(self._sign, False, False, 0)
+        for slot in self._slots:
+            self.pack_end(slot, False, False, 0)
+        self._slots[0].set_char("—", Gtk.StackTransitionType.NONE)
+        self._slots[0].show()
+
+    def set_value(self, value: int) -> None:
+        old = self._value
+        if value == old:
+            return
+        self._value = value
+        text = str(value)
+        old_text = "" if old is None else str(old)
+        if old is None:
+            self._sign.show()
+        for i, slot in enumerate(self._slots):
+            if i >= len(text):
+                slot.hide()
+                continue
+            ch = text[-1 - i]
+            if i < len(old_text):
+                old_ch = old_text[-1 - i]
+                if old_ch == ch:
+                    continue
+                kind = (
+                    Gtk.StackTransitionType.SLIDE_DOWN
+                    if ch > old_ch
+                    else Gtk.StackTransitionType.SLIDE_UP
+                )
+                slot.set_char(ch, kind)
+            else:
+                slot.set_char(ch, Gtk.StackTransitionType.NONE)
+                slot.show()
+
+
 class BatteryTrigger:
     def __init__(self):
         self._lv = -1.0
         self._lc = None
-        self._last_pct_text = None
         self._destroyed = False
 
         self._icon = Label(name="metrics-icon", markup=icons.battery_3)
-        self._pct = Label(name="metrics-level", style_classes="bat", label="—")
-        self._pct.set_xalign(1.0)
-        self._pct.set_size_request(_PCT_WIDTH_PX, -1)
+        self._pct = _BatPercent()
         self.button = _build_trigger_button(self._icon, self._pct)
         self.button.connect("destroy", lambda *_: self.cleanup())
 
@@ -317,12 +386,7 @@ class BatteryTrigger:
         self._lv, self._lc = val, chg
         self.button.set_visible(val != 0)
         self._icon.set_markup(_bat_icon(val, bool(chg)))
-
-        pct_text = f"{int(val)}%"
-        if pct_text != self._last_pct_text:
-            self._last_pct_text = pct_text
-            self._pct.set_label(pct_text)
-
+        self._pct.set_value(int(val))
         self._evaluate_profile()
 
     def recheck_threshold(self) -> None:
@@ -612,7 +676,6 @@ class BatteryCircle(Box):
         self._reveal.set_halign(Gtk.Align.CENTER)
         self._reveal.set_valign(Gtk.Align.START)
 
-        # Невидимая подпись: задаёт высоту слота (и ширину под "100%").
         ghost = Label(name="battery-circle-pct", label="100%")
         ghost.set_margin_top(self._LABEL_GAP_PX)
         ghost.set_opacity(0.0)
@@ -624,7 +687,6 @@ class BatteryCircle(Box):
 
         top_pad = Box()
 
-        # Верхний отступ и нижний слот всегда одинаковой высоты.
         self._size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.VERTICAL)
         self._size_group.add_widget(top_pad)
         self._size_group.add_widget(slot)
@@ -699,6 +761,7 @@ class BatteryThresholdSlider(EventBox):
         self._on_drag = on_drag
         self._on_commit = on_commit
         self._dragging = False
+        self._anim = None
         self._ticks = []
         for _ in range(self.SEGMENTS):
             tick = Box(style_classes=["battery-threshold-tick"], h_expand=True)
@@ -714,7 +777,10 @@ class BatteryThresholdSlider(EventBox):
             v_align="center", child=row,
         )
 
-        self._index = max(0, min(self.SEGMENTS - 1, round(initial_pct / _THRESH_STEP) - 1))
+        start = max(0, min(self.SEGMENTS - 1, round(initial_pct / _THRESH_STEP) - 1))
+        self._target = start
+        self._index = start
+        self._pos = float(start)
         self.add_events(
             Gdk.EventMask.BUTTON_PRESS_MASK
             | Gdk.EventMask.BUTTON_RELEASE_MASK
@@ -723,13 +789,45 @@ class BatteryThresholdSlider(EventBox):
         self.connect("button-press-event", self._on_press)
         self.connect("motion-notify-event", self._on_motion)
         self.connect("button-release-event", self._on_release)
+        self.connect("destroy", lambda *_: self._stop_anim())
         self._apply_classes()
 
     def get_percentage(self) -> int:
-        return (self._index + 1) * _THRESH_STEP
+        return (self._target + 1) * _THRESH_STEP
 
     def cancel_drag(self) -> None:
         self._dragging = False
+        self._stop_anim()
+        self._set_pos(float(self._target))
+
+    def _animate(self, a: float, b: float, ms: int) -> None:
+        self._stop_anim()
+        t0 = None
+
+        def tick(_widget, clock):
+            nonlocal t0
+            now = clock.get_frame_time()
+            t0 = t0 or now
+            t = min((now - t0) / (ms * 1000), 1.0)
+            self._set_pos(a + (b - a) * _ease_out_cubic(t))
+            if t < 1.0:
+                return True
+            self._anim = None
+            return False
+
+        self._anim = self.add_tick_callback(tick)
+
+    def _stop_anim(self) -> None:
+        if self._anim is not None:
+            self.remove_tick_callback(self._anim)
+            self._anim = None
+
+    def _set_pos(self, value: float) -> None:
+        self._pos = value
+        idx = max(0, min(self.SEGMENTS - 1, round(value)))
+        if idx != self._index:
+            self._index = idx
+            self._apply_classes()
 
     def _tick_class(self, i: int) -> str:
         if i < self._index:
@@ -739,15 +837,8 @@ class BatteryThresholdSlider(EventBox):
     def _x_to_index(self, x: float) -> int:
         width = self.get_allocated_width()
         if width <= 0:
-            return self._index
+            return self._target
         return max(0, min(self.SEGMENTS - 1, int(x // (width / self.SEGMENTS))))
-
-    def _set_index(self, idx: int) -> None:
-        if idx == self._index:
-            return
-        self._index = idx
-        self._apply_classes()
-        self._on_drag(self.get_percentage())
 
     def _apply_classes(self) -> None:
         for i, tick in enumerate(self._ticks):
@@ -756,17 +847,31 @@ class BatteryThresholdSlider(EventBox):
                 ctx.remove_class(cls)
             ctx.add_class(self._tick_class(i))
 
+    def _set_target(self, idx: int) -> bool:
+        if idx == self._target:
+            return False
+        self._target = idx
+        self._on_drag(self.get_percentage())
+        return True
+
     def _on_press(self, _widget, event) -> bool:
         if event.button != 1:
             return False
         self._dragging = True
-        self._set_index(self._x_to_index(event.x))
+        idx = self._x_to_index(event.x)
+        if self._set_target(idx):
+            self._animate(self._pos, float(idx), _THRESH_ANIM_MS)
         return True
 
     def _on_motion(self, _widget, event) -> bool:
         if not self._dragging:
             return False
-        self._set_index(self._x_to_index(event.x))
+        idx = self._x_to_index(event.x)
+        if idx == self._target:
+            return True
+        self._stop_anim()
+        self._set_target(idx)
+        self._set_pos(float(idx))
         return True
 
     def _on_release(self, _widget, _event) -> bool:
@@ -856,19 +961,12 @@ class BatteryTab(Box):
 
         self._mode_pulse = PowerModePulse(_power_mode)
 
-        # Панель слайдера центрируется по вертикали внутри стека: её
-        # кольцо (пульс) оказывается на одной линии с кольцами BT-кружков.
         self._slider_panel = Box(
             name="battery-slider-panel", orientation="h", spacing=14,
             h_align="start", v_align="center",
             children=[left_col, self._mode_pulse],
         )
 
-        # Один Stack вместо двух Revealer: BT-кружки и панель слайдера
-        # занимают одно место и сменяют друг друга слайдом. Гомогенный
-        # размер — ширина и высота не меняются во время анимации.
-        # ВАЖНО: на этот Stack нельзя вешать padding в CSS (иначе слайд
-        # уедет по вертикали, как было с #quick-panel-stack).
         self._expand_stack = Gtk.Stack()
         self._expand_stack.set_name("battery-expand-stack")
         self._expand_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
@@ -884,9 +982,6 @@ class BatteryTab(Box):
         self._expand_stack.set_visible_child_name("bt")
         self._expand_stack.connect("notify::transition-running", self._on_expand_transition)
 
-        # Единственный ребёнок вкладки: ряд центрируется и по X, и по Y
-        # средствами GTK. Высота ряда = высота BatteryCircle (кольцо
-        # посередине), поэтому кольца стоят по центру окна.
         self._top_row = Box(
             name="battery-tab-row", orientation="h", spacing=0,
             h_align="center", v_align="center",
@@ -928,13 +1023,9 @@ class BatteryTab(Box):
             self._mode_pulse.set_mode(_power_mode)
             self._mode_pulse.set_running(self._active)
         elif not self._expand_stack.get_transition_running():
-            # Слайд не запущен (анимации выключены / вкладка не показана) —
-            # уведомления об окончании не будет, гасим волну сразу.
             self._mode_pulse.stop()
 
     def _on_expand_transition(self, stack, _pspec) -> None:
-        # Волна продолжает бежать, пока панель уезжает, и гасится
-        # только после окончания слайда.
         if not stack.get_transition_running() and not self._expanded:
             self._mode_pulse.stop()
 

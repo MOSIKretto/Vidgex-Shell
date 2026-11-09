@@ -1,5 +1,3 @@
-/* styles/Bar/bar.css */
-
 @import url("./styles/Bar/quickpanel.css");
 @import url("./styles/Bar/workspaces.css");
 
@@ -31,7 +29,8 @@
 
 #button-bar-label,
 #metrics-icon,
-#power-battery-container #metrics-level {
+#power-battery-container #metrics-level,
+#power-battery-container #metrics-level label {
     transition: color 300ms ease-out;
 }
 
@@ -41,7 +40,8 @@
 }
 #button-bar:hover #button-bar-label,
 #button-bar:hover #metrics-icon,
-#button-bar:hover #metrics-level {
+#button-bar:hover #metrics-level,
+#button-bar:hover #metrics-level label {
     color: var(--shadow);
 }
 
@@ -53,7 +53,8 @@
 }
 #button-bar.trigger-active #button-bar-label,
 #button-bar.trigger-active #metrics-icon,
-#button-bar.trigger-active #metrics-level {
+#button-bar.trigger-active #metrics-level,
+#button-bar.trigger-active #metrics-level label {
     color: var(--shadow);
 }
 
@@ -81,12 +82,17 @@
     color: var(--primary);
 }
 
+/* Процент батареи. Контейнер задаёт шрифт и отступ,
+   цвет задаётся и ему, и вложенным label (цифры и знак «%»). */
 #power-battery-container #metrics-level {
     font-weight: bold;
     font-size: 14px;
     color: var(--primary);
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
     margin-left: 3px;
+}
+#power-battery-container #metrics-level label {
+    color: var(--primary);
 }
 
 /* Цвет внутри активной/наведённой кнопки должен перебить правила выше
@@ -95,9 +101,11 @@
 #power-battery-container #button-bar.trigger-active #button-bar-label,
 #power-battery-container #button-bar.trigger-active #metrics-icon,
 #power-battery-container #button-bar.trigger-active #metrics-level,
+#power-battery-container #button-bar.trigger-active #metrics-level label,
 #power-battery-container #button-bar:hover #button-bar-label,
 #power-battery-container #button-bar:hover #metrics-icon,
-#power-battery-container #button-bar:hover #metrics-level {
+#power-battery-container #button-bar:hover #metrics-level,
+#power-battery-container #button-bar:hover #metrics-level label {
     color: var(--shadow);
 }
 
